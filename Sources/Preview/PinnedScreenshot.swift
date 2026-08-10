@@ -85,6 +85,8 @@ struct PinnedScreenshotView: View {
 
     @State private var scaleFactor: CGFloat = 1.0
     @State private var isHovered: Bool = false
+    @State private var opacity: Double = 1.0           // P1 贴图增强：透明度
+    @State private var clickThrough: Bool = false      // P1 贴图增强：鼠标穿透
 
     private let minScale: CGFloat = 0.25
     private let maxScale: CGFloat = 4.0
@@ -102,6 +104,7 @@ struct PinnedScreenshotView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 4)
                 .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
+                .opacity(opacity)   // P1：透明度
                 .onHover { hovering in
                     withAnimation(.easeInOut(duration: 0.15)) {
                         isHovered = hovering
@@ -122,6 +125,8 @@ struct PinnedScreenshotView: View {
             }
         }
         .frame(width: w, height: h)
+        // 鼠标穿透时，让窗口忽略鼠标事件（点穿到后面的窗口）
+        .background(MousePassthroughView(isPassthrough: clickThrough))
         // Resize via scroll wheel
         .onScrollWheel { delta in
             let newScale = (scaleFactor + delta * 0.05).clamped(to: minScale...maxScale)
@@ -129,13 +134,21 @@ struct PinnedScreenshotView: View {
             resizeWindow(to: CGSize(width: originalDisplaySize.width * newScale,
                                     height: originalDisplaySize.height * newScale))
         }
-        // Right-click context menu
+        // Right-click context menu（含透明度/穿透切换）
         .contextMenu {
             Button("Copy Image") {
                 let pb = NSPasteboard.general
                 pb.clearContents()
                 pb.writeObjects([image])
             }
+            Divider()
+            // P1 贴图增强：透明度调节
+            Slider(value: $opacity, in: 0.2...1.0, step: 0.1) {
+                Text("Opacity: \(Int(opacity * 100))%")
+            }
+            // P1 贴图增强：鼠标穿透切换
+            Toggle("Click-Through (鼠标穿透)", isOn: $clickThrough)
+            Divider()
             Button("Close") {
                 onClose()
             }
@@ -216,5 +229,27 @@ private extension View {
 private extension Comparable {
     func clamped(to range: ClosedRange<Self>) -> Self {
         min(max(self, range.lowerBound), range.upperBound)
+    }
+}
+
+// MARK: - 鼠标穿透（P1 贴图增强）
+
+/// 控制 NSWindow 的 ignoresMouseEvents，实现"鼠标穿透"——贴图挡住下面窗口时，
+/// 鼠标点击穿过去点后面的东西。配合 contextMenu 的 Toggle 用。
+private struct MousePassthroughView: NSViewRepresentable {
+    let isPassthrough: Bool
+
+    func makeNSView(context: Context) -> NSView {
+        let v = NSView()
+        DispatchQueue.main.async {
+            v.window?.ignoresMouseEvents = isPassthrough
+        }
+        return v
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            nsView.window?.ignoresMouseEvents = isPassthrough
+        }
     }
 }

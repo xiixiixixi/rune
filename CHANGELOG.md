@@ -1,322 +1,325 @@
-# Changelog
+# 更新日志（Changelog）
 
-All notable changes to Better Shot will be documented in this file.
+本文件记录 BetterShot 的所有重要变更。
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，本项目遵循[语义化版本](https://semver.org/lang/zh-CN/)。
+
+> 小白说明：这是记录"每个版本改了什么"的文件。语义化版本号像 `0.3.7` 这样，主版本.次版本.修订号，改了什么程度的改动，对应改哪一段数字。
 
 ## [0.3.7] - 2026-06-07
 
-### Added
+### 新增
 
-- **Screen recording**: Record your screen as MP4 video with ScreenCaptureKit. Includes a floating status bar with timer, pause/resume, stop, and discard controls. Access via the new "Record" button in the menu bar or `⌘⇧2`
-- **Restart recording**: New restart button in the recording status bar — cancels the current recording and immediately starts a new one
-- **Recording pill redesign**: Minimal icon-only controls (pause, stop, restart, discard) with solid dark background, proper SwiftUI observation for live timer updates, and auto-sized panel
-- **Video editor with effects**: Full video editor with padding, corner radius, shadow, and background picker (solid colors, gradients, macOS wallpapers, custom images) — matching the image editor's inspector sidebar. Trim timeline with thumbnail strip, transport controls, and export with effects baked in
-- **Recording settings tab**: Dedicated settings panel for recording preferences — FPS (24/30/60), show cursor, capture audio, and open editor after recording toggles
-- **Record Screen keyboard shortcut** (`⌘⇧2`): Configurable global hotkey for screen recording, shown in Capture settings alongside screenshot shortcuts
-- **Separate History and Videos tabs**: Screenshots and recordings are now in separate tabs in Settings. History shows only screenshots, Videos shows only recordings — each with their own clear button and appropriate actions (preview for screenshots, open in editor for recordings)
-- **Preview panel for recordings**: After stopping a recording, the floating preview overlay appears (same as screenshots). Click it to open the video editor
-- **Drag-to-app from preview**: Dragging from the floating preview card now provides the actual file URL, enabling drop into apps like Figma, Slack, and Finder
-- **App appearance setting**: Choose between System, Light, and Dark mode in Settings > General > Appearance. The app no longer forces light mode — respects your macOS setting by default
-- **Recent menu with sub-menus**: Single "Recent" button in the menu bar with nested "Screenshots" and "Recordings" sub-menus, each with their own clear option
-- **Image crop**: Crop screenshots in the editor with draggable corner and edge handles, dark mask overlay, and rule-of-thirds grid. Crop is applied on export — annotations remain editable on the full image
-- **Video crop**: Crop recordings in the video editor with the same overlay UX. Crop is baked into the exported MP4 via AVMutableVideoComposition transform
-- **MP4 recording and export**: Screen recording now records directly as MP4 instead of MOV. Video editor also exports as MP4
-- **Changelog page**: Dedicated `/changelog` page on the landing site, auto-generated from CHANGELOG.md (single source of truth)
+- **屏幕录制**：用 ScreenCaptureKit 把屏幕录成 MP4 视频。包含一个浮动的状态栏，带计时器、暂停/继续、停止、放弃控件。通过菜单栏新增的"录制"按钮或 `⌘⇧2` 访问
+- **重新录制**：录制状态栏新增"重录"按钮——取消当前录制并立刻开始新的录制
+- **录制条重新设计**：极简的纯图标控件（暂停、停止、重录、放弃），深色实心背景，修复 SwiftUI 计时器实时更新，面板自动适配大小
+- **带特效的视频编辑器**：完整的视频编辑器，支持边距、圆角、阴影、背景选择器（纯色、渐变、macOS 壁纸、自定义图片）——和图片编辑器的检查器侧栏一致。裁剪时间轴带缩略图条、播放控件，导出时把特效烘焙进去
+- **录制设置标签页**：专门的录制偏好设置面板——帧率（24/30/60）、显示鼠标、录制声音、录制后打开编辑器开关
+- **录屏快捷键**（`⌘⇧2`）：可配置的录屏全局热键，在"截图设置"里和截图快捷键一起展示
+- **分离的"历史"和"视频"标签页**：截图和录制现在在"设置"里分开展示。历史只显示截图，视频只显示录制——各有自己的清空按钮和对应操作（截图可预览，录制可在编辑器打开）
+- **录制预览面板**：停止录制后，会出现浮动预览层（和截图一样）。点它就能打开视频编辑器
+- **从预览拖到其他 App**：从浮动预览卡片拖动现在会提供真实的文件地址，支持拖到 Figma、Slack、Finder 等 App
+- **应用外观设置**：在"设置 > 通用 > 外观"里可选跟随系统、浅色、深色。App 不再强制浅色——默认尊重你的 macOS 设置
+- **带子菜单的"最近"菜单**：菜单栏单个"最近"按钮，带嵌套的"截图"和"录制"子菜单，各有自己的清空选项
+- **图片裁剪**：在编辑器里裁剪截图，带可拖动的角和边把手、暗色遮罩、九宫格参考线。裁剪在导出时生效——标注在完整图像上仍可编辑
+- **视频裁剪**：在视频编辑器里裁剪录制，交互和图片一样。裁剪通过 AVMutableVideoComposition 变换烘焙进导出的 MP4
+- **MP4 录制和导出**：屏幕录制现在直接录成 MP4（不再是 MOV）。视频编辑器也导出 MP4
+- **更新日志页面**：官网新增 `/changelog` 页面，从 CHANGELOG.md 自动生成（单一信息源）
 
-### Fixed
+### 修复
 
-- **Race condition: `BundledBackgrounds.ImageCache`**: Added `NSLock` to the `@unchecked Sendable` image cache dictionary — concurrent access from multiple threads could crash
-- **Race condition: `ShortcutService.cachedShortcuts`**: Protected the static shortcut cache with `NSLock` — the CGEvent tap callback reads it from an arbitrary thread while the main actor writes it
-- **Race condition: `RecordingSession.appendVideoSample`**: Moved `writer.startSession(atSourceTime:)` outside the lock to avoid calling AVAssetWriter while holding the lock
-- **Race condition: `ScreenRecordingManager` stop/cancel**: Added `.stopping` state guard so concurrent stop calls (e.g. user taps stop while stream error fires) can't both proceed
-- **Memory leak: `RecordingStatusBarController`**: Panel was never set to `nil` on dismiss, leaking the NSPanel and its SwiftUI view hierarchy
-- **Memory leak: `PreviewOverlay`**: Panel was never released on dismiss, accumulating stale panels
-- **Memory leak: `VideoEditorModel.generateThumbnails`**: Changed `Task.detached` to use `[weak self]` to prevent retaining the model after window close
-- **Recording timer stuck at 00:00**: `ScreenRecordingManager.shared` was stored as `let` (plain constant) — SwiftUI's `@Observable` tracking requires `@State` to trigger re-renders
-- **Recording pill invisible/clipped**: Panel used a hardcoded `contentRect` that didn't match SwiftUI content size. Now uses `hostingView.fittingSize` for exact sizing
-- **Recording saved to wrong location**: Raw video now stays in the user's save directory after stopping — `importCapture` uses `deleteSource: false` so the file isn't moved away
-- **Filename collision on rapid capture**: `HistoryStore.importCapture` now appends a UUID suffix when a file with the same millisecond timestamp already exists
-- **Orphaned files on delete**: `deleteRecord` and `deleteAllRecords` now clean up beautified files and base images, not just the raw capture
-- **Crash on headless display**: `CountdownOverlay` accessed `NSScreen.screens[0]` without bounds checking — changed to safe `.first` with guard
-- **Zero-duration thumbnail generation**: `VideoEditorModel.generateThumbnails` now guards against `duration == 0` to prevent generating 20 useless thumbnails at time zero
-- **Windows open on wrong screen**: Editor, video editor, settings, preview overlay, recording status bar, toast, and pinned screenshots now open on the same screen where the menu bar icon was clicked. Previously, all windows sampled `NSEvent.mouseLocation` after the popover dismissed (too late) or hardcoded `NSScreen.main`, causing them to appear on the primary display instead of the active one. The originating screen is now captured from the status bar button before dismissal and threaded through to all window controllers
-- **Recording pill visible in recordings**: The floating recording status bar (timer, pause, stop, discard) was being captured in screen recordings. Fixed by setting `sharingType = .none` on the panel so ScreenCaptureKit excludes it from capture
-- **Export deletes files from save directory**: Exporting from the screenshot or video editor was deleting the exported file from the save directory via `importCapture(deleteSource: true)` and a redundant `removeItem` call. Now only the old history store record is cleaned up — the exported file stays in the save directory
-- **Recent recordings open editor directly**: Clicking a recording in the Recent menu now shows the floating preview overlay (with edit, pin, copy, dismiss actions) instead of jumping straight into the video editor, matching how recent screenshots behave
-- **Annotation export positioning**: Annotations (arrows, rectangles, text, all tools) now render at the correct position in the exported image, matching the canvas preview. The export renderer previously used independent Y-axis math from the SwiftUI canvas. Fixed by flipping the CG context to Y-down for annotation rendering, using the same coordinate formulas as the canvas preview
-- **Annotations mispositioned with crop**: When crop was active, annotations were rendered using coordinates normalized to the original image size, but the renderer was given the cropped image. Annotations are now remapped from original-image to cropped-image coordinate space before export
-- **Duplicate file on Desktop**: Screenshots no longer create a visible `.base` companion file on the Desktop. The raw source image used for re-editing is now stored internally in Application Support, so only the beautified screenshot appears in the save directory
-- **Video export missing background**: Background was invisible in exported videos because `AVMutableVideoCompositionInstruction.backgroundColor` defaulted to opaque black, covering the background layer. Fixed by setting it to clear and applying corner radius via `CAShapeLayer` mask on the video layer
-- **Video editor not loading default effects**: Video editor now loads user-configured defaults from `AppPreferences.defaultBeautifierConfig` on open, matching the image editor behavior
-- **Preview pin button position**: Moved the pin button from bottom-left (next to pencil) to bottom-right corner of the preview overlay
-- **Video trim handles**: Fixed coordinate space bug where trim handle drag gestures used the handle's local 8px frame instead of the timeline's coordinate space, making handles unresponsive or inaccurate
-- **Recording dimensions in history**: Videos tab now shows correct pixel dimensions instead of "0 x 0" — video track dimensions are read via AVFoundation on import
+> 小白说明：下面"竞态条件（race condition）"指的是多线程程序里，几个任务抢着用同一份数据导致出错的问题。"内存泄漏（memory leak）"指的是程序用完内存没还回去，越用越占的问题。
 
-### Removed
+- **竞态条件：`BundledBackgrounds.ImageCache`**：给 `@unchecked Sendable` 的图像缓存字典加了 `NSLock`（锁）——多线程并发访问可能导致崩溃
+- **竞态条件：`ShortcutService.cachedShortcuts`**：用 `NSLock` 保护静态快捷键缓存——CGEvent tap 回调会从任意线程读它，而主线程在写它
+- **竞态条件：`RecordingSession.appendVideoSample`**：把 `writer.startSession(atSourceTime:)` 移到锁外面，避免持锁时调用 AVAssetWriter
+- **竞态条件：`ScreenRecordingManager` 停止/取消**：加了 `.stopping` 状态守卫，让并发的停止调用（比如用户点停止的同时流错误触发）不会都执行
+- **内存泄漏：`RecordingStatusBarController`**：面板关闭时从未置为 `nil`，导致 NSPanel 和它的 SwiftUI 视图层级泄漏
+- **内存泄漏：`PreviewOverlay`**：面板关闭时从未释放，累积陈旧面板
+- **内存泄漏：`VideoEditorModel.generateThumbnails`**：把 `Task.detached` 改成用 `[weak self]`，防止窗口关闭后还持有模型
+- **录制计时器卡在 00:00**：`ScreenRecordingManager.shared` 被存成 `let`（普通常量）——SwiftUI 的 `@Observable` 追踪需要 `@State` 才能触发重新渲染
+- **录制条看不见/被裁切**：面板用了硬编码的 `contentRect`，和 SwiftUI 内容大小不匹配。现在改用 `hostingView.fittingSize` 精确适配
+- **录制保存到错误位置**：原始视频停止后现在留在用户的保存目录里——`importCapture` 用 `deleteSource: false`，文件不会被移走
+- **快速截图时文件名冲突**：`HistoryStore.importCapture` 现在当同毫秒时间戳的文件已存在时，会追加一个 UUID 后缀
+- **删除时遗留孤儿文件**：`deleteRecord` 和 `deleteAllRecords` 现在会清理美化文件和基础图片，不只是原始截图
+- **无头显示器崩溃**：`CountdownOverlay` 不检查边界就访问 `NSScreen.screens[0]`——改成安全的 `.first` 配 guard
+- **零时长缩略图生成**：`VideoEditorModel.generateThumbnails` 现在对 `duration == 0` 做防护，避免在零时刻生成 20 个无用缩略图
+- **窗口在错误的屏幕打开**：编辑器、视频编辑器、设置、预览层、录制状态栏、提示、钉住的截图现在都打开在点击菜单栏图标的那个屏幕。之前所有窗口都在弹出框关闭后才采样 `NSEvent.mouseLocation`（太晚了）或硬编码 `NSScreen.main`，导致它们出现在主显示器而不是活动显示器。现在触发屏幕在关闭前从状态栏按钮捕获，并传递给所有窗口控制器
+- **录制条出现在录制里**：浮动的录制状态栏（计时器、暂停、停止、放弃）被录进了屏幕录制。通过给面板设置 `sharingType = .none` 修复，让 ScreenCaptureKit 把它排除在捕获之外
+- **导出会从保存目录删文件**：从截图或视频编辑器导出时，会通过 `importCapture(deleteSource: true)` 和多余的 `removeItem` 调用，把导出的文件从保存目录删掉。现在只清理旧的历史记录——导出的文件留在保存目录
+- **最近录制直接打开编辑器**：在"最近"菜单点录制现在显示浮动预览层（带编辑、钉住、复制、放弃操作），而不是直接跳进视频编辑器，和最近截图的行为一致
+- **标注导出定位**：标注（箭头、矩形、文字、所有工具）现在在导出的图像中渲染在正确位置，和画布预览一致。导出渲染器之前用的是和 SwiftUI 画布独立的 Y 轴计算。通过为标注渲染翻转 CG 上下文为 Y 轴朝下修复，使用和画布预览相同的坐标公式
+- **有裁剪时标注错位**：当裁剪生效时，标注用归一化到原图尺寸的坐标渲染，但渲染器拿到的是裁剪后的图。现在标注在导出前会从"原图坐标空间"重新映射到"裁剪后图像坐标空间"
+- **桌面上出现重复文件**：截图不再在桌面创建可见的 `.base` 配套文件。用于重新编辑的原始图像现在内部存在 Application Support，所以保存目录里只出现美化后的截图
+- **视频导出缺背景**：导出视频里背景不可见，因为 `AVMutableVideoCompositionInstruction.backgroundColor` 默认是不透明黑色，盖住了背景层。通过设置为透明，并用 `CAShapeLayer` 蒙版在视频层应用圆角修复
+- **视频编辑器不加载默认特效**：视频编辑器现在打开时从 `AppPreferences.defaultBeautifierConfig` 加载用户配置的默认值，和图片编辑器行为一致
+- **预览钉住按钮位置**：钉住按钮从左下角（铅笔旁边）移到预览层的右下角
+- **视频裁剪把手**：修复坐标空间 bug——裁剪把手拖拽手势用的是把手局部的 8px 框架而不是时间轴的坐标空间，导致把手不响应或不准
+- **历史里的录制尺寸**：视频标签页现在显示正确的像素尺寸而不是"0 x 0"——视频轨道尺寸在导入时通过 AVFoundation 读取
 
-- **Auto-export with effects on recording stop**: Removed `VideoEditorModel.autoExportWithDefaults` — recordings are now saved as raw video immediately. Effects (background, padding, corner radius, shadow) are only applied when the user explicitly exports from the video editor. This eliminates the long delay between stopping a recording and seeing the preview
-- **Dead code cleanup**: Removed `CountdownOverlay.activeCountdownTask` (was assigned then immediately awaited — served no purpose)
+### 移除
 
-### Changed
+- **停止录制时自动带特效导出**：移除 `VideoEditorModel.autoExportWithDefaults`——录制现在立即保存为原始视频。特效（背景、边距、圆角、阴影）只在用户从视频编辑器显式导出时才应用。这消除了停止录制和看到预览之间的长延时
+- **死代码清理**：移除 `CountdownOverlay.activeCountdownTask`（赋值后立即 await——毫无用处）
 
-- **Recording pill UI**: Icon-only buttons (no text labels), solid `Color(white: 0.1)` background instead of `.ultraThinMaterial`, forced dark color scheme, hover-only button highlights
-- Version bumped to 0.3.7 (build 10)
+### 变更
+
+- **录制条界面**：纯图标按钮（无文字标签），实心 `Color(white: 0.1)` 背景代替 `.ultraThinMaterial`，强制深色配色，仅悬停时高亮按钮
+- 版本号升到 0.3.7（构建 10）
 
 ## [0.3.6] - 2026-06-06
 
-### Added
+### 新增
 
-- **Reset to Defaults in Settings**: Added reset buttons throughout settings — "Reset Effects to Defaults" in Default Background section, "Reset All General Settings to Defaults" at the bottom of General tab, "Reset Shortcuts to Defaults" in Keyboard Shortcuts section, and "Reset All Capture Settings to Defaults" at the bottom of Capture tab
-- **Preview overlay settings restored**: Position (bottom-right/bottom-left) and auto-dismiss delay (2–15s) are back in Capture settings
-- **Shortcut recorder fix**: Recorder now temporarily disables the CGEvent tap so system shortcuts like ⌘⇧4 can be captured without triggering the native macOS screenshot. Uses a local event monitor instead of `keyDown`
+- **设置里恢复默认值**：设置各处加了重置按钮——默认背景区的"将特效重置为默认"，通用标签页底部的"将所有通用设置重置为默认"，快捷键区的"将快捷键重置为默认"，截图标签页底部的"将所有截图设置重置为默认"
+- **预览层设置恢复**：位置（右下/左下）和自动消失延时（2–15 秒）回到截图设置
+- **快捷键录制器修复**：录制器现在临时禁用 CGEvent tap，这样像 ⌘⇧4 这样的系统快捷键可以在不触发原生 macOS 截图的情况下捕获。用本地事件监视代替 `keyDown`
 
-### Improved
+### 改进
 
-- **Tab state preserved in settings**: Settings tabs now use ZStack with opacity toggling instead of Group/switch, preserving state when switching between tabs
-- **Async history thumbnails**: History tab loads thumbnails asynchronously to avoid blocking the UI on large capture histories
+- **设置标签页状态保留**：设置标签页现在用 ZStack 配透明度切换代替 Group/switch，切换标签页时保留状态
+- **异步历史缩略图**：历史标签页异步加载缩略图，避免在大量截图历史时阻塞界面
 
-### Fixed
+### 修复
 
-- **Scrollbar hidden in settings**: Removed visible scrollbar from the settings content area
-- **Editor & Settings Space switching**: Adopted Screendrop's window presentation pattern — `orderFrontRegardless` before activation policy change prevents macOS from switching to Desktop
+- **设置里滚动条可见**：移除设置内容区的可见滚动条
+- **编辑器和设置切换桌面空间**：采用 Screendrop 的窗口呈现模式——在改变激活策略前先 `orderFrontRegardless`，防止 macOS 切换到桌面
 
-### Changed
+### 变更
 
-- Version bumped to 0.3.6 (build 9)
+- 版本号升到 0.3.6（构建 9）
 
 ## [0.3.5] - 2026-06-06
 
-### Changed
+### 变更
 
-- **Inspector panel moved to the left**: The editor inspector (tools, style, effects, background) is now on the left side of the editor window, canvas on the right
-- **Recent captures open preview instead of editor**: Clicking a recent capture in the menu bar now shows the floating preview panel instead of opening the editor directly, matching the normal capture flow
-- **README updated**: Removed hardcoded version numbers, added Homebrew install instructions, updated feature descriptions to reflect all current capabilities
-- **Landing page updated**: Added color picker, self-timer, QR/barcode scanning, spotlight, customizable shortcuts, workflow extras section, and Homebrew install to the landing page. Removed version number from hero badge
-- **CONTRIBUTING.md updated**: Editor flow diagram and key files table updated to reflect left-side inspector panel
-- **llms.txt rewritten**: Replaced incorrect tech stack (React/Tauri/TypeScript) with accurate Swift 6/SwiftUI architecture and complete feature listing
-- Version bumped to 0.3.5 (build 8)
+- **检查器面板移到左侧**：编辑器检查器（工具、样式、特效、背景）现在在编辑器窗口左侧，画布在右侧
+- **最近截图打开预览而不是编辑器**：在菜单栏点最近截图现在显示浮动预览面板而不是直接打开编辑器，和正常截图流程一致
+- **README 更新**：移除硬编码的版本号，加了 Homebrew 安装说明，更新功能描述以反映所有当前能力
+- **官网更新**：官网加了取色器、定时器、二维码/条码扫描、聚光灯、可自定义快捷键、工作流附加功能区、Homebrew 安装。移除顶部徽章的版本号
+- **CONTRIBUTING.md 更新**：编辑器流程图和关键文件表更新，反映左侧检查器面板
+- **llms.txt 重写**：替换错误的 tech stack（React/Tauri/TypeScript）为准确的 Swift 6/SwiftUI 架构和完整功能列表
+- 版本号升到 0.3.5（构建 8）
 
 ## [0.3.4] - 2026-06-06
 
-### Added
+### 新增
 
-- **Automatic update check on launch**: App checks GitHub releases on startup and shows a toast notification when a new version is available. A blue dot badge appears next to the version label in the menu bar
-- **Smart toast after capture**: Toast now shows "Screenshot saved & copied!" when clipboard copy is enabled, or "Screenshot saved!" otherwise
+- **启动时自动检查更新**：App 启动时检查 GitHub 发布，有新版本时显示提示通知。菜单栏版本号旁边出现蓝点徽章
+- **截图后的智能提示**：启用剪贴板复制时提示现在显示"截图已保存并复制！"，否则显示"截图已保存！"
 
-### Changed
+### 变更
 
-- **Simplified capture flow**: Screenshots now always apply default settings (background, padding, corner radius, shadow) and save directly to the gallery. No more editor-first or preview-first workflow — just capture, auto-beautify, and save
-- **Removed screenshot mode picker**: The Editor/Gallery segmented control is removed from the menu bar. Default effects configured in Settings are always applied automatically
-- **Preview panel restored**: Both a toast notification and the floating preview panel now appear after taking a screenshot
-- **Removed overlay settings**: Overlay position and dismiss delay settings removed from Capture settings since the floating preview is no longer shown after capture
-- **Recent captures open in editor**: Clicking a recent capture in the menu bar now opens it in the editor instead of showing a floating preview
-- Version bumped to 0.3.4 (build 7)
+- **简化截图流程**：截图现在总是套用默认设置（背景、边距、圆角、阴影）并直接保存到图库。不再有"编辑器优先"或"预览优先"流程——就是截图、自动美化、保存
+- **移除截图模式选择器**：菜单栏移除了编辑器/图库分段控件。"设置"里配置的默认特效总是自动套用
+- **预览面板恢复**：截图后现在同时出现提示通知和浮动预览面板
+- **移除悬浮层设置**：截图设置移除了悬浮层位置和消失延时设置（因为截图后不再显示浮动预览）
+- **最近截图在编辑器打开**：在菜单栏点最近截图现在在编辑器打开，而不是显示浮动预览
+- 版本号升到 0.3.4（构建 7）
 
-### Fixed
+### 修复
 
-- **Crash on window close**: Fixed `EXC_BREAKPOINT` crash in `_postWindowNeedsUpdateConstraints` caused by `setActivationPolicy(.accessory)` triggering layout updates on a window mid-teardown. Deferred activation policy change to the next run loop iteration for editor, settings, and toast windows
-- **Double background on editor open**: Adopted ScreenDrop's base-image sidecar pattern — a `.base.png` copy of the raw capture is saved alongside every beautified output. The editor now resolves to the base image before loading, making it architecturally impossible to apply background/padding/shadow twice, regardless of which URL is passed to the editor
-- **Race condition fixes across the codebase**: Fixed multiple race conditions that could cause crashes:
-  - Menu bar popover: eliminated Task wrapper in close animation, captured panel reference before nil'ing to prevent use-after-free
-  - Editor window delegate: replaced `Task { @MainActor }` with `DispatchQueue.main.async` for deterministic ordering during window teardown
-  - Shortcut service: cached shortcuts on main thread to prevent `@MainActor`-isolated property access from CGEvent tap callback thread
-  - Toast window: added generation counter to prevent stale animated-dismiss completion handlers from nil'ing a newly created panel
-  - Countdown overlay: added cancellation guard against concurrent `showCountdown` calls that could stack overlapping countdowns
-  - Preview overlay: cancel pending dismiss task at the start of `show()` to prevent a stale dismiss from hiding a freshly shown preview
-  - Menu bar event monitor: replaced `Task { @MainActor }` with `DispatchQueue.main.async` for consistent dispatch ordering
+- **关窗崩溃**：修复 `setActivationPolicy(.accessory)` 在窗口拆解中触发布局更新导致的 `_postWindowNeedsUpdateConstraints` 中 `EXC_BREAKPOINT` 崩溃。把激活策略变更延迟到下一个 run loop 迭代，应用于编辑器、设置、提示窗口
+- **编辑器打开时双重背景**：采用 ScreenDrop 的基础图像 sidecar 模式——每个美化输出旁边保存一份原始截图的 `.base.png` 副本。编辑器现在加载前先解析到基础图像，从架构上杜绝重复套用背景/边距/阴影，无论传给编辑器的是哪个地址
+- **全代码库竞态条件修复**：修复了多个可能导致崩溃的竞态条件：
+  - 菜单栏弹出框：消除关闭动画里的 Task 包装，置空前先捕获面板引用，防止 use-after-free
+  - 编辑器窗口委托：用 `DispatchQueue.main.async` 替代 `Task { @MainActor }`，保证窗口拆解时顺序确定
+  - 快捷键服务：在主线程缓存快捷键，防止 CGEvent tap 回调线程访问 `@MainActor` 隔离的属性
+  - 提示窗口：加生成计数器，防止陈旧的动画消失完成处理器置空新创建的面板
+  - 倒计时层：加防护，防止并发的 `showCountdown` 调用叠加重叠的倒计时
+  - 预览层：在 `show()` 开始时取消待处理的消失任务，防止陈旧的消失隐藏刚显示的预览
+  - 菜单栏事件监视：用 `DispatchQueue.main.async` 替代 `Task { @MainActor }`，保证一致的派发顺序
 
-### Removed
+### 移除
 
-- **Screenshot mode preference** (`ScreenshotMode` enum): No longer needed since capture always uses gallery mode with auto-applied defaults
-- **"Show floating preview after capture" toggle**: Removed from General settings
+- **截图模式偏好**（`ScreenshotMode` 枚举）：不再需要，因为截图总是用图库模式加自动套用的默认值
+- **"截图后显示浮动预览"开关**：从通用设置移除
 
 ## [0.3.3] - 2026-06-06
 
-### Added
+### 新增
 
-- **Settings sidebar navigation**: Redesigned preferences from top tabs to a left sidebar with right content panel
-- **Keyboard shortcut recorder**: Click any shortcut badge to record a new key combination (press Escape to cancel)
-- **Default effects configuration**: Padding, corner radius, shadow, and background are now configurable directly in Settings and persist across sessions
-- **Live settings preview**: Default Effects section shows a real-time mini preview of how screenshots will look with current padding, corner radius, shadow, and background
-- **macOS wallpapers in settings**: Default Background picker now includes bundled macOS wallpaper thumbnails alongside solid colors and gradients
-- **Custom image backgrounds in settings**: "Custom Image..." button in Default Background picker lets you choose any image file as your default background
-- **Click preview to open editor**: Clicking the floating preview overlay opens the editor
-- **Window capture**: Click-to-select window capture available from the menu bar
-- **OCR toast notification**: After OCR copies text to clipboard, a toast confirms "Text copied to clipboard"
-- **Color picker toast notification**: After color picker copies hex to clipboard, a toast confirms "#HEXCODE copied to clipboard"
-- **Custom menu bar popover**: Replaced SwiftUI `MenuBarExtra` with a custom `NSPanel`-based popover with arrow, smooth spring animation, and click-outside-to-dismiss
+- **设置侧边栏导航**：偏好设置从顶部标签页重新设计为左侧边栏加右侧内容面板
+- **快捷键录制器**：点任意快捷键徽章录制新的组合键（按 Esc 取消）
+- **默认特效配置**：边距、圆角、阴影、背景现在可以直接在"设置"里配置，并在会话间保留
+- **实时设置预览**：默认特效区显示一个实时迷你预览，展示当前边距、圆角、阴影、背景下截图会是什么样
+- **设置里的 macOS 壁纸**：默认背景选择器现在除了纯色和渐变，还包含内置 macOS 壁纸缩略图
+- **设置里的自定义图片背景**：默认背景选择器的"自定义图片..."按钮让你选任意图片作为默认背景
+- **点预览打开编辑器**：点浮动预览层打开编辑器
+- **窗口截图**：可从菜单栏点选窗口截图
+- **文字识别提示**：文字识别复制文字到剪贴板后，提示确认"文字已复制到剪贴板"
+- **取色提示**：取色复制 hex 到剪贴板后，提示确认"#颜色码已复制到剪贴板"
+- **自定义菜单栏弹出框**：用自定义的 `NSPanel` 弹出框替换 SwiftUI 的 `MenuBarExtra`，带箭头、平滑弹性动画、点击外部消失
 
-### Fixed
+### 修复
 
-- **Blur/pixelation invisible in editor**: Fixed `viewScale ≈ 0.16` being multiplied into blur radius and pixel block size, making effects sub-pixel in the canvas preview. Blur radius no longer scales; pixelation computes blocks from view dimensions
-- **Spotlight annotation drift**: Canvas preview used `imageFrame` for overlay extent but export used `fullCanvasRect`. Fixed by passing `canvasFrame` through to SpotlightPreview
-- **Laggy editor sliders**: Replaced CGContext-based preview render loop with SwiftUI-native layers (CanvasBackgroundView, CanvasScreenshotView), eliminating re-render on every slider change
-- **OCR not firing from menu bar**: `dismiss()` was cancelling the async capture task. Fixed by using `Task.detached` so capture survives popover teardown
-- **Settings not opening from menu bar**: `@Environment(\.openSettings)` doesn't work from a custom `NSPanel` outside SwiftUI's scene system. Created `SettingsWindowController` that directly manages an `NSWindow` with `PreferencesView`, matching the `EditorWindowController` pattern
-- **Editor opens on wrong screen/Space**: `NSApp.activate(ignoringOtherApps:)` would switch macOS Spaces to where the app was last active (typically Desktop). Added `.moveToActiveSpace` collection behavior to editor and settings windows so they appear on the user's current Space
-- **Settings sidebar toggle on wrong side**: Sidebar toggle button appeared on the right side of the title bar when hosted in `NSHostingView`. Fixed by adding an `NSToolbar` with `.toggleSidebar` item to the settings window
-- **History icon disappearing**: Menu bar "Recent Captures" and dividers no longer vanish when capture history is empty
-- **Background picker in settings**: Cleaner grid layout with proper "None" swatch (strikethrough icon)
-- **Preview click-to-edit**: Clicking anywhere on the floating preview (including the hover overlay) now opens the editor
-- **Custom background image**: Fixed file picker for custom wallpaper backgrounds in editor
-- **GitHub link in About tab**: Corrected URL to `KartikLabhshetwar/better-shot`
+- **编辑器里模糊/像素化不可见**：修复 `viewScale ≈ 0.16` 被乘进模糊半径和像素块大小，导致画布预览里特效是亚像素的。模糊半径不再缩放；像素化从视图尺寸计算块
+- **聚光灯标注漂移**：画布预览用 `imageFrame` 作为叠加范围，但导出用 `fullCanvasRect`。通过把 `canvasFrame` 传给 SpotlightPreview 修复
+- **编辑器滑块卡顿**：用 SwiftUI 原生图层（CanvasBackgroundView、CanvasScreenshotView）替换基于 CGContext 的预览渲染循环，消除每次滑块变动都重新渲染
+- **菜单栏无法触发文字识别**：`dismiss()` 会取消异步截图任务。通过用 `Task.detached` 修复，让截图在弹出框拆解后存活
+- **菜单栏无法打开设置**：`@Environment(\.openSettings)` 在 SwiftUI 场景系统外的自定义 `NSPanel` 里不工作。创建了 `SettingsWindowController`，直接用 `NSWindow` 管理 `PreferencesView`，匹配 `EditorWindowController` 模式
+- **编辑器在错误屏幕/桌面空间打开**：`NSApp.activate(ignoringOtherApps:)` 会把 macOS 桌面空间切到 App 上次活动的地方（通常是桌面）。给编辑器和设置窗口加了 `.moveToActiveSpace` 集合行为，让它们出现在用户当前的空间
+- **设置侧边栏开关在错误侧**：侧边栏开关按钮在 `NSHostingView` 托管时出现在标题栏右侧。通过给设置窗口加带 `.toggleSidebar` 项的 `NSToolbar` 修复
+- **历史图标消失**：菜单栏"最近截图"和分隔线在截图历史为空时不再消失
+- **设置里的背景选择器**：更干净的网格布局，带正确的"无"色块（删除线图标）
+- **预览点编辑**：点浮动预览任意位置（包括悬停层）现在都打开编辑器
+- **自定义背景图片**：修复编辑器里自定义壁纸背景的文件选择器
+- **关于标签页里的 GitHub 链接**：更正地址为 `KartikLabhshetwar/better-shot`
 
-### Changed
+### 变更
 
-- **Menu bar icon redesigned**: Converted to a proper template image (black on transparent) that automatically renders white in dark mode and black in light mode, matching native macOS menu bar icon behavior. Icon now fills the full menu bar height instead of being undersized
-- **Menu bar redesigned**: Custom `NSPanel` popover with arrow, 2-column grid buttons (Region, Screen, Window, Pick Color), screenshot mode toggle (Editor/Gallery), utility grid (OCR, Recent Captures), and footer grid (Settings, Quit). Shortcut badges on each button
-- **About page redesigned**: Left-aligned sectioned layout (Updates, Project, Credits) with horizontal icon+title header. Includes GitHub and X links
-- **Settings window enlarged**: 680×560 (was 620×440) so Default Effects preview and sliders are visible without scrolling
-- **Settings window title**: Shortened to "Settings" (was "BetterShot Settings") to prevent title bar truncation
-- **Toast notifications generalized**: `ToastWindow` now accepts a custom title (was hardcoded "Saved") and supports SF Symbol icons alongside app icons
-- **Color picker feedback**: Replaced the cursor-anchored dark HUD panel with a standard toast notification matching the app's toast style
-- **Editor canvas rewritten**: SwiftUI-native rendering with `CanvasBackgroundView` and `CanvasScreenshotView` instead of CGContext re-renders. `UnevenRoundedRectangle` for per-corner radius clipping
-- **Capture engine rewritten**: Region, fullscreen, and window capture now use the native macOS `screencapture` CLI for maximum reliability across all displays and configurations
-- **Layout section improved**: Single "Ratio" row with dropdown, larger alignment grid with 28pt cells and hover highlights
-- Default beautifier config now uses a centralized `AppPreferences.defaultBeautifierConfig` accessor across editor, settings, and auto-apply
+- **菜单栏图标重新设计**：转为合适的模板图像（透明底黑色），在深色模式自动渲染白色、浅色模式渲染黑色，匹配原生 macOS 菜单栏图标行为。图标现在填满整个菜单栏高度，不再偏小
+- **菜单栏重新设计**：自定义 `NSPanel` 弹出框带箭头，2 列网格按钮（区域、屏幕、窗口、取色），截图模式开关（编辑器/图库），工具网格（文字识别、最近截图），底部网格（设置、退出）。每个按钮带快捷键徽章
+- **关于页重新设计**：左对齐分区布局（更新、项目、致谢）带横向图标+标题头部。含 GitHub 和 X 链接
+- **设置窗口放大**：680×560（原 620×440），让默认特效预览和滑块不用滚动就能看到
+- **设置窗口标题**：缩短为"Settings"（原"BetterShot Settings"），防止标题栏截断
+- **提示通知通用化**：`ToastWindow` 现在接受自定义标题（原硬编码"Saved"），支持 SF Symbol 图标和应用图标
+- **取色反馈**：用标准提示通知替换光标锚定的深色 HUD 面板，匹配 App 的提示样式
+- **编辑器画布重写**：SwiftUI 原生渲染，用 `CanvasBackgroundView` 和 `CanvasScreenshotView` 代替 CGContext 重新渲染。`UnevenRoundedRectangle` 实现每角圆角裁剪
+- **截图引擎重写**：区域、全屏、窗口截图现在用 macOS 原生 `screencapture` 命令行，保证在所有显示器和配置下的最大稳定性
+- **布局区改进**：单一"比例"行配下拉，更大的对齐网格，28pt 单元格带悬停高亮
+- 默认美化配置现在在编辑器、设置、自动套用间统一用 `AppPreferences.defaultBeautifierConfig` 访问器
 
-### Removed
+### 移除
 
-- **Pixelate annotation tool**: Removed from the toolbar (blur tool remains). Keyboard shortcut `P` removed
-- **"Save as Default" button**: Removed from editor Effects section; defaults are now managed in Settings
-- **Bundled background images**: Removed Wallpapers and Gradients image assets from the editor. Only solid colors, code-generated gradients, macOS assets, and custom images remain
-- **Repeat Region shortcut from settings**: Removed from the Keyboard Shortcuts section in Capture settings
+- **像素化标注工具**：从工具栏移除（保留模糊工具）。移除快捷键 `P`
+- **"存为默认"按钮**：从编辑器特效区移除；默认值现在在"设置"里管理
+- **内置背景图片**：从编辑器移除壁纸和渐变图像资源。只保留纯色、代码生成的渐变、macOS 资源、自定义图片
+- **从设置重复区域快捷键**：从截图设置的快捷键区移除
 
 ## [0.3.2] - 2026-06-03
 
-### Added
+### 新增
 
-- **In-app auto-update**: Updates now download the DMG in-app with a progress bar, mount it, replace the running app, and relaunch — no more opening Chrome to download manually. New states: downloading (with cancel), ready to install, installing.
-- **Makefile**: `make build`, `make run`, `make dmg`, `make release`, `make clean`, `make lint`, `make test-build`, `make version` for local development and testing without opening Xcode.
+- **应用内自动更新**：更新现在在应用内下载 DMG 带进度条，挂载、替换运行中的应用、重启——不再打开 Chrome 手动下载。新状态：下载中（可取消）、可安装、安装中。
+- **Makefile**：`make build`、`make run`、`make dmg`、`make release`、`make clean`、`make lint`、`make test-build`、`make version`，用于本地开发和测试，不用打开 Xcode。
 
-### Fixed
+### 修复
 
-- **History tab empty state not centered**: `ContentUnavailableView` was inside a `List`, constraining it to a row. Moved it outside the `List` with `frame(maxWidth: .infinity, maxHeight: .infinity)` so it centers properly in the tab.
+- **历史标签页空状态不居中**：`ContentUnavailableView` 在 `List` 里，被限制成一行。移到 `List` 外面，配 `frame(maxWidth: .infinity, maxHeight: .infinity)`，让它在标签页里正确居中。
 
 ## [0.3.1] - 2026-06-03
 
-### Fixed
+### 修复
 
-- **Window capture not working**: The window picker used a plain `NSWindow` with borderless style, which can't become key — mouse and keyboard events were unreliable. Replaced with a custom `PickerWindow` subclass that overrides `canBecomeKey`/`canBecomeMain`, matching how the region selection overlay works.
-- **Window picker hit-test**: Replaced NSScreen-based coordinate conversion with `CGEvent.location` for reliable cursor-to-window matching across all monitors.
-- **Window capture stale reference**: After the picker closes, the app now re-fetches `SCShareableContent` and looks up the selected window by ID to get a fresh `SCWindow` reference before capturing.
+- **窗口截图不工作**：窗口选择器用了普通的无边框 `NSWindow`，不能成为 key 窗口——鼠标和键盘事件不可靠。替换为自定义的 `PickerWindow` 子类，重写 `canBecomeKey`/`canBecomeMain`，和区域选择层的工作方式一致。
+- **窗口选择器命中检测**：用 `CGEvent.location` 替换基于 NSScreen 的坐标转换，在所有显示器上可靠地匹配光标到窗口。
+- **窗口截图陈旧引用**：选择器关闭后，App 现在重新获取 `SCShareableContent` 并按 ID 查找选中窗口，得到新鲜的 `SCWindow` 引用再截图。
 
 ## [0.3.0] - 2026-06-03
 
-### Added
+### 新增
 
-- **In-app update checker**: Check for Updates button in Preferences > About that queries GitHub releases API and links to the latest download
-- **Version tracking**: `version.json` file at project root for release management
-- **Professional annotation system**: Complete rewrite of annotation tools, adapted from Screendrop's implementation
-  - **Interactive canvas**: Annotations render as live SwiftUI views — click to select, drag to move, handles to resize
-  - **Selection system**: Single select, multi-select (Shift/Cmd+click), marquee drag selection, select all (Cmd+A)
-  - **Curved arrows**: Quadratic Bézier arrows with draggable curve control handle and snap-to-straight
-  - **Live text editing**: Text annotations use inline NSTextView with full font family, size, bold/italic/underline, and alignment controls
-  - **Numbered circles**: Auto-incrementing numbered badges with proper outline and contrast text
-  - **Redaction tools**: Pixelate and blur with adjustable density slider and cached preview generation
-  - **Resize handles**: Corner handles for shapes, endpoint handles for lines/arrows, curve handle for arrows
-  - **Color picker**: 10 named color presets with popover selector + custom ColorPicker
-  - **Stroke width picker**: Visual popover with 5 presets (2/4/6/8/12px)
-- **Aspect-ratio locking**: Hold Shift while drawing rectangles/ellipses to constrain to square/circle
-- **Arrow snap-to-straight**: Arrow curves snap to a straight line when dragged near the start-end axis
-- **Color Picker** (Cmd+Shift+C): Uses macOS native `NSColorSampler` for pixel-perfect color picking on any monitor. After picking, a floating HUD shows the color swatch and hex code (#RRGGBB) near the cursor. Hex is copied to clipboard.
-- **OCR with QR/Barcode detection**: The OCR capture action now runs both `VNRecognizeTextRequest` and `VNDetectBarcodesRequest` together. Detects QR codes, barcodes, and text in a single pass. QR/barcode payloads appear first in the copied result.
-- **Delayed Screenshot countdown overlay**: When the self-timer is set, a fullscreen translucent overlay shows large countdown numbers (3, 2, 1) with scale-down and fade animation. The overlay dismisses before the screenshot fires so it never appears in the capture.
-- **Spotlight annotation tool** (G): Darkens everything outside a selected rectangular region to draw focus. Adjustable opacity via the density slider. Uses even-odd fill for both SwiftUI preview and CGContext export rendering.
-- **Pinned Floating Screenshots**: Pin any capture as a borderless, always-on-top floating window. Drag to move anywhere, scroll wheel to resize (0.25x–4.0x), hover to reveal close button. Pin from the floating preview card or from the editor. "Unpin All" appears in the menu bar when pins exist.
-- **Layout controls**: New LAYOUT section in the editor inspector with aspect ratio dropdown (Auto, 1:1, 4:3, 3:2, 16:9, 9:16) and a visual 3x3 alignment grid picker. Canvas expands to fit the selected ratio without cropping the image.
-- **Canvas Expansion**: Annotations can now be drawn into the padding area beyond the screenshot boundaries, enabling margin annotations and callouts outside the image.
-- **Repeat Area Capture** (Ctrl+Cmd+Shift+4): Re-captures the exact same screen region as your last region capture without reselecting. Falls back to normal region selection if no previous region exists.
-- **Image Overlay** (Cmd+Shift+V): Paste any image from clipboard onto the current screenshot. The pasted image is composited at center, scaled to fit within 80% of the canvas.
-- **Option+Drag to Duplicate**: Hold Option and drag any annotation to create a copy. The original stays in place while the duplicate moves with the cursor.
-- **Persistent Tool Selection**: The text tool now stays armed after committing a text annotation — you can immediately click to place another text box without reselecting the tool.
-- **Expanded keyboard shortcuts**: V (select), R (rectangle), F (filled rectangle), O (ellipse), L (line), A (arrow), D (freehand), N (numbered circle), P (pixelate), B (blur), G (spotlight), T (text)
-- **Toast notifications**: Editor shows a brief HUD when exporting ("Exported"), copying ("Copied to clipboard"), or saving defaults ("Saved as default"). Auto-dismisses after 1.5 seconds.
-- **Save as Default**: Button in the Effects section saves current padding, corner radius, shadow, background, alignment, and aspect ratio as the default for all new captures.
-- **Export preserves in history**: Exported images (with annotations baked in) are added to Recent Captures so reopening shows the final result, not the raw capture.
-- **Save directory picker**: Replaced the raw text field with a native macOS folder picker (`NSOpenPanel`) in Preferences.
+- **应用内更新检查器**：偏好设置 > 关于里的"检查更新"按钮，查询 GitHub 发布 API 并链接到最新下载
+- **版本追踪**：项目根目录的 `version.json` 文件用于发布管理
+- **专业标注系统**：标注工具的完整重写，改编自 Screendrop 的实现
+  - **交互式画布**：标注渲染为实时 SwiftUI 视图——点选、拖动、把手缩放
+  - **选择系统**：单选、多选（Shift/Cmd+点击）、框选拖动、全选（Cmd+A）
+  - **曲线箭头**：二次贝塞尔箭头，带可拖动的曲线控制把手和吸附为直线
+  - **实时文字编辑**：文字标注用内联 NSTextView，支持完整字体族、字号、粗体/斜体/下划线、对齐控制
+  - **编号圆圈**：自增编号徽章，带正确的描边和对比色文字
+  - **打码工具**：像素化和模糊，密度滑块可调，带缓存的预览生成
+  - **缩放把手**：形状用角把手，直线/箭头用端点把手，箭头用曲线把手
+  - **取色器**：10 个命名颜色预设配弹出选择器 + 自定义 ColorPicker
+  - **线宽选择器**：视觉弹出框，5 个预设（2/4/6/8/12px）
+- **锁定宽高比**：画矩形/椭圆时按住 Shift 约束为正方形/圆
+- **箭头吸附为直线**：箭头曲线在拖到接近起止轴时吸附为直线
+- **取色器**（Cmd+Shift+C）：用 macOS 原生 `NSColorSampler` 在任意显示器上像素级精确取色。取色后，光标附近出现浮动 HUD 显示色块和 hex 码（#RRGGBB）。hex 复制到剪贴板。
+- **带二维码/条码检测的文字识别**：文字识别动作现在同时运行 `VNRecognizeTextRequest` 和 `VNDetectBarcodesRequest`。一次扫描检测二维码、条码和文字。二维码/条码内容出现在复制结果的最前面。
+- **延时截图倒计时层**：设置定时器时，全屏半透明层显示大号倒计时数字（3、2、1），带缩小和淡出动画。层在截图触发前消失，所以绝不会出现在截图里。
+- **聚光灯标注工具**（G）：让选中矩形区域外的一切变暗以聚焦。通过密度滑块调节不透明度。SwiftUI 预览和 CGContext 导出渲染都用奇偶填充。
+- **钉住的浮动截图**：把任意截图钉成无边框、始终在最上层的浮动窗口。拖动可移动到任何位置，滚轮可缩放（0.25x–4.0x），悬停显示关闭按钮。从浮动预览卡片或编辑器钉住。存在钉住的图时菜单栏出现"全部取消钉住"。
+- **布局控件**：编辑器检查器新增 LAYOUT 区，带宽高比下拉（自动、1:1、4:3、3:2、16:9、9:16）和视觉 3x3 对齐网格选择器。画布扩展以适应所选比例而不裁剪图像。
+- **画布扩展**：标注现在可以画到截图边界外的边距区，支持图像外的边距标注和引出。
+- **重复区域截图**（Ctrl+Cmd+Shift+4）：重新截取和上次区域截图完全相同的屏幕区域，无需重选。无先前区域时回退到正常区域选择。
+- **图像叠加**（Cmd+Shift+V）：从剪贴板粘贴任意图像到当前截图。粘贴的图像在中心合成，缩放以适应画布的 80%。
+- **Option+拖动复制**：按住 Option 拖动任意标注创建副本。原件留在原位，副本跟随光标移动。
+- **持久工具选择**：文字工具在提交文字标注后保持激活——你可以立即点击放置另一个文字框而无需重选工具。
+- **扩展键盘快捷键**：V（选择）、R（矩形）、F（实心矩形）、O（椭圆）、L（直线）、A（箭头）、D（自由画笔）、N（编号圆圈）、P（像素化）、B（模糊）、G（聚光灯）、T（文字）
+- **提示通知**：编辑器在导出（"已导出"）、复制（"已复制到剪贴板"）、保存默认（"已存为默认"）时显示简短 HUD。1.5 秒后自动消失。
+- **存为默认**：特效区的按钮把当前边距、圆角、阴影、背景、对齐、宽高比存为所有新截图的默认。
+- **导出保留在历史**：导出的图像（烘焙了标注）加入最近截图，重开时显示最终结果而非原始截图。
+- **保存目录选择器**：偏好设置里用原生 macOS 文件夹选择器（`NSOpenPanel`）替换原始文本框。
 
-### Fixed
+### 修复
 
-- **Menu bar icon template rendering**: Changed `template-rendering-intent` from `"original"` to `"template"` so the icon adapts to light mode, dark mode, and high-contrast accessibility settings — matching how native macOS system utilities render menu bar icons
-- **Keyboard shortcut override**: Fixed the accessibility permission flow — the CGEvent tap now only registers after accessibility permission is confirmed, with polling to detect when the user grants permission
-- **Annotation coordinate system**: Gesture tracking now normalizes against the actual image display rect (accounting for aspect-fit letterboxing), not the full view bounds
-- **Blur edge darkening**: Export-time Gaussian blur now pads the crop rect by `ceil(radius * 2)` on all sides before applying the filter, eliminating fringe artifacts at region boundaries
-- **Export redaction performance**: Replaced per-item `ctx.makeImage()` (full canvas snapshot for each blur/pixelate region) with a single shared canvas snapshot, reducing export time proportionally to the number of redaction annotations
-- **Spotlight export positioning**: Rewrote `AnnotationDrawing` to use explicit `imageRect`/`fullCanvasRect` parameters instead of context translation. Spotlight overlay now correctly covers the full canvas while the cutout aligns with the image position.
-- **Annotation export positioning**: All annotations now render at the correct position within the canvas padding area, not offset by the image origin.
-- **Multi-monitor capture**: Fullscreen and region capture now correctly identify the display under the cursor using `CGEvent.location` and `CGDisplayBounds` instead of NSScreen coordinate conversion.
-- **Settings reactivity**: Capture settings (self timer, overlay position, dismiss delay, export format/quality) now use `@AppStorage` so changes reflect immediately in the UI.
-- **Alignment Y-axis**: Fixed inverted Y-axis in the export renderer — clicking "bottom" in the alignment grid now correctly places the image at the bottom of the canvas.
+- **菜单栏图标模板渲染**：把 `template-rendering-intent` 从 `"original"` 改为 `"template"`，让图标适配浅色、深色、高对比度辅助设置——匹配原生 macOS 系统工具渲染菜单栏图标的方式
+- **快捷键覆盖**：修复辅助功能权限流程——CGEvent tap 现在只在辅助功能权限确认后才注册，带轮询检测用户何时授予
+- **标注坐标系**：手势追踪现在对实际图像显示矩形（考虑 aspect-fit 留白）归一化，而不是完整视图边界
+- **模糊边缘变暗**：导出时的高斯模糊现在在应用滤镜前对所有边裁剪矩形加 `ceil(radius * 2)` 内边距，消除区域边界的边缘伪影
+- **导出打码性能**：用单个共享画布快照替换每个项目 `ctx.makeImage()`（每个模糊/像素化区域都要全画布快照），导出时间按打码标注数量成比例减少
+- **聚光灯导出定位**：重写 `AnnotationDrawing` 使用显式 `imageRect`/`fullCanvasRect` 参数而不是上下文平移。聚光灯叠加现在正确覆盖整个画布，而镂空和图像位置对齐。
+- **标注导出定位**：所有标注现在渲染在画布边距区的正确位置，不被图像原点偏移。
+- **多显示器截图**：全屏和区域截图现在用 `CGEvent.location` 和 `CGDisplayBounds` 正确识别光标下的显示器，而不是 NSScreen 坐标转换。
+- **设置响应性**：截图设置（自拍定时器、悬浮层位置、消失延时、导出格式/质量）现在用 `@AppStorage`，改动立即反映在界面。
+- **对齐 Y 轴**：修复导出渲染器中 Y 轴反转——点击对齐网格的"底部"现在正确把图像放在画布底部。
 
-### Changed
+### 变更
 
-- **Menu bar UI redesigned**: Grouped by intent — "Open Last Capture" quick access at top, capture modes (Region, Full Screen, Window), utilities (OCR, Color Picker), contextual actions (Unpin All when pins exist), Recent Captures submenu (up to 8 items). Removed "Check for Updates" from menu (lives in Preferences > About). Shortened labels.
-- **Inspector panel redesigned**: Sidebar with sections for Tools, Style, Text, Effects, Layout, and Background — each with proper spacing, section headers, and dividers
-- **Canvas rendering**: Annotations now render directly as SwiftUI views on the canvas (not baked into a preview image), enabling real-time interaction without re-render delays
-- **Live beautifier preview**: Canvas shows the full rendered preview (background, padding, shadow, corner radius) with a 30ms debounced render pipeline. Redundant re-renders are skipped when config hasn't changed.
-- **Performance optimizations**: Cached font family list (static lazy), TransparencyGrid rasterized via `.drawingGroup()`, arrow hit-test sampling halved (32→16 points), text style dirty-check guards redundant `setAttributes` calls, GPU memory cleanup after blur export
-- Version bumped to 0.3.0
-- Deployment target remains macOS 14.0
-- Simplified BetterShotDelegate — removed all video recording callback and frame extraction code
+- **菜单栏界面重新设计**：按意图分组——顶部"打开上次截图"快捷访问，截图模式（区域、全屏、窗口），工具（文字识别、取色器），上下文操作（有钉住图时显示"全部取消钉住"），最近截图子菜单（最多 8 项）。从菜单移除"检查更新"（在偏好设置 > 关于）。缩短标签。
+- **检查器面板重新设计**：侧边栏分区——工具、样式、文字、特效、布局、背景——各有合适的间距、章节标题和分隔线
+- **画布渲染**：标注现在直接作为 SwiftUI 视图渲染在画布上（不烘焙进预览图像），实现实时交互无重新渲染延迟
+- **实时美化预览**：画布显示完整渲染预览（背景、边距、阴影、圆角），带 30ms 防抖渲染流水线。配置未变时跳过冗余重新渲染。
+- **性能优化**：缓存字体族列表（静态 lazy），透明网格通过 `.drawingGroup()` 光栅化，箭头命中检测采样减半（32→16 点），文字样式脏检查防护冗余 `setAttributes` 调用，模糊导出后 GPU 内存清理
+- 版本号升到 0.3.0
+- 部署目标保持 macOS 14.0
+- 简化 BetterShotDelegate——移除所有视频录制回调和帧提取代码
 
-### Removed
+### 移除
 
-- **Screen recording**: Removed ScreenRecorder, VideoProcessor, RecordingControlPanel, and the bundled videokit binary — video features will return in a future release
-- **Old annotation system**: Replaced `ColorSwatch`, `StrokeWidth` enum, `AnnotationGestureView`, and basic `AnnotationItem` with the full interactive model
+- **屏幕录制**：移除 ScreenRecorder、VideoProcessor、RecordingControlPanel 和内置的 videokit 二进制——视频功能将在未来版本回归
+- **旧标注系统**：用完整交互模型替换 `ColorSwatch`、`StrokeWidth` 枚举、`AnnotationGestureView` 和基础 `AnnotationItem`
 
 ## [0.2.0] - 2026-06-02
 
-### Added
+### 新增
 
-- **Native Swift/SwiftUI rewrite**: Complete rewrite from Electron/Rust to pure Swift/SwiftUI + Go for video processing
-- **Screen recording**: Full screen and window recording via ScreenCaptureKit
-  - Floating control pill with pause/resume, stop, and discard controls
-  - Pulsing red dot indicator with MM:SS timer
-  - HEVC encoding at 60fps Retina resolution
-  - Post-recording compression via videokit (FFmpeg)
-  - Recordings saved to user's configured save directory
-- **Preview overlay with editor access**: Floating preview card appears after capture
-  - Hover to reveal actions: edit (pencil), delete, dismiss
-  - Copy and Save pill buttons
-  - Draggable thumbnail
-  - Clicking pencil icon opens the annotation editor
-- **Annotation editor window**: Opens from preview overlay with full beautifier controls
-  - Switches app to regular activation policy (visible in Dock/Cmd-Tab) while editing
-- **Override macOS screenshot shortcuts**:
-  - Cmd+Shift+3 = Capture Screen
-  - Cmd+Shift+4 = Capture Region
-  - Cmd+Shift+5 = Capture Window
-  - Cmd+Shift+6 = Toggle Screen Recording
-  - Cmd+Shift+O = OCR Region
-- **Bundled background images**: Wallpapers, mesh gradients, and macOS assets now ship inside the app bundle
-- **videokit bundled**: Go-based FFmpeg wrapper included in the app for video compression
+- **原生 Swift/SwiftUI 重写**：从 Electron/Rust 完全重写为纯 Swift/SwiftUI + Go 处理视频
+- **屏幕录制**：通过 ScreenCaptureKit 录制全屏和窗口
+  - 浮动控件条，带暂停/继续、停止、放弃控件
+  - 跳动的红点指示器和 MM:SS 计时器
+  - HEVC 编码，60fps 视网膜分辨率
+  - 通过 videokit（FFmpeg）录制后压缩
+  - 录制保存到用户配置的保存目录
+- **带编辑器访问的预览层**：截图后出现浮动预览卡片
+  - 悬停显示操作：编辑（铅笔）、删除、放弃
+  - 复制和保存按钮
+  - 可拖动的缩略图
+  - 点铅笔图标打开标注编辑器
+- **标注编辑器窗口**：从预览层打开，带完整美化控件
+  - 编辑时把 App 切换为常规激活策略（在 Dock/Cmd-Tab 可见）
+- **覆盖 macOS 截图快捷键**：
+  - Cmd+Shift+3 = 截屏
+  - Cmd+Shift+4 = 区域截图
+  - Cmd+Shift+5 = 窗口截图
+  - Cmd+Shift+6 = 切换屏幕录制
+  - Cmd+Shift+O = 区域文字识别
+- **内置背景图片**：壁纸、网格渐变和 macOS 资源现在打包进应用
+- **内置 videokit**：基于 Go 的 FFmpeg 包装器包含在应用中用于视频压缩
 
-### Fixed
+### 修复
 
-- **Background images not loading in editor**: Resources weren't being copied into the app bundle; fixed project config and file lookup to use direct path construction
-- **Screenshot sound**: Now plays the actual macOS screenshot sound (`Screen Capture.aif`) instead of the generic "Blow" sound
-- **Editor image caching**: Added `.onChange(of: imageURL)` and `.id()` to prevent stale images when editor window is reused
+- **编辑器里背景图片不加载**：资源没被复制进应用包；修复项目配置和文件查找，用直接路径构造
+- **截图声音**：现在播放真实的 macOS 截图声音（`Screen Capture.aif`）而不是通用的"Blow"声
+- **编辑器图像缓存**：加 `.onChange(of: imageURL)` 和 `.id()` 防止编辑器窗口重用时出现陈旧图像
 
-### Changed
+### 变更
 
-- App target deployment raised to macOS 14.0
-- Swift 6 strict concurrency throughout
+- App 目标部署目标升到 macOS 14.0
+- 全代码库 Swift 6 严格并发
 
-## [0.1.0] - Previous
+## [0.1.0] - 更早
 
-### Added
+### 新增
 
-- **Background Border slider**: Adjustable padding around screenshots (0–200px)
-- **Frontend test framework**: Vitest with React Testing Library (19 tests)
-- **Rust unit tests**: CropRegion bounds, filename generation (13 tests)
+- **背景边框滑块**：截图周围可调边距（0–200px）
+- **前端测试框架**：Vitest 配 React Testing Library（19 个测试）
+- **Rust 单元测试**：CropRegion 边界、文件名生成（13 个测试）
 
-### Fixed
+### 修复
 
-- Background visible at 0px border setting
+- 边框设为 0px 时背景可见
 
-### Changed
+### 变更
 
-- Padding now stored in EditorSettings (previously hardcoded to 100px)
+- 边距现在存在 EditorSettings（之前硬编码为 100px）

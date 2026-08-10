@@ -66,6 +66,19 @@ struct EditorWindowView: View {
                 }
                 .keyboardShortcut(.escape, modifiers: [])
 
+                // P1：自动 PII 打码（识别手机号/邮箱/身份证并模糊）
+                Button {
+                    Task {
+                        let count = await model.autoRedactPII()
+                        if count == 0 {
+                            model.toastMessage = "未检测到敏感信息"
+                        }
+                    }
+                } label: {
+                    Label("Redact PII", systemImage: "eye.slash")
+                }
+                .help("自动打码手机号/邮箱/身份证号")
+
                 Button {
                     deleteCapture()
                 } label: {

@@ -73,6 +73,7 @@ struct GeneralSettingsTab: View {
     @AppStorage("bs_playSound") private var playSound = true
     @AppStorage("bs_exportFormat") private var exportFormatRaw: String = ExportFormat.png.rawValue
     @AppStorage("bs_exportQuality") private var exportQuality: Double = 0.9
+    @AppStorage("bs_fileNameFormat") private var fileNameFormatRaw: String = FileNameFormat.systemStyle.rawValue
 
     @State private var defaultConfig = AppPreferences.defaultBeautifierConfig
 
@@ -189,6 +190,16 @@ struct GeneralSettingsTab: View {
                         Text("Quality: \(Int(exportQuality * 100))%")
                     }
                 }
+
+                // M2 自动命名保存：文件名格式选择
+                Picker("File naming", selection: Binding(
+                    get: { FileNameFormat(rawValue: fileNameFormatRaw) ?? .systemStyle },
+                    set: { fileNameFormatRaw = $0.rawValue }
+                )) {
+                    ForEach(FileNameFormat.allCases, id: \.self) { fmt in
+                        Text(fmt.label).tag(fmt)
+                    }
+                }
             }
 
             Section {
@@ -200,6 +211,7 @@ struct GeneralSettingsTab: View {
                     playSound = true
                     exportFormatRaw = ExportFormat.png.rawValue
                     exportQuality = 0.9
+                    fileNameFormatRaw = FileNameFormat.systemStyle.rawValue
                     defaultConfig = .default
                     AppPreferences.defaultBeautifierConfig = .default
                 }
@@ -610,6 +622,7 @@ struct CaptureSettingsTab: View {
                 VStack(alignment: .leading, spacing: 8) {
                     ShortcutRow(label: "Region", action: .region)
                     ShortcutRow(label: "Fullscreen", action: .fullscreen)
+                    ShortcutRow(label: "Window", action: .window)
                     ShortcutRow(label: "OCR Region", action: .ocr)
                     ShortcutRow(label: "Color Picker", action: .colorPicker)
                     ShortcutRow(label: "Record Screen", action: .recording)
@@ -624,7 +637,7 @@ struct CaptureSettingsTab: View {
                         case .ocr: .defaultOCR
                         case .colorPicker: .defaultColorPicker
                         case .recording: .defaultRecording
-                        case .window: nil
+                        case .window: .defaultWindow
                         }
                         if let def {
                             ShortcutService.shared.saveShortcut(def, for: action)
@@ -648,7 +661,7 @@ struct CaptureSettingsTab: View {
                         case .ocr: .defaultOCR
                         case .colorPicker: .defaultColorPicker
                         case .recording: .defaultRecording
-                        case .window: nil
+                        case .window: .defaultWindow
                         }
                         if let def {
                             ShortcutService.shared.saveShortcut(def, for: action)
