@@ -109,4 +109,18 @@ final class OCRService {
             }
         }
     }
+
+    /// 检测人脸位置（参考 macshot AutoRedactor 的 VNDetectFaceRectanglesRequest）。
+    /// 返回人脸的归一化 boundingBox（原点左下，0-1），供打码定位。
+    func detectFaces(in image: CGImage) async throws -> [CGRect] {
+        try await withCheckedThrowingContinuation { continuation in
+            let request = VNDetectFaceRectanglesRequest { request, _ in
+                let boxes = (request.results as? [VNFaceObservation])?.map { $0.boundingBox } ?? []
+                continuation.resume(returning: boxes)
+            }
+            let handler = VNImageRequestHandler(cgImage: image)
+            do { try handler.perform([request]) }
+            catch { continuation.resume(throwing: error) }
+        }
+    }
 }

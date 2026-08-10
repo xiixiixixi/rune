@@ -253,14 +253,29 @@ final class CaptureOrchestrator {
                 )
                 return
             }
-            // 复制到剪贴板
+            // 复制原文到剪贴板
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
             pasteboard.setString(result.combinedText, forType: .string)
             ScreenCapture.shared.playShutterSound()
+
+            // 翻译（参考 macshot：OCR 后附带翻译，失败则只复制原文）
+            // 隐私：翻译会联网发送文字（非原图），用户主动触发 OCR 即视为同意。
+            let translationMessage: String
+            do {
+                let translated = try await TranslationService.translate(result.combinedText)
+                // 译文追加到剪贴板（原文 + 空行 + 译文）
+                let combined = result.combinedText + "\n\n--- 译文 ---\n" + translated
+                pasteboard.clearContents()
+                pasteboard.setString(combined, forType: .string)
+                translationMessage = "原文 + 译文已复制（译为 \(TranslationService.availableLanguages.first { $0.code == TranslationService.targetLanguage }?.name ?? TranslationService.targetLanguage)）"
+            } catch {
+                translationMessage = "原文已复制（翻译失败：\(error.localizedDescription)）"
+            }
+
             ToastWindow.shared.show(
-                title: "Copied",
-                message: "Text copied to clipboard",
+                title: "OCR",
+                message: translationMessage,
                 systemIcon: "doc.text.viewfinder",
                 on: captureScreen
             )

@@ -79,6 +79,14 @@ struct EditorWindowView: View {
                 }
                 .help("自动打码手机号/邮箱/身份证号")
 
+                // P1：自动人脸打码（参考 macshot VNDetectFaceRectanglesRequest）
+                Button {
+                    Task { await model.autoRedactFaces() }
+                } label: {
+                    Label("Redact Faces", systemImage: "face.dashed")
+                }
+                .help("自动打码所有人脸")
+
                 Button {
                     deleteCapture()
                 } label: {

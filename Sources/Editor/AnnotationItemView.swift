@@ -162,6 +162,27 @@ struct AnnotationItemView: View {
                 )
                 .position(x: viewBounds.midX, y: viewBounds.midY)
         }
+
+        // P1 像素测量尺：line 工具显示物理像素距离（参考 Shottr 独有能力）
+        if item.tool == .line, let start = endpointViewPoints.first, let end = endpointViewPoints.last {
+            let scale = originalImageSize.width > 0 && imageFrame.width > 0
+                ? originalImageSize.width / imageFrame.width : 1
+            let dx = (end.x - start.x) * scale
+            let dy = (end.y - start.y) * scale
+            let px = Int(hypot(dx, dy))
+            if px > 3 {
+                let midX = (start.x + end.x) / 2
+                let midY = (start.y + end.y) / 2
+                Text("\(px)px")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Color.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 3))
+                    .position(x: midX, y: midY - 12)
+                    .allowsHitTesting(false)
+            }
+        }
     }
 
     private var arrowHeadPath: Path? {
