@@ -25,12 +25,9 @@ final class HistoryStore {
 
     func importCapture(from tempURL: URL, deleteSource: Bool = true, kind: CaptureKind = .screenshot) -> CaptureRecord? {
         let ext = tempURL.pathExtension.isEmpty ? "png" : tempURL.pathExtension
-        var filename = "bettershot_\(Int(Date().timeIntervalSince1970 * 1000)).\(ext)"
-        var destURL = storageDir.appendingPathComponent(filename)
-        if FileManager.default.fileExists(atPath: destURL.path) {
-            filename = "bettershot_\(Int(Date().timeIntervalSince1970 * 1000))_\(UUID().uuidString.prefix(6)).\(ext)"
-            destURL = storageDir.appendingPathComponent(filename)
-        }
+        // M2 自动命名保存：用 AppPreferences 生成器，冲突时加 _2/_3 后缀（比 UUID 更友好）。
+        let baseName = AppPreferences.generateFileName(ext: ext)
+        let (filename, destURL) = uniqueFilename(baseName: baseName, in: storageDir)
 
         do {
             try FileManager.default.copyItem(at: tempURL, to: destURL)
@@ -67,6 +64,28 @@ final class HistoryStore {
         }
 
         return record
+    }
+
+    /// 生成不冲突的文件名：若 `baseName` 已存在，加 `_2`/`_3`... 后缀直到不冲突。
+    /// 符合 Finder 复制习惯，比 UUID 更友好。
+    private func uniqueFilename(baseName: String, in dir: URL) -> (String, URL) {
+        let initialURL = dir.appendingPathComponent(baseName)
+        if !FileManager.default.fileExists(atPath: initialURL.path) {
+            return (baseName, initialURL)
+        }
+        let nsName = (baseName as NSString)
+        let stem = nsName.deletingPathExtension
+        let ext = nsName.pathExtension.isEmpty ? "" : "." + nsName.pathExtension
+        for i in 2...1000 {
+            let candidate = "\(stem)_\(i)\(ext)"
+            let candidateURL = dir.appendingPathComponent(candidate)
+            if !FileManager.default.fileExists(atPath: candidateURL.path) {
+                return (candidate, candidateURL)
+            }
+        }
+        // 兜底（理论不会到这）：加 UUID
+        let fallback = "\(stem)_\(UUID().uuidString.prefix(6))\(ext)"
+        return (fallback, dir.appendingPathComponent(fallback))
     }
 
     // MARK: - Update

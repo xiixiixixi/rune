@@ -17,6 +17,7 @@ enum AppPreferences {
     private static let recordingShowCursorKey = "bs_recordingShowCursor"
     private static let recordingCaptureAudioKey = "bs_recordingCaptureAudio"
     private static let recordingOpenEditorKey = "bs_recordingOpenEditor"
+    private static let fileNameFormatKey = "bs_fileNameFormat"
 
     // MARK: - Appearance
     static var appearance: AppAppearance {
@@ -37,6 +38,34 @@ enum AppPreferences {
     static var saveDirectory: String {
         get { UserDefaults.standard.string(forKey: saveDirKey) ?? NSHomeDirectory() + "/Desktop" }
         set { UserDefaults.standard.set(newValue, forKey: saveDirKey) }
+    }
+
+    // MARK: - File Naming（M2 自动命名保存）
+
+    /// 截图保存的文件名格式。默认系统截图风格，让用户在 Finder 一眼认出。
+    static var fileNameFormat: FileNameFormat {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: fileNameFormatKey),
+                  let fmt = FileNameFormat(rawValue: raw) else { return .systemStyle }
+            return fmt
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: fileNameFormatKey) }
+    }
+
+    /// 生成截图文件名（不含目录）。
+    /// - systemStyle: `Screenshot 2026-08-09 at 15.20.33.png`（冒号在文件名非法，用点分隔时分秒）
+    /// - legacy: `bettershot_<毫秒时间戳>.<ext>`
+    static func generateFileName(date: Date = Date(), ext: String) -> String {
+        let safeExt = ext.isEmpty ? "png" : ext
+        switch fileNameFormat {
+        case .systemStyle:
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+            return "Screenshot \(formatter.string(from: date)).\(safeExt)"
+        case .legacy:
+            return "bettershot_\(Int(date.timeIntervalSince1970 * 1000)).\(safeExt)"
+        }
     }
 
     static var copyAfterSave: Bool {
@@ -193,6 +222,21 @@ enum SelfTimerDelay: Int, CaseIterable {
         switch self {
         case .off: return "Off"
         default: return "\(rawValue)s"
+        }
+    }
+}
+
+/// 截图文件名格式（M2 自动命名保存）。
+enum FileNameFormat: String, CaseIterable {
+    /// 系统截图风格：`Screenshot 2026-08-09 at 15.20.33.png`
+    case systemStyle = "system"
+    /// 旧风格：`bettershot_<毫秒时间戳>.png`（向后兼容）
+    case legacy = "legacy"
+
+    var label: String {
+        switch self {
+        case .systemStyle: return "Screenshot 风格（推荐）"
+        case .legacy: return "bettershot_ 时间戳（旧）"
         }
     }
 }

@@ -1,10 +1,16 @@
 import Foundation
 import AppKit
+import Sparkle
 
 @MainActor
 @Observable
 final class AppUpdater {
     static let shared = AppUpdater()
+
+    /// M2：Sparkle 更新框架接入。SPUStandardUpdaterController 自动管理检查/下载/安装，
+    /// 替代自研的 GitHub API + DMG 流程。checkForUpdates/checkForUpdatesQuietly 委托给它。
+    /// 更新流程的完整验证（签名/公证/feed）需正式分发环境，本接入保证框架可用。
+    private let sparkleController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
     enum State: Equatable {
         case idle
@@ -32,100 +38,18 @@ final class AppUpdater {
 
     private init() {}
 
+    /// M2：静默检查委托 Sparkle（SPUStandardUpdaterController 启动时已自动后台检查，
+    /// 这里显式触发一次后台检查）。不再走 GitHub API。
     func checkForUpdatesQuietly() async {
-        let urlString = "https://api.github.com/repos/\(owner)/\(repo)/releases/latest"
-        guard let url = URL(string: urlString) else { return }
-
-        var request = URLRequest(url: url)
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.timeoutInterval = 15
-
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse,
-                  httpResponse.statusCode == 200,
-                  let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let tagName = json["tag_name"] as? String else { return }
-
-            let latestVersion = tagName.hasPrefix("v") ? String(tagName.dropFirst()) : tagName
-
-            if isNewer(latestVersion, than: currentVersion) {
-                latestAvailableVersion = latestVersion
-                let assets = json["assets"] as? [[String: Any]] ?? []
-                let arch = Self.currentArchitecture
-                let dmgAsset = assets.first { ($0["name"] as? String)?.contains(arch) == true && ($0["name"] as? String)?.hasSuffix(".dmg") == true }
-                    ?? assets.first { ($0["name"] as? String)?.hasSuffix(".dmg") == true }
-
-                if let assetURLString = dmgAsset?["browser_download_url"] as? String,
-                   let assetURL = URL(string: assetURLString) {
-                    state = .available(version: latestVersion, url: assetURL)
-                    ToastWindow.shared.show(
-                        title: "Update Available",
-                        message: "Version \(latestVersion) is available",
-                        systemIcon: "arrow.down.circle"
-                    )
-                }
-            }
-        } catch {}
+        sparkleController.updater.checkForUpdates()
     }
 
+    /// M2：手动检查委托 Sparkle（弹出 Sparkle 标准更新窗口）。
     func checkForUpdates() async {
         state = .checking
-
-        let urlString = "https://api.github.com/repos/\(owner)/\(repo)/releases/latest"
-        guard let url = URL(string: urlString) else {
-            state = .failed("Invalid URL")
-            return
-        }
-
-        var request = URLRequest(url: url)
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.timeoutInterval = 15
-
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                state = .failed("Invalid response")
-                return
-            }
-
-            if httpResponse.statusCode == 404 {
-                state = .upToDate
-                return
-            }
-
-            guard httpResponse.statusCode == 200 else {
-                state = .failed("Server returned \(httpResponse.statusCode)")
-                return
-            }
-
-            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let tagName = json["tag_name"] as? String else {
-                state = .failed("Could not parse response")
-                return
-            }
-
-            let latestVersion = tagName.hasPrefix("v") ? String(tagName.dropFirst()) : tagName
-
-            if isNewer(latestVersion, than: currentVersion) {
-                let assets = json["assets"] as? [[String: Any]] ?? []
-                let arch = Self.currentArchitecture
-                let dmgAsset = assets.first { ($0["name"] as? String)?.contains(arch) == true && ($0["name"] as? String)?.hasSuffix(".dmg") == true }
-                    ?? assets.first { ($0["name"] as? String)?.hasSuffix(".dmg") == true }
-
-                if let assetURLString = dmgAsset?["browser_download_url"] as? String,
-                   let assetURL = URL(string: assetURLString) {
-                    state = .available(version: latestVersion, url: assetURL)
-                } else {
-                    state = .failed("No .dmg asset found in latest release")
-                }
-            } else {
-                state = .upToDate
-            }
-        } catch {
-            state = .failed(error.localizedDescription)
-        }
+        // Sparkle 的 checkForUpdates 会弹出标准更新窗口（含下载/安装），由 Sparkle 全权管理。
+        sparkleController.updater.checkForUpdates()
+        state = .idle
     }
 
     func downloadAndInstall(version: String, url: URL) async {

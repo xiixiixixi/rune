@@ -26,5 +26,12 @@
     <string>BetterShot needs screen recording access to capture screenshots and record your screen.</string>
     <key>NSRequiresAquaSystemAppearance</key>
     <true/>
+    <!-- M2 Sparkle 更新配置：feed 地址（占位，正式分发时改）、自动检查、检查间隔 -->
+    <key>SUFeedURL</key>
+    <string>https://bettershot.example.com/appcast.xml</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
 </dict>
 </plist>

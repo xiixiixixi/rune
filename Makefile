@@ -35,12 +35,14 @@ build: ## Debug build
 		build 2>&1 | tail -3
 	@echo "==> $(APP_DEBUG)"
 
-release: ## Release build (unsigned)
-	@echo "==> Building $(SCHEME) (Release)..."
+release: ## Release build (unsigned, Universal 2)
+	@echo "==> Building $(SCHEME) (Release, Universal 2)..."
 	@xcodebuild -project $(PROJECT) \
 		-scheme $(SCHEME) \
 		-configuration $(CONFIG_REL) \
 		-derivedDataPath $(DERIVED_DIR) \
+		ARCHS="arm64 x86_64" \
+		ONLY_ACTIVE_ARCH=NO \
 		CODE_SIGN_IDENTITY="" \
 		CODE_SIGNING_REQUIRED=NO \
 		build 2>&1 | tail -3
