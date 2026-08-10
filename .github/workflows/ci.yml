@@ -1,0 +1,47 @@
+# CI：提交级编译检查 + 单元测试
+#
+# 设计依据：M1 设计文档 §6 —— 每次提交时生成 Xcode 工程、编译应用并运行测试；
+# 签名、公证和发布流程留给下一阶段（避免在公共 CI 中泄露/依赖私人凭据）。
+#
+# CaptureKit 为独立 SPM 包（纯逻辑，无 UI / 屏幕权限依赖），
+# 其测试在无 Xcode 环境下也可运行（swift test）。
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  capturekit-tests:
+    name: CaptureKit 单元测试
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 运行 CaptureKit 测试
+        run: swift test
+        working-directory: CaptureKit
+
+  build:
+    name: 编译主应用
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 XcodeGen
+        run: brew install xcodegen
+
+      - name: 生成 Xcode 工程
+        run: xcodegen generate
+
+      - name: 编译（Debug，不签名）
+        run: |
+          xcodebuild \
+            -project BetterShot.xcodeproj \
+            -scheme BetterShot \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            build \
+            CODE_SIGNING_ALLOWED=NO

@@ -1,21 +1,28 @@
 import Carbon
 import AppKit
-import CoreGraphics
 
+/// 全局快捷键服务（M1 §5：改用 Carbon `RegisterEventHotKey`，不再需要辅助功能权限）。
+///
+/// 历史实现用 CGEvent tap 拦截全局按键，要求辅助功能权限；现改为 Carbon 热键 API，
+/// 该 API 由系统直接派发热键事件，无需辅助功能权限，也不拦截/吞掉系统按键。
+///
+/// UI 层（PreferencesView 的快捷键录制器）产出的 (keyCode, modifiers) 本就是 Carbon
+/// 格式（虚拟键码 + cmdKey|shiftKey|... 位掩码），可直接喂给 RegisterEventHotKey，
+/// 故 saveShortcut/loadShortcut/registerAll/unregisterAll 签名保持不变，设置页零改动。
 @MainActor
 final class ShortcutService {
     static let shared = ShortcutService()
 
-    private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
-    private static let shortcutLock = NSLock()
-    private static var _cachedShortcuts: [(Action, Shortcut)] = []
-    private static var cachedShortcuts: [(Action, Shortcut)] {
-        get { shortcutLock.withLock { _cachedShortcuts } }
-        set { shortcutLock.withLock { _cachedShortcuts = newValue } }
-    }
+    /// 注册的 Carbon 热键引用（unregister 时用）。key = Action.rawValue。
+    private var hotKeyRefs: [UInt32: EventHotKeyRef] = [:]
+    /// 是否已安装 Carbon 事件处理器（只装一次）。
+    private var handlerInstalled = false
+    /// 缓存的 action 派发表（Carbon 回调通过 hot key id 查这里）。
+    /// 用 NSLock 保护：Carbon 回调从主 run loop 派发（MainActor 安全），但稳妥起见加锁。
+    private static let actionLock = NSLock()
+    private static var _actionsByID: [UInt32: Action] = [:]
 
-    var isRegistered: Bool { eventTap != nil }
+    var isRegistered: Bool { !hotKeyRefs.isEmpty }
 
     private init() {}
 
@@ -26,11 +33,13 @@ final class ShortcutService {
         var modifiers: UInt32
         var enabled: Bool
 
-        static let defaultRegion = Shortcut(keyCode: UInt32(kVK_ANSI_4), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
-        static let defaultFullscreen = Shortcut(keyCode: UInt32(kVK_ANSI_3), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
-        static let defaultOCR = Shortcut(keyCode: UInt32(kVK_ANSI_O), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
+        // M1 §5 默认键位：区域 ⌘⇧E、全屏 ⌘⇧S、窗口 ⌘⇧W（不再覆盖系统截图快捷键 ⌘⇧3/4/5）
+        static let defaultRegion      = Shortcut(keyCode: UInt32(kVK_ANSI_E), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
+        static let defaultFullscreen  = Shortcut(keyCode: UInt32(kVK_ANSI_S), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
+        static let defaultWindow      = Shortcut(keyCode: UInt32(kVK_ANSI_W), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
+        static let defaultOCR         = Shortcut(keyCode: UInt32(kVK_ANSI_O), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
         static let defaultColorPicker = Shortcut(keyCode: UInt32(kVK_ANSI_C), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
-        static let defaultRecording = Shortcut(keyCode: UInt32(kVK_ANSI_2), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
+        static let defaultRecording   = Shortcut(keyCode: UInt32(kVK_ANSI_2), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
     }
 
     enum Action: UInt32, CaseIterable {
@@ -42,60 +51,111 @@ final class ShortcutService {
         case recording = 6
     }
 
-    // MARK: - Registration (CGEvent tap — intercepts system shortcuts)
+    // MARK: - Registration (Carbon RegisterEventHotKey)
 
     func registerAll() {
         unregisterAll()
+        installHandlerIfNeeded()
 
-        guard Self.hasAccessibilityPermission else {
-            print("BetterShot: No accessibility permission, skipping event tap registration")
-            return
+        // 每次重注册前清空派发表
+        Self.actionLock.withLock { Self._actionsByID.removeAll() }
+
+        for action in Action.allCases {
+            let shortcut = loadShortcut(for: action) ?? defaultShortcut(for: action)
+            guard shortcut.enabled else { continue }
+
+            var ref: EventHotKeyRef?
+            // signature：4 字节 OSType，用 'BSHT'（BetterShot Hotkey）做标识
+            let hotKeyID = EventHotKeyID(signature: OSType(0x42534854), id: action.rawValue)
+            let status = RegisterEventHotKey(
+                shortcut.keyCode,
+                shortcut.modifiers,
+                hotKeyID,
+                GetEventDispatcherTarget(),
+                0,
+                &ref
+            )
+            if status == noErr, let ref {
+                hotKeyRefs[action.rawValue] = ref
+                Self.actionLock.withLock { Self._actionsByID[action.rawValue] = action }
+            } else {
+                print("BetterShot: 注册热键失败 action=\(action) status=\(status)（可能键位被系统占用）")
+            }
         }
-
-        let eventMask: CGEventMask = (1 << CGEventType.keyDown.rawValue)
-
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: eventMask,
-            callback: ShortcutService.eventTapCallback,
-            userInfo: nil
-        ) else {
-            print("BetterShot: Failed to create event tap — app may need a restart after granting Accessibility permission")
-            return
-        }
-
-        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
-
-        self.eventTap = tap
-        self.runLoopSource = source
-        Self.cacheShortcuts()
-        print("BetterShot: Event tap registered successfully — keyboard shortcuts active")
-    }
-
-    private static func cacheShortcuts() {
-        let service = ShortcutService.shared
-        cachedShortcuts = [
-            (.region, service.loadShortcut(for: .region) ?? .defaultRegion),
-            (.fullscreen, service.loadShortcut(for: .fullscreen) ?? .defaultFullscreen),
-            (.ocr, service.loadShortcut(for: .ocr) ?? .defaultOCR),
-            (.colorPicker, service.loadShortcut(for: .colorPicker) ?? .defaultColorPicker),
-            (.recording, service.loadShortcut(for: .recording) ?? .defaultRecording),
-        ]
+        print("BetterShot: Carbon 热键已注册 \(hotKeyRefs.count)/\(Action.allCases.count) 个")
     }
 
     func unregisterAll() {
-        if let tap = eventTap {
-            CGEvent.tapEnable(tap: tap, enable: false)
+        for (_, ref) in hotKeyRefs {
+            UnregisterEventHotKey(ref)
         }
-        if let source = runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+        hotKeyRefs.removeAll()
+        Self.actionLock.withLock { Self._actionsByID.removeAll() }
+    }
+
+    /// 默认快捷键（按 action 分派）。无默认值的 action（理论上都有）返回 region 默认。
+    private func defaultShortcut(for action: Action) -> Shortcut {
+        switch action {
+        case .region:      return .defaultRegion
+        case .fullscreen:  return .defaultFullscreen
+        case .window:      return .defaultWindow
+        case .ocr:         return .defaultOCR
+        case .colorPicker: return .defaultColorPicker
+        case .recording:   return .defaultRecording
         }
-        eventTap = nil
-        runLoopSource = nil
+    }
+
+    /// 只装一次 Carbon 事件处理器（kEventClassKeyboard/kEventHotKeyPressed）。
+    private func installHandlerIfNeeded() {
+        guard !handlerInstalled else { return }
+        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        // C 函数指针不能捕获 self；用全局桥接回调，内部查 _actionsByID 派发。
+        // 注意闭包内不能用 Self（会被当动态 Self 捕获），必须写具体类型名 ShortcutService。
+        let handler: EventHandlerUPP = { (_, eventRef, _) -> OSStatus in
+            ShortcutService.handleHotKeyEvent(eventRef!)
+        }
+        InstallEventHandler(
+            GetEventDispatcherTarget(),
+            handler,
+            1,
+            &spec,
+            nil,
+            nil
+        )
+        handlerInstalled = true
+    }
+
+    /// Carbon 热键事件回调（静态，从 eventRef 取 hot key id → 查派发表 → 执行 action）。
+    private static func handleHotKeyEvent(_ eventRef: EventRef) -> OSStatus {
+        var hotKeyID = EventHotKeyID()
+        let size = MemoryLayout<EventHotKeyID>.size
+        let status = GetEventParameter(
+            eventRef,
+            UInt32(kEventParamDirectObject),
+            UInt32(typeEventHotKeyID),
+            nil,
+            size,
+            nil,
+            &hotKeyID
+        )
+        guard status == noErr else { return status }
+
+        let action: Action? = actionLock.withLock { _actionsByID[hotKeyID.id] }
+        guard let action else { return noErr }
+
+        let mouseScreen = NSScreen.screenAtMouse()
+        Task { @MainActor in
+            if action == .recording {
+                if ScreenRecordingManager.shared.isRecording { return }
+                let started = try? await ScreenRecordingManager.shared.startRecording()
+                if started == true {
+                    RecordingStatusBarController.shared.show(on: mouseScreen)
+                }
+            } else {
+                await CaptureOrchestrator.shared.performCapture(action, on: mouseScreen)
+            }
+        }
+        return noErr
     }
 
     // MARK: - Persistence
@@ -105,7 +165,6 @@ final class ShortcutService {
         if let data = try? JSONEncoder().encode(shortcut) {
             UserDefaults.standard.set(data, forKey: key)
         }
-        Self.cacheShortcuts()
     }
 
     func loadShortcut(for action: Action) -> Shortcut? {
@@ -113,65 +172,14 @@ final class ShortcutService {
         guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
         return try? JSONDecoder().decode(Shortcut.self, from: data)
     }
+}
 
-    // MARK: - Accessibility Permission
+// MARK: - 鼠标所在屏幕（辅助）
 
-    static func requestAccessibilityPermission() {
-        let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
-        _ = AXIsProcessTrustedWithOptions(options)
-    }
-
-    nonisolated static var hasAccessibilityPermission: Bool {
-        AXIsProcessTrusted()
-    }
-
-    // MARK: - Event Tap Callback
-
-    private static let eventTapCallback: CGEventTapCallBack = { _, type, event, _ in
-        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            // Re-enable the tap if macOS disables it
-            Task { @MainActor in
-                if let tap = ShortcutService.shared.eventTap {
-                    CGEvent.tapEnable(tap: tap, enable: true)
-                }
-            }
-            return Unmanaged.passUnretained(event)
-        }
-
-        guard type == .keyDown else {
-            return Unmanaged.passUnretained(event)
-        }
-
-        let keyCode = UInt32(event.getIntegerValueField(.keyboardEventKeycode))
-        let flags = event.flags
-
-        var carbonMods: UInt32 = 0
-        if flags.contains(.maskCommand) { carbonMods |= UInt32(cmdKey) }
-        if flags.contains(.maskShift) { carbonMods |= UInt32(shiftKey) }
-        if flags.contains(.maskAlternate) { carbonMods |= UInt32(optionKey) }
-        if flags.contains(.maskControl) { carbonMods |= UInt32(controlKey) }
-
-        for (action, shortcut) in cachedShortcuts {
-            guard shortcut.enabled else { continue }
-            if keyCode == shortcut.keyCode && carbonMods == shortcut.modifiers {
-                let mouseScreen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) }
-                Task { @MainActor in
-                    if action == .recording {
-                        if ScreenRecordingManager.shared.isRecording {
-                            return
-                        }
-                        let started = try? await ScreenRecordingManager.shared.startRecording()
-                        if started == true {
-                            RecordingStatusBarController.shared.show(on: mouseScreen)
-                        }
-                    } else {
-                        await CaptureOrchestrator.shared.performCapture(action, on: mouseScreen)
-                    }
-                }
-                return nil
-            }
-        }
-
-        return Unmanaged.passUnretained(event)
+private extension NSScreen {
+    /// 返回当前鼠标所在屏幕；拿不到时回退主屏。
+    static func screenAtMouse() -> NSScreen? {
+        let mouse = NSEvent.mouseLocation
+        return NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
     }
 }

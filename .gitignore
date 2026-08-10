@@ -30,8 +30,12 @@ build-arm64/
 build-x86_64/
 *.dmg
 
-# Local scripts
+# 备份目录
+*.bak/
+
+# Local scripts（原作者的本地脚本；但项目内的 Scripts/ 依赖检查工具要保留）
 scripts/
+!Scripts/
 
 # Claude Code
 CLAUDE.md

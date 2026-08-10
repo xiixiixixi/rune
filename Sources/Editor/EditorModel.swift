@@ -53,6 +53,9 @@ final class EditorModel {
     private let minimumItemSize: CGFloat = 0.006
     private(set) var statePath = AnnotationToolState.idle.path(for: .rectangle)
 
+    /// M1 §4 异步加载：代次令牌，每次 loadImage 自增；后台解码完成时若代次不匹配则丢弃结果。
+    private var loadGeneration = 0
+
     // Config undo/redo
     private var configPast: [BeautifierConfig] = []
     private var configFuture: [BeautifierConfig] = []
@@ -96,17 +99,16 @@ final class EditorModel {
 
     // MARK: - Load
 
+    /// M1 §4 异步加载：先 ImageIO 512px 缩略图快速显示，再后台解码全分辨率图。
+    /// 旧任务通过 loadGeneration 失效（连续打开多张图时，后完成的旧任务不覆盖新界面）。
     func loadImage(from url: URL) {
         let rawURL = CaptureOrchestrator.resolveRawSource(for: url)
         sourceURL = rawURL
-        guard let source = CGImageSourceCreateWithURL(rawURL as CFURL, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return }
-        sourceImage = image
-        imageSize = CGSize(width: image.width, height: image.height)
-        previewImage = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+        loadGeneration += 1
+        let generation = loadGeneration
 
+        // 重置状态
         config = AppPreferences.defaultBeautifierConfig
-
         items = []
         draftItem = nil
         selectedItemIDs = []
@@ -118,6 +120,33 @@ final class EditorModel {
         history.reset()
         RedactionImageProcessor.removeAllCachedPreviewImages()
         statePath = AnnotationToolState.idle.path(for: selectedTool)
+
+        // 1. 同步生成 512px 缩略图（ImageIO 降采样，很快），立即显示，避免界面空白/冻结
+        guard let source = CGImageSourceCreateWithURL(rawURL as CFURL, nil) else { return }
+        let thumbOptions: [CFString: Any] = [
+            kCGImageSourceThumbnailMaxPixelSize: 512,
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+        ]
+        if let thumb = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbOptions as CFDictionary) {
+            previewImage = NSImage(cgImage: thumb, size: NSSize(width: thumb.width, height: thumb.height))
+        }
+
+        // 2. 后台解码全分辨率图（5K 同步解码会卡主线程）
+        Task.detached { [weak self] in
+            let fullImage: CGImage? = {
+                guard let src = CGImageSourceCreateWithURL(rawURL as CFURL, nil) else { return nil }
+                return CGImageSourceCreateImageAtIndex(src, 0, nil)
+            }()
+            await MainActor.run {
+                guard let self, self.loadGeneration == generation else { return }  // 旧任务失效
+                guard let fullImage else { return }
+                self.sourceImage = fullImage
+                self.imageSize = CGSize(width: fullImage.width, height: fullImage.height)
+                // 全图就绪后，previewImage 升级为全分辨率（缩略图只是过渡）
+                self.previewImage = NSImage(cgImage: fullImage, size: NSSize(width: fullImage.width, height: fullImage.height))
+            }
+        }
     }
 
     // MARK: - Config Updates
@@ -899,5 +928,39 @@ final class EditorModel {
 
     private func midpoint(_ lhs: CGPoint, _ rhs: CGPoint) -> CGPoint {
         CGPoint(x: (lhs.x + rhs.x) / 2, y: (lhs.y + rhs.y) / 2)
+    }
+
+    // MARK: - PII 自动打码（P1）
+
+    /// 自动识别图中的手机号/邮箱/身份证号，在这些位置加 blur 标注（脱敏）。
+    /// 完全本地处理（OCR + 正则），不上传任何内容。
+    /// - Returns: 打码的数量（0 表示未检测到 PII）
+    @discardableResult
+    func autoRedactPII() async -> Int {
+        guard let image = sourceImage else { return 0 }
+        let observations = (try? await OCRService.shared.recognizeWithPositions(in: image)) ?? []
+        let piiMatches = PIIRedactor.detect(in: observations)
+        guard !piiMatches.isEmpty else { return 0 }
+
+        // 把 PII 匹配转成 blur 标注。Vision boundingBox 原点左下（Y 轴朝上），
+        // AnnotationItem 的 rect 归一化但画布 Y 轴朝下，需 Y 翻转：y' = 1 - y - height。
+        var added = 0
+        for match in piiMatches {
+            let bb = match.boundingBox
+            let item = AnnotationItem(
+                tool: .blur,
+                rect: CGRect(x: bb.minX, y: 1 - bb.maxY, width: bb.width, height: bb.height),
+                points: [],
+                swatch: selectedSwatch,
+                strokeWidth: strokeWidth,
+                redactionDensity: 0.55
+            )
+            items.append(item)
+            added += 1
+        }
+        if added > 0 {
+            toastMessage = "已自动打码 \(added) 处敏感信息"
+        }
+        return added
     }
 }
