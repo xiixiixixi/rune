@@ -626,6 +626,7 @@ struct CaptureSettingsTab: View {
                     ShortcutRow(label: "OCR Region", action: .ocr)
                     ShortcutRow(label: "Color Picker", action: .colorPicker)
                     ShortcutRow(label: "Record Screen", action: .recording)
+                    ShortcutRow(label: "Burst (金手指)", action: .burst)
                 }
                 .id(shortcutResetID)
 
@@ -638,6 +639,7 @@ struct CaptureSettingsTab: View {
                         case .colorPicker: .defaultColorPicker
                         case .recording: .defaultRecording
                         case .window: .defaultWindow
+                        case .burst: .defaultBurst
                         }
                         if let def {
                             ShortcutService.shared.saveShortcut(def, for: action)
@@ -662,6 +664,7 @@ struct CaptureSettingsTab: View {
                         case .colorPicker: .defaultColorPicker
                         case .recording: .defaultRecording
                         case .window: .defaultWindow
+                        case .burst: .defaultBurst
                         }
                         if let def {
                             ShortcutService.shared.saveShortcut(def, for: action)
@@ -806,6 +809,7 @@ struct ShortcutRow: View {
         case .ocr: return .defaultOCR
         case .colorPicker: return .defaultColorPicker
         case .recording: return .defaultRecording
+        case .burst: return .defaultBurst
         }
     }
 

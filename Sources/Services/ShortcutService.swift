@@ -40,6 +40,7 @@ final class ShortcutService {
         static let defaultOCR         = Shortcut(keyCode: UInt32(kVK_ANSI_O), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
         static let defaultColorPicker = Shortcut(keyCode: UInt32(kVK_ANSI_C), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
         static let defaultRecording   = Shortcut(keyCode: UInt32(kVK_ANSI_2), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
+        static let defaultBurst       = Shortcut(keyCode: UInt32(kVK_ANSI_B), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
     }
 
     enum Action: UInt32, CaseIterable {
@@ -49,6 +50,7 @@ final class ShortcutService {
         case ocr = 4
         case colorPicker = 5
         case recording = 6
+        case burst = 7
     }
 
     // MARK: - Registration (Carbon RegisterEventHotKey)
@@ -102,6 +104,7 @@ final class ShortcutService {
         case .ocr:         return .defaultOCR
         case .colorPicker: return .defaultColorPicker
         case .recording:   return .defaultRecording
+        case .burst:       return .defaultBurst
         }
     }
 
@@ -150,6 +153,15 @@ final class ShortcutService {
                 let started = try? await ScreenRecordingManager.shared.startRecording()
                 if started == true {
                     RecordingStatusBarController.shared.show(on: mouseScreen)
+                }
+            } else if action == .burst {
+                // 金手指：再按一次停止，否则开始连拍
+                if BurstCaptureController.shared.isActive {
+                    BurstCaptureController.shared.stop()
+                    BurstStatusBarController.shared.dismiss()
+                } else {
+                    await BurstCaptureController.shared.start(mode: .burst, on: mouseScreen)
+                    BurstStatusBarController.shared.show(on: mouseScreen)
                 }
             } else {
                 await CaptureOrchestrator.shared.performCapture(action, on: mouseScreen)

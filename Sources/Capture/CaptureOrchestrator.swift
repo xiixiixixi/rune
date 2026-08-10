@@ -54,6 +54,9 @@ final class CaptureOrchestrator {
             await performColorPick()
         case .recording:
             break
+        case .burst:
+            // 金手指在 ShortcutService 热键回调里直接处理（开始/停止），不走 orchestrator。
+            break
         }
     }
 
