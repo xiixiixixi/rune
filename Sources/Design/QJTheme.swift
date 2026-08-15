@@ -24,34 +24,39 @@ enum QJTheme {
     // MARK: - 悬浮条样式
 
     /// 悬浮条标准高度
-    static let barHeight: CGFloat = 48
+    static let barHeight: CGFloat = 56
     /// 悬浮条圆角
-    static let barCorner: CGFloat = 14
+    static let barCorner: CGFloat = 16
     /// 图标按钮尺寸
-    static let iconButtonSize: CGFloat = 32
+    static let iconButtonSize: CGFloat = 38
 
-    /// 悬浮条底：白磨砂 + 圆角 + 细边 + 轻投影
+    /// 悬浮条底：白磨砂 + 圆角 + 细边 + 分层投影
     static var barBackground: some View {
         RoundedRectangle(cornerRadius: barCorner, style: .continuous)
             .fill(.ultraThinMaterial)
             .overlay(
                 RoundedRectangle(cornerRadius: barCorner, style: .continuous)
-                    .strokeBorder(separator.opacity(0.6), lineWidth: 0.5)
+                    .strokeBorder(Color.white.opacity(0.7), lineWidth: 0.5)
             )
-            .shadow(color: .black.opacity(0.18), radius: 14, x: 0, y: 5)
+            .shadow(color: .black.opacity(0.10), radius: 24, x: 0, y: 8)
+            .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 1)
     }
 
-    /// 主按钮（保存/停止/开始）：红底白字胶囊，一个悬浮条只放一个
+    /// 主按钮（保存）：红底白字胶囊 + 红色微投影（唯一红色块）
     static func primaryButtonLabel(_ text: String, systemImage: String) -> some View {
         Label(text, systemImage: systemImage)
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(.white)
-            .padding(.horizontal, 14)
-            .frame(height: 32)
-            .background(Capsule().fill(accent))
+            .padding(.horizontal, 16)
+            .frame(height: 34)
+            .background(
+                Capsule()
+                    .fill(accent)
+                    .shadow(color: accent.opacity(0.35), radius: 8, x: 0, y: 2)
+            )
     }
 
-    /// 次按钮（取消/复制等）：灰字，hover 浅底
+    /// 次按钮（取消/复制/贴图）：深灰字胶囊，描边极淡
     static func secondaryButtonLabel(_ text: String, systemImage: String? = nil) -> some View {
         Group {
             if let systemImage {
@@ -62,21 +67,42 @@ enum QJTheme {
         }
         .font(.system(size: 13, weight: .medium))
         .foregroundStyle(textPrimary)
-        .padding(.horizontal, 10)
-        .frame(height: 32)
-        .background(Capsule().fill(Color.clear))
+        .padding(.horizontal, 12)
+        .frame(height: 34)
+        .background(
+            Capsule()
+                .fill(Color.white.opacity(0.55))
+                .overlay(Capsule().strokeBorder(separator, lineWidth: 0.5))
+        )
     }
 
-    /// 工具图标按钮：默认灰，hover 黑+浅底，激活红
+    /// 工具图标：18pt medium；默认石墨灰，激活=红图标+红 10% 圆角底
     static func toolIcon(_ systemImage: String, active: Bool) -> some View {
         Image(systemName: systemImage)
-            .font(.system(size: 15, weight: .medium))
-            .foregroundStyle(active ? accent : textSecondary)
+            .font(.system(size: 18, weight: .medium))
+            .foregroundStyle(active ? accent : Color(red: 0.35, green: 0.35, blue: 0.37))
             .frame(width: iconButtonSize, height: iconButtonSize)
             .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(active ? accent.opacity(0.12) : Color.clear)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(active ? accent.opacity(0.10) : Color.clear)
             )
+    }
+
+    /// 分组竖线：功能区之间的极淡细线（1×22），自带左右各 13pt 呼吸留白
+    static var groupSeparator: some View {
+        RoundedRectangle(cornerRadius: 0.5)
+            .fill(Color.black.opacity(0.09))
+            .frame(width: 1, height: 22)
+            .padding(.horizontal, 13)
+    }
+
+    /// 按压反馈：轻微缩放（弹簧），所有按钮统一
+    struct QJPressStyle: ButtonStyle {
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .scaleEffect(configuration.isPressed ? 0.93 : 1)
+                .animation(.spring(response: 0.25, dampingFraction: 0.55), value: configuration.isPressed)
+        }
     }
 
     /// 快捷键徽章：灰字白底小胶囊

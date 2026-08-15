@@ -1,12 +1,14 @@
 import SwiftUI
 
-/// 确认模式底部工具栏（红白设计 · docs/交互设计.md）。
+/// 确认模式底部工具栏（红白设计 · v3 自适应版）。
 ///
-/// [选择][矩形][箭头][文字][马赛克][序号] | 3色点+粗细 | [↩] | [复制][贴图] | [取消] [保存🔴]
+/// 布局（宽度随内容自适应，面板由控制器按 fittingSize 调整，绝不裁切）：
+/// - 紧凑态（默认·选择工具）：[6 工具] │ [↩撤销] │ [⧉复制][📌贴图] │ [取消] [保存🔴]
+/// - 展开态（选中画图工具）：在工具组后多出 [5 色点 · 3 粗细] 属性组
+/// - 分组用极淡竖线 + 留白；红色只出现在：激活工具图标 + 保存主按钮
 struct ConfirmToolbarView: View {
     let controller: CaptureConfirmController
 
-    /// 画布的实时驱动：工具/颜色/粗细直读直写 canvas（NSView 是引用类型，可变）
     private var canvas: ConfirmCanvasView? { controller.canvas }
 
     @State private var activeTool: AnnotationTool = .select
@@ -17,9 +19,12 @@ struct ConfirmToolbarView: View {
     private let swatches: [AnnotationSwatch] = [.red, .black, .white, .blue, .yellow]
     private let widths: [CGFloat] = [2, 4, 8]
 
+    /// 画图工具才需要颜色/粗细；选择工具时收起属性组，保持一条短干净的条
+    private var showsToolOptions: Bool { activeTool != .select }
+
     var body: some View {
-        HStack(spacing: 10) {
-            // 工具组
+        HStack(spacing: 0) {
+            // ── 工具组
             HStack(spacing: 2) {
                 ForEach(tools, id: \.self) { tool in
                     Button {
@@ -27,109 +32,132 @@ struct ConfirmToolbarView: View {
                         canvas?.selectedTool = tool
                         canvas?.selectedID = nil
                         canvas?.needsDisplay = true
+                        canvas?.refreshCursor()
                     } label: {
-                        QJTheme.toolIcon(tool.systemImage, active: activeTool == tool)
+                        QJTheme.toolIcon(iconName(for: tool), active: activeTool == tool)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(QJTheme.QJPressStyle())
                     .help(tool.title)
                 }
             }
 
-            QJToolbarDivider()
-
-            // 颜色点
-            HStack(spacing: 5) {
-                ForEach(swatches, id: \.self) { s in
-                    Button {
-                        swatch = s
-                        canvas?.selectedSwatch = s
-                    } label: {
-                        Circle()
-                            .fill(Color(s.nsColor))
-                            .frame(width: 14, height: 14)
-                            .overlay(
-                                Circle().strokeBorder(
-                                    swatch == s ? QJTheme.accent : QJTheme.separator,
-                                    lineWidth: swatch == s ? 2 : 0.5
-                                )
-                            )
+            // ── 属性组（按需展开）
+            if showsToolOptions {
+                QJTheme.groupSeparator
+                HStack(spacing: 14) {
+                    // 色点：16pt 圆 + 白描边；选中=石墨环（红色只留给激活工具和保存）
+                    HStack(spacing: 6) {
+                        ForEach(swatches, id: \.self) { s in
+                            Button {
+                                swatch = s
+                                canvas?.selectedSwatch = s
+                            } label: {
+                                Circle()
+                                    .fill(Color(s.nsColor))
+                                    .frame(width: 15, height: 15)
+                                    .overlay(Circle().strokeBorder(Color.white, lineWidth: 1.5))
+                                    .overlay(
+                                        Circle()
+                                            .strokeBorder(swatch == s ? QJTheme.textPrimary.opacity(0.75) : .clear, lineWidth: 1.5)
+                                            .frame(width: 19, height: 19)
+                                    )
+                                    .frame(width: 20, height: 24)
+                            }
+                            .buttonStyle(QJTheme.QJPressStyle())
+                            .help(s.title)
+                        }
                     }
-                    .buttonStyle(.plain)
+
+                    // 粗细：小中大实心点，选中加深
+                    HStack(spacing: 4) {
+                        ForEach(widths.indices, id: \.self) { i in
+                            Button {
+                                widthRaw = i
+                                canvas?.strokeWidth = widths[i]
+                            } label: {
+                                Circle()
+                                    .fill(widthRaw == i ? QJTheme.textPrimary : QJTheme.textSecondary.opacity(0.45))
+                                    .frame(width: CGFloat(4 + i * 3))
+                                    .frame(width: 22, height: 24)
+                            }
+                            .buttonStyle(QJTheme.QJPressStyle())
+                            .help("粗细")
+                        }
+                    }
                 }
             }
 
-            // 粗细
-            HStack(spacing: 2) {
-                ForEach(widths.indices, id: \.self) { i in
-                    Button {
-                        widthRaw = i
-                        canvas?.strokeWidth = widths[i]
-                    } label: {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(widthRaw == i ? QJTheme.accent : QJTheme.textSecondary)
-                            .frame(width: 16, height: CGFloat(2 + i * 3))
-                            .frame(width: 24, height: 24)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
+            QJTheme.groupSeparator
 
-            QJToolbarDivider()
-
-            // 撤销
+            // ── 撤销
             Button {
                 canvas?.undo()
                 canvas?.needsDisplay = true
             } label: {
                 QJTheme.toolIcon("arrow.uturn.backward", active: false)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(QJTheme.QJPressStyle())
             .help("撤销 (⌘Z)")
 
-            Spacer(minLength: 4)
+            QJTheme.groupSeparator
 
-            // 动作组
+            // ── 复制 / 贴图（纯图标，悬停有中文提示）
             Button {
                 canvas?.copyImageToPasteboard()
             } label: {
-                QJTheme.secondaryButtonLabel("复制", systemImage: "doc.on.doc")
+                QJTheme.toolIcon("doc.on.doc", active: false)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(QJTheme.QJPressStyle())
+            .help("复制到剪贴板 (⌘C)")
 
             Button {
-                // 贴图 = 钉出来对照，不落盘不进历史 → 对保存链路等同"取消"
                 canvas?.pinImage()
                 controller.cancel()
             } label: {
-                QJTheme.secondaryButtonLabel("贴图", systemImage: "pin")
+                QJTheme.toolIcon("pin", active: false)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(QJTheme.QJPressStyle())
+            .help("钉在桌面上（贴图）")
 
-            Button {
-                controller.cancel()
-            } label: {
-                QJTheme.secondaryButtonLabel("取消", systemImage: "xmark")
-            }
-            .buttonStyle(.plain)
+            QJTheme.groupSeparator
 
-            Button {
-                controller.confirm()
-            } label: {
-                QJTheme.primaryButtonLabel("保存", systemImage: "square.and.arrow.down")
+            // ── 取消 / 保存
+            HStack(spacing: 8) {
+                Button {
+                    controller.cancel()
+                } label: {
+                    QJTheme.secondaryButtonLabel("取消")
+                }
+                .buttonStyle(QJTheme.QJPressStyle())
+                .help("放弃截图 (Esc)")
+
+                Button {
+                    controller.confirm()
+                } label: {
+                    QJTheme.primaryButtonLabel("保存", systemImage: "square.and.arrow.down")
+                }
+                .buttonStyle(QJTheme.QJPressStyle())
+                .help("保存 (Enter)")
             }
-            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 14)
         .frame(height: QJTheme.barHeight)
         .background(QJTheme.barBackground)
+        .onChange(of: activeTool) { _, _ in
+            controller.toolbarNeedsLayout()
+        }
     }
-}
 
-/// 工具栏竖分隔线。
-private struct QJToolbarDivider: View {
-    var body: some View {
-        Rectangle()
-            .fill(QJTheme.separator)
-            .frame(width: 0.5, height: 22)
+    /// 精选图标映射（统一线性风格；覆盖编辑器的默认选型）
+    private func iconName(for tool: AnnotationTool) -> String {
+        switch tool {
+        case .select: "arrow.up.and.down.and.arrow.left.and.right"
+        case .rectangle: "rectangle"
+        case .arrow: "arrow.up.right"
+        case .text: "character.cursor.ibeam"
+        case .blur: "checkerboard.rectangle"
+        case .numberedCircle: "1.circle"
+        default: "circle"
+        }
     }
 }
