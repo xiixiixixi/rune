@@ -105,6 +105,7 @@ struct PinnedScreenshotView: View {
                 .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 4)
                 .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
                 .opacity(opacity)   // P1：透明度
+                .help("滚轮：缩放大小 ｜ 拖动：移动位置 ｜ 右键：透明度 / 鼠标穿透 / 关闭")
                 .onHover { hovering in
                     withAnimation(.easeInOut(duration: 0.15)) {
                         isHovered = hovering
@@ -121,6 +122,7 @@ struct PinnedScreenshotView: View {
                 }
                 .buttonStyle(.plain)
                 .padding(4)
+                .help("关闭贴图")
                 .transition(.opacity.animation(.easeInOut(duration: 0.15)))
             }
         }
@@ -136,7 +138,7 @@ struct PinnedScreenshotView: View {
         }
         // Right-click context menu（含透明度/穿透切换）
         .contextMenu {
-            Button("Copy Image") {
+            Button("复制图片") {
                 let pb = NSPasteboard.general
                 pb.clearContents()
                 pb.writeObjects([image])
@@ -144,12 +146,12 @@ struct PinnedScreenshotView: View {
             Divider()
             // P1 贴图增强：透明度调节
             Slider(value: $opacity, in: 0.2...1.0, step: 0.1) {
-                Text("Opacity: \(Int(opacity * 100))%")
+                Text("透明度：\(Int(opacity * 100))%")
             }
             // P1 贴图增强：鼠标穿透切换
-            Toggle("Click-Through (鼠标穿透)", isOn: $clickThrough)
+            Toggle("鼠标穿透", isOn: $clickThrough)
             Divider()
-            Button("Close") {
+            Button("关闭") {
                 onClose()
             }
         }

@@ -222,7 +222,7 @@ struct PreviewCardView: View {
             VStack {
                 HStack {
                     // Delete
-                    cornerButton("trash.circle.fill") {
+                    cornerButton("trash.circle.fill", help: "删除这张截图（连同文件）") {
                         if let url = overlay.currentURL {
                             if let record = HistoryStore.shared.records.first(where: {
                                 HistoryStore.shared.urlForRecord($0) == url
@@ -236,7 +236,7 @@ struct PreviewCardView: View {
                     }
                     Spacer()
                     // Dismiss
-                    cornerButton("xmark.circle.fill") {
+                    cornerButton("xmark.circle.fill", help: "关闭预览") {
                         overlay.dismiss()
                     }
                 }
@@ -245,12 +245,12 @@ struct PreviewCardView: View {
 
                 HStack {
                     // Annotate (pen icon)
-                    cornerButton("pencil.circle.fill") {
+                    cornerButton("pencil.circle.fill", help: "打开编辑器，标注这张图") {
                         overlay.openAnnotateEditor()
                     }
                     Spacer()
                     // Pin screenshot
-                    cornerButton("pin.circle.fill") {
+                    cornerButton("pin.circle.fill", help: "钉在桌面上（贴图）") {
                         if let url = overlay.currentURL {
                             PinnedScreenshotController.shared.pin(url: url)
                         }
@@ -262,20 +262,20 @@ struct PreviewCardView: View {
 
             // Center pill actions
             HStack(spacing: 6) {
-                pillButton("Copy") {
+                pillButton("复制") {
                     let pb = NSPasteboard.general
                     pb.clearContents()
                     pb.writeObjects([image])
                     overlay.dismiss()
                 }
-                pillButton("Save") {
+                pillButton("保存") {
                     overlay.dismiss()
                 }
             }
         }
     }
 
-    private func cornerButton(_ systemName: String, action: @escaping () -> Void) -> some View {
+    private func cornerButton(_ systemName: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
                 .symbolRenderingMode(.palette)
@@ -283,6 +283,7 @@ struct PreviewCardView: View {
                 .font(.system(size: 16))
         }
         .buttonStyle(.plain)
+        .help(help)
     }
 
     private func pillButton(_ title: String, action: @escaping () -> Void) -> some View {

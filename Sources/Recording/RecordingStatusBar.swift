@@ -34,12 +34,13 @@ struct RecordingStatusBarView: View {
                 iconButton(icon: isPaused ? "play.fill" : "pause.fill") {
                     recorder.togglePause()
                 }
+                .help(isPaused ? "继续录制" : "暂停录制")
 
                 iconButton(icon: "stop.fill", tint: .red) {
                     Task {
                         RecordingStatusBarController.shared.dismiss()
                         if let url = await recorder.stopRecording() {
-                            let record = HistoryStore.shared.importCapture(from: url, deleteSource: false, kind: .recording)
+                            let record = await HistoryStore.shared.importCapture(from: url, deleteSource: false, kind: .recording)
                             if let record {
                                 let storeURL = HistoryStore.shared.urlForRecord(record)
                                 PreviewOverlay.shared.show(url: storeURL)
@@ -47,6 +48,7 @@ struct RecordingStatusBarView: View {
                         }
                     }
                 }
+                .help("结束并保存录像")
 
                 iconButton(icon: "arrow.counterclockwise") {
                     Task {
@@ -57,6 +59,7 @@ struct RecordingStatusBarView: View {
                         }
                     }
                 }
+                .help("重新录制（丢弃当前这段）")
 
                 iconButton(icon: "xmark") {
                     Task {
@@ -64,6 +67,7 @@ struct RecordingStatusBarView: View {
                         await recorder.cancelRecording()
                     }
                 }
+                .help("取消录制（不保存）")
             }
             .padding(.leading, 6)
             .padding(.trailing, 8)

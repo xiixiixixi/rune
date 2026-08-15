@@ -37,7 +37,7 @@ struct ConfirmToolbarView: View {
                         QJTheme.toolIcon(iconName(for: tool), active: activeTool == tool)
                     }
                     .buttonStyle(QJTheme.QJPressStyle())
-                    .help(tool.title)
+                    .help(tooltip(for: tool))
                 }
             }
 
@@ -81,7 +81,7 @@ struct ConfirmToolbarView: View {
                                     .frame(width: 22, height: 24)
                             }
                             .buttonStyle(QJTheme.QJPressStyle())
-                            .help("粗细")
+                            .help("粗细：\(["细", "中", "粗"][min(i, 2)])")
                         }
                     }
                 }
@@ -158,6 +158,19 @@ struct ConfirmToolbarView: View {
         case .blur: "checkerboard.rectangle"
         case .numberedCircle: "1.circle"
         default: "circle"
+        }
+    }
+
+    /// 悬停说明：名称 + 一句话用法（小白也能看懂）
+    private func tooltip(for tool: AnnotationTool) -> String {
+        switch tool {
+        case .select: "选择：点选已画的标注，拖动位置，按 Delete 删除"
+        case .rectangle: "矩形：在图上拖拽画一个方框"
+        case .arrow: "箭头：拖拽画一个指示箭头"
+        case .text: "文字：点击图上任意位置输入文字"
+        case .blur: "马赛克：拖拽框住想打码的区域"
+        case .numberedCircle: "编号圆点：点击放置编号（1、2、3…自动递增）"
+        default: tool.title
         }
     }
 }
