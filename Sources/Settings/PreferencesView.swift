@@ -620,13 +620,13 @@ struct CaptureSettingsTab: View {
 
             Section("键盘快捷键") {
                 VStack(alignment: .leading, spacing: 8) {
-                    ShortcutRow(label: "区域截图", action: .region)
-                    ShortcutRow(label: "全屏截图", action: .fullscreen)
-                    ShortcutRow(label: "窗口截图", action: .window)
-                    ShortcutRow(label: "区域文字识别", action: .ocr)
+                    ShortcutRow(label: "截图（主入口）", action: .main)
+                    ShortcutRow(label: "截图（旧键·区域）", action: .region)
+                    ShortcutRow(label: "截图（旧键·全屏）", action: .fullscreen)
+                    ShortcutRow(label: "截图（旧键·窗口）", action: .window)
                     ShortcutRow(label: "取色器", action: .colorPicker)
-                    ShortcutRow(label: "录制屏幕", action: .recording)
                     ShortcutRow(label: "连续截图（金手指）", action: .burst)
+                    // 文字识别/滚动截图已并入主入口：截完图后在底部工具栏选择
                 }
                 .id(shortcutResetID)
 
@@ -634,6 +634,7 @@ struct CaptureSettingsTab: View {
                     for action in ShortcutService.Action.allCases {
                         let def: ShortcutService.Shortcut? = switch action {
                         case .region: .defaultRegion
+                        case .main: .defaultMain
                         case .fullscreen: .defaultFullscreen
                         case .ocr: .defaultOCR
                         case .colorPicker: .defaultColorPicker
@@ -659,6 +660,7 @@ struct CaptureSettingsTab: View {
                     for action in ShortcutService.Action.allCases {
                         let def: ShortcutService.Shortcut? = switch action {
                         case .region: .defaultRegion
+                        case .main: .defaultMain
                         case .fullscreen: .defaultFullscreen
                         case .ocr: .defaultOCR
                         case .colorPicker: .defaultColorPicker
@@ -804,6 +806,7 @@ struct ShortcutRow: View {
     private var defaultShortcut: ShortcutService.Shortcut {
         switch action {
         case .region: return .defaultRegion
+        case .main: return .defaultMain
         case .fullscreen: return .defaultFullscreen
         case .window: return .defaultWindow
         case .ocr: return .defaultOCR

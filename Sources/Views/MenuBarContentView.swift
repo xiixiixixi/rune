@@ -62,14 +62,46 @@ struct MenuBarContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            captureGrid
-                .padding(.horizontal, 10)
-                .padding(.top, 10)
-                .padding(.bottom, 8)
+            // ── 唯一主入口（飞书/钉钉式）：截完图，功能才会在底部工具栏出现
+            VStack(spacing: 6) {
+                Button {
+                    dismissAndRun(.main)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "camera.viewfinder")
+                            .font(.system(size: 17, weight: .semibold))
+                        Text("截图")
+                            .font(.system(size: 15, weight: .semibold))
+                        Spacer()
+                        Text("⇧⌘A")
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.75))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .frame(height: 44)
+                    .background(
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .fill(QJTheme.accent)
+                    )
+                    .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                }
+                .buttonStyle(QJTheme.QJPressStyle())
+                .help("拖拽＝自定义区域 · 点窗口＝截整窗 · 点桌面空白＝截全屏")
+
+                Text("拖＝选区域 · 点窗口＝整窗 · 点桌面＝全屏，截完后再标注、识别文字或转长图")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 12)
+            .padding(.bottom, 10)
 
             TrayDivider()
 
-            utilityGrid
+            secondaryGrid
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
 
@@ -96,39 +128,23 @@ struct MenuBarContentView: View {
         .frame(width: 290)
     }
 
-    // MARK: - Capture Grid
+    // MARK: - Secondary Grid（过程性功能 + 记录）
 
-    private var captureGrid: some View {
+    private var recentScreenshots: [CaptureRecord] {
+        HistoryStore.shared.records.filter { $0.kind == .screenshot }
+    }
+
+    private var recentRecordings: [CaptureRecord] {
+        HistoryStore.shared.records.filter { $0.kind == .recording }
+    }
+
+    private var secondaryGrid: some View {
         let columns = [
             GridItem(.flexible(), spacing: 6),
             GridItem(.flexible(), spacing: 6),
         ]
 
         return LazyVGrid(columns: columns, spacing: 6) {
-            TrayGridButton(title: "区域截图", icon: "rectangle.dashed", shortcut: "⇧⌘E") {
-                dismissAndRun(.region)
-            }
-
-            TrayGridButton(title: "全屏截图", icon: "desktopcomputer", shortcut: "⇧⌘S") {
-                dismissAndRun(.fullscreen)
-            }
-
-            TrayGridButton(title: "窗口截图", icon: "macwindow", shortcut: "⇧⌘W") {
-                dismissAndRun(.window)
-            }
-
-            TrayGridMenu(title: "连续截图", icon: "camera.burst", menuItems: [
-                TrayMenuItem(title: "连续模式（⌘⇧B）", icon: "camera.burst") {
-                    dismissAndRunBurst(mode: .burst)
-                },
-                TrayMenuItem(title: "固定拍摄 10 张", icon: "10.circle") {
-                    dismissAndRunBurst(mode: .fixedCount)
-                },
-                TrayMenuItem(title: "延时拍摄（每 5 秒）", icon: "timer") {
-                    dismissAndRunBurst(mode: .timelapse)
-                },
-            ])
-
             TrayGridMenu(title: "录屏", icon: "record.circle", menuItems: [
                 TrayMenuItem(title: "全屏录制", icon: "desktopcomputer") {
                     nonisolated(unsafe) let screen = originScreen
@@ -147,33 +163,6 @@ struct MenuBarContentView: View {
                     }
                 },
             ])
-
-            TrayGridButton(title: "滚动截图", icon: "rectangle.stack") {
-                dismissAndRunScrollCapture()
-            }
-        }
-    }
-
-    // MARK: - Utility Grid
-
-    private var recentScreenshots: [CaptureRecord] {
-        HistoryStore.shared.records.filter { $0.kind == .screenshot }
-    }
-
-    private var recentRecordings: [CaptureRecord] {
-        HistoryStore.shared.records.filter { $0.kind == .recording }
-    }
-
-    private var utilityGrid: some View {
-        let columns = [
-            GridItem(.flexible(), spacing: 6),
-            GridItem(.flexible(), spacing: 6),
-        ]
-
-        return LazyVGrid(columns: columns, spacing: 6) {
-            TrayGridButton(title: "文字识别", icon: "doc.text.viewfinder", shortcut: "⇧⌘O") {
-                dismissAndRun(.ocr)
-            }
 
             TrayGridMenu(title: "最近记录", icon: "clock.arrow.circlepath", menuItems: recentMenuItems())
         }

@@ -35,6 +35,8 @@ final class ShortcutService {
 
         // M1 §5 默认键位：区域 ⌘⇧E、全屏 ⌘⇧S、窗口 ⌘⇧W（不再覆盖系统截图快捷键 ⌘⇧3/4/5）
         static let defaultRegion      = Shortcut(keyCode: UInt32(kVK_ANSI_E), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
+        // 单一主入口（飞书/钉钉习惯）：⌘⇧A 截图——功能在截完之后展示
+        static let defaultMain        = Shortcut(keyCode: UInt32(kVK_ANSI_A), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
         static let defaultFullscreen  = Shortcut(keyCode: UInt32(kVK_ANSI_S), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
         static let defaultWindow      = Shortcut(keyCode: UInt32(kVK_ANSI_W), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
         static let defaultOCR         = Shortcut(keyCode: UInt32(kVK_ANSI_O), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
@@ -51,6 +53,7 @@ final class ShortcutService {
         case colorPicker = 5
         case recording = 6
         case burst = 7
+        case main = 8
     }
 
     // MARK: - Registration (Carbon RegisterEventHotKey)
@@ -99,6 +102,7 @@ final class ShortcutService {
     private func defaultShortcut(for action: Action) -> Shortcut {
         switch action {
         case .region:      return .defaultRegion
+        case .main:        return .defaultMain
         case .fullscreen:  return .defaultFullscreen
         case .window:      return .defaultWindow
         case .ocr:         return .defaultOCR

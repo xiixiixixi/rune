@@ -101,6 +101,25 @@ struct ConfirmToolbarView: View {
 
             QJTheme.groupSeparator
 
+            // ── 功能组（截图之后展示的功能：识别文字 / 滚动长图）
+            Button {
+                canvas?.recognizeText { message in
+                    ToastWindow.shared.show(title: "文字识别", message: message, systemIcon: "doc.text.viewfinder")
+                }
+            } label: {
+                QJTheme.toolIcon("doc.text.viewfinder", active: false)
+            }
+            .buttonStyle(QJTheme.QJPressStyle())
+            .help("识别文字：提取图里的文字并复制（中英文/条码）")
+
+            Button {
+                controller.requestScrollCapture()
+            } label: {
+                QJTheme.toolIcon("arrow.down.doc", active: false)
+            }
+            .buttonStyle(QJTheme.QJPressStyle())
+            .help("滚动长图：把当前选区转为滚动截图，往下滚完拼成一张长图")
+
             // ── 复制 / 贴图（纯图标，悬停有中文提示）
             Button {
                 canvas?.copyImageToPasteboard()

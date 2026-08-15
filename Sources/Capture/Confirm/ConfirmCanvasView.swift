@@ -390,6 +390,21 @@ final class ConfirmCanvasView: NSView {
 
     // MARK: - 工具栏动作（复制 / 贴图）
 
+    /// 「识别文字」：对当前图（含标注）做 OCR，结果进剪贴板。
+    func recognizeText(onDone: @escaping (String) -> Void) {
+        guard let cg = renderedImage() else { return }
+        Task { @MainActor in
+            if let result = try? await OCRService.shared.recognize(in: cg), !result.isEmpty {
+                let pb = NSPasteboard.general
+                pb.clearContents()
+                pb.setString(result.combinedText, forType: .string)
+                onDone("识别结果已复制到剪贴板")
+            } else {
+                onDone("未识别到文字")
+            }
+        }
+    }
+
     /// 渲染"截图+标注"成品（复用 BeautifierRenderer 的标注烘焙）。
     /// 用用户设置的美化配置（与保存链一致——此前写死默认值，贴图/复制会和保存效果不一致）。
     func renderedImage() -> CGImage? {

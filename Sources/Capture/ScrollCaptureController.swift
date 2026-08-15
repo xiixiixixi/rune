@@ -25,16 +25,22 @@ final class ScrollCaptureController {
 
     private init() {}
 
-    func start(on screen: NSScreen? = nil) async {
+    func start(on screen: NSScreen? = nil, presetRegion: CGRect? = nil) async {
         guard !isActive else { return }
         guard requestPermissionIfNeeded() else { return }
 
-        statusMessage = "请框选需要滚动的内容"
-        guard let selection = await RegionSelectionOverlay().selectRegion() else { return }
+        // 预设选区（从确认画面「滚动长图」转入）时跳过框选
+        var pointsRect = presetRegion
+        if pointsRect == nil {
+            statusMessage = "请框选需要滚动的内容"
+            guard let selection = await RegionSelectionOverlay().selectRegion() else { return }
+            pointsRect = selection.pointsRect
+        }
+        guard let pointsRect else { return }
 
         do {
-            let first = try await engine.capture(.region(selection.pointsRect))
-            targetRect = selection.pointsRect
+            let first = try await engine.capture(.region(pointsRect))
+            targetRect = pointsRect
             previousImage = first.image
             segments = [first.image]
             scaleFactor = first.scaleFactor

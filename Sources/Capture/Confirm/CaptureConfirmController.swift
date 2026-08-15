@@ -15,6 +15,8 @@ final class CaptureConfirmController: NSObject {
     private var toolbarPanel: NSPanel?
     private var continuation: CheckedContinuation<[AnnotationItem]?, Never>?
     private var targetScreen: NSScreen?
+    /// 原始选区（CG 全局点坐标）——「滚动长图」用它重启滚动截图
+    private var capturedRegion: CGRect?
 
     /// 画布视图（弱引用供工具栏驱动）
     private(set) weak var canvas: ConfirmCanvasView?
@@ -28,11 +30,12 @@ final class CaptureConfirmController: NSObject {
     ///   - image: 截好的图（CGImage）
     ///   - screen: 截图所在屏（工具栏贴这个屏的底部）
     /// - Returns: 用户确认时返回标注列表（可为空数组=不带标注保存）；取消返回 nil
-    func present(image: CGImage, on screen: NSScreen?) async -> [AnnotationItem]? {
+    func present(image: CGImage, on screen: NSScreen?, region: CGRect? = nil) async -> [AnnotationItem]? {
         // 防重入：已有确认会话时直接取消新的
         guard continuation == nil else { return nil }
 
         let targetScreen = screen ?? NSScreen.main ?? NSScreen.screens.first!
+        capturedRegion = region
 
         return await withCheckedContinuation { cont in
             self.continuation = cont
@@ -139,6 +142,19 @@ final class CaptureConfirmController: NSObject {
     /// 用户点取消/按 Esc。零残留。
     func cancel() {
         finish(result: nil)
+    }
+
+    /// 「滚动长图」：结束当前确认（不保存），让编排器以当前选区重启滚动截图。
+    /// 通过返回 nil 取消确认流，滚动意图记在 pendingScrollRegion，由编排器轮询。
+    private(set) var pendingScrollRegion: CGRect?
+    func requestScrollCapture() {
+        pendingScrollRegion = capturedRegion
+        finish(result: nil)
+    }
+
+    /// 编排器消费转滚动意图后清空。
+    func clearPendingScroll() {
+        pendingScrollRegion = nil
     }
 
     private func finish(result: [AnnotationItem]?) {

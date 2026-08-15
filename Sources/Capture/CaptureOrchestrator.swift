@@ -38,8 +38,8 @@ final class CaptureOrchestrator {
 
     private func executeCapture(_ action: ShortcutService.Action) async {
         switch action {
-        case .region:
-            // M1 第⑤步（续）：区域截图改走应用自己的 overlay + SCK 引擎。
+        case .region, .main:
+            // 区域+窗口+全屏三合一交互；main=单一主入口 ⌘⇧A（功能截完再展示）
             await captureRegionViaSCK()
         case .fullscreen:
             // 区域+窗口+全屏合并：三种截图同一交互
@@ -140,7 +140,11 @@ final class CaptureOrchestrator {
 
         ScreenCapture.shared.playShutterSound()
         // 冻结屏+底部工具栏跟随实际框选所在屏（而非按热键时鼠标所在屏）
-        await processCapturedFrame(frame, on: Self.screen(forDisplayID: selection.displayID))
+        await processCapturedFrame(
+            frame,
+            on: Self.screen(forDisplayID: selection.displayID),
+            region: selection.pointsRect
+        )
     }
 
     /// M1 第⑤步（续）：窗口截图经应用自己的 WindowPickerOverlay 拿窗口 ID，
@@ -183,12 +187,23 @@ final class CaptureOrchestrator {
     /// 流程：截图 → 确认模式（冻结屏+底部工具栏，可就地标注）→
     /// - 取消/Esc：直接 return，零残留（不写文件、不建历史）
     /// - 保存/Enter：带着标注走落盘链（临时文件→HistoryStore→美化烘焙标注→预览）
-    private func processCapturedFrame(_ frame: CapturedFrame, on screen: NSScreen? = nil) async {
-        // 确认模式：用户在冻结屏上标注，点保存才继续
+    private func processCapturedFrame(
+        _ frame: CapturedFrame,
+        on screen: NSScreen? = nil,
+        region: CGRect? = nil
+    ) async {
+        // 确认模式：用户在冻结屏上标注，点保存才继续。
+        // 「滚动长图」会以 nil 结束确认并留下 pendingScrollRegion → 转滚动截图。
         let annotations = await CaptureConfirmController.shared.present(
             image: frame.image,
-            on: screen ?? captureScreen
+            on: screen ?? captureScreen,
+            region: region
         )
+        if let scrollRegion = CaptureConfirmController.shared.pendingScrollRegion {
+            CaptureConfirmController.shared.clearPendingScroll()
+            await ScrollCaptureController.shared.start(on: screen, presetRegion: scrollRegion)
+            return
+        }
         guard let annotations else { return }   // 取消：零残留
 
         guard let tempURL = writeCGImageToTemp(frame.image) else { return }
