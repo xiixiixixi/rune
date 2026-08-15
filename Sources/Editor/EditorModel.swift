@@ -548,7 +548,7 @@ final class EditorModel {
 
     func saveConfigAsDefault() {
         AppPreferences.defaultBeautifierConfig = config
-        toastMessage = "Saved as default"
+        toastMessage = "已保存为默认设置"
     }
 
     // MARK: - Private Interaction Helpers

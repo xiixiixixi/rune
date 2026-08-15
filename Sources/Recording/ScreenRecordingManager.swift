@@ -2,6 +2,33 @@ import ScreenCaptureKit
 import AVFoundation
 import AppKit
 
+/// SCStream 在后台线程回调，主界面在主线程启停录制。
+/// 这个小盒子负责安全地转交当前录制会话，避免两个线程同时读写同一个变量。
+private final class RecordingSessionSink: @unchecked Sendable {
+    private let lock = NSLock()
+    private var session: RecordingSession?
+
+    func set(_ session: RecordingSession?) {
+        lock.lock()
+        self.session = session
+        lock.unlock()
+    }
+
+    func appendVideo(_ sampleBuffer: CMSampleBuffer) {
+        lock.lock()
+        let current = session
+        lock.unlock()
+        current?.appendVideoSample(sampleBuffer)
+    }
+
+    func appendAudio(_ sampleBuffer: CMSampleBuffer) {
+        lock.lock()
+        let current = session
+        lock.unlock()
+        current?.appendAudioSample(sampleBuffer)
+    }
+}
+
 @MainActor
 @Observable
 final class ScreenRecordingManager: NSObject {
@@ -22,10 +49,10 @@ final class ScreenRecordingManager: NSObject {
     private var session: RecordingSession?
     private var outputURL: URL?
     private var timer: Timer?
-    nonisolated(unsafe) private var _streamSession: RecordingSession?
+    nonisolated private let streamSessionSink = RecordingSessionSink()
 
-    private let videoQueue = DispatchQueue(label: "com.bettershot.recording.video", qos: .userInitiated)
-    private let audioQueue = DispatchQueue(label: "com.bettershot.recording.audio", qos: .userInteractive)
+    private let videoQueue = DispatchQueue(label: "com.tc.qingjie.recording.video", qos: .userInitiated)
+    private let audioQueue = DispatchQueue(label: "com.tc.qingjie.recording.audio", qos: .userInteractive)
 
     private override init() { super.init() }
 
@@ -33,17 +60,19 @@ final class ScreenRecordingManager: NSObject {
 
     // MARK: - Start
 
-    func startRecording() async throws -> Bool {
-        return try await startFullScreenRecording()
+    func startRecording(on screen: NSScreen? = nil) async throws -> Bool {
+        return try await startFullScreenRecording(on: screen)
     }
 
-    func startFullScreenRecording() async throws -> Bool {
+    func startFullScreenRecording(on screen: NSScreen? = nil) async throws -> Bool {
         guard state == .idle else { return false }
         state = .preparing
 
         let captureAudio = AppPreferences.recordingCaptureAudio
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-        guard let display = content.displays.first else {
+        let requestedID = screen.flatMap { Self.displayID(for: $0) }
+        guard let display = requestedID.flatMap({ id in content.displays.first { $0.displayID == id } })
+                ?? content.displays.first else {
             state = .idle
             return false
         }
@@ -57,8 +86,10 @@ final class ScreenRecordingManager: NSObject {
             exceptingWindows: []
         )
 
-        let captureWidth = display.width * 2
-        let captureHeight = display.height * 2
+        let contentRect = filter.contentRect
+        let pointPixelScale = CGFloat(filter.pointPixelScale)
+        let captureWidth = Int(contentRect.width * pointPixelScale)
+        let captureHeight = Int(contentRect.height * pointPixelScale)
 
         return try await beginCapture(
             filter: filter,
@@ -77,7 +108,9 @@ final class ScreenRecordingManager: NSObject {
         state = .preparing
         let captureAudio = AppPreferences.recordingCaptureAudio
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-        guard let display = content.displays.first else {
+        let center = CGPoint(x: selection.pointsRect.midX, y: selection.pointsRect.midY)
+        guard let display = content.displays.first(where: { $0.frame.contains(center) })
+                ?? content.displays.first else {
             state = .idle
             return false
         }
@@ -91,30 +124,22 @@ final class ScreenRecordingManager: NSObject {
             exceptingWindows: []
         )
 
-        let contentRect = try await filter.contentRect
-        let pointPixelScale = try await filter.pointPixelScale
-
-        let screenFrame = NSScreen.screens.first?.frame ?? NSRect(x: 0, y: 0, width: CGFloat(display.width), height: CGFloat(display.height))
-
-        let selRect = selection.pointsRect
-        let clampedX = max(selRect.minX, screenFrame.minX)
-        let clampedY = max(selRect.minY, 0)
-        let clampedMaxX = min(selRect.maxX, screenFrame.maxX)
-        let clampedMaxY = min(selRect.maxY, screenFrame.height)
-
-        let scaleX = contentRect.width / screenFrame.width
-        let scaleY = contentRect.height / screenFrame.height
-
-        let sourceX = contentRect.minX + (clampedX - screenFrame.minX) * scaleX
-        let sourceY = contentRect.minY + clampedY * scaleY
-        let sourceW = (clampedMaxX - clampedX) * scaleX
-        let sourceH = (clampedMaxY - clampedY) * scaleY
-
-        let mappedSourceRect = CGRect(x: sourceX, y: sourceY, width: sourceW, height: sourceH)
+        let pointPixelScale = filter.pointPixelScale
+        let clamped = selection.pointsRect.intersection(display.frame)
+        guard !clamped.isNull, clamped.width > 0, clamped.height > 0 else {
+            state = .idle
+            return false
+        }
+        let mappedSourceRect = CGRect(
+            x: clamped.minX - display.frame.minX,
+            y: clamped.minY - display.frame.minY,
+            width: clamped.width,
+            height: clamped.height
+        )
 
         let scale = CGFloat(pointPixelScale)
-        let captureWidth = Int(sourceW * scale)
-        let captureHeight = Int(sourceH * scale)
+        let captureWidth = Int(clamped.width * scale)
+        let captureHeight = Int(clamped.height * scale)
 
         return try await beginCapture(
             filter: filter,
@@ -153,7 +178,7 @@ final class ScreenRecordingManager: NSObject {
 
         let dir = AppPreferences.saveDirectory
         let stamp = Int(Date().timeIntervalSince1970 * 1000)
-        let path = "\(dir)/bettershot_\(stamp).mp4"
+        let path = "\(dir)/录屏_\(stamp).mp4"
         let url = URL(fileURLWithPath: path)
         outputURL = url
 
@@ -171,7 +196,7 @@ final class ScreenRecordingManager: NSObject {
         }
 
         self.session = recordingSession
-        self._streamSession = recordingSession
+        streamSessionSink.set(recordingSession)
 
         let scStream = SCStream(filter: filter, configuration: config, delegate: self)
         try scStream.addStreamOutput(self, type: .screen, sampleHandlerQueue: videoQueue)
@@ -210,7 +235,7 @@ final class ScreenRecordingManager: NSObject {
         session?.finishInputs()
         await session?.finishWriting()
         session = nil
-        _streamSession = nil
+        streamSessionSink.set(nil)
 
         state = .idle
         elapsedSeconds = 0
@@ -257,7 +282,7 @@ final class ScreenRecordingManager: NSObject {
 
         session?.cancelWriting()
         session = nil
-        _streamSession = nil
+        streamSessionSink.set(nil)
 
         if let url = outputURL {
             try? FileManager.default.removeItem(at: url)
@@ -282,6 +307,11 @@ final class ScreenRecordingManager: NSObject {
         timer?.invalidate()
         timer = nil
     }
+
+    private static func displayID(for screen: NSScreen) -> CGDirectDisplayID? {
+        let key = NSDeviceDescriptionKey(rawValue: "NSScreenNumber")
+        return (screen.deviceDescription[key] as? NSNumber).map { CGDirectDisplayID($0.uint32Value) }
+    }
 }
 
 // MARK: - SCStreamDelegate
@@ -303,9 +333,11 @@ extension ScreenRecordingManager: SCStreamOutput {
         switch type {
         case .screen:
             guard sampleBuffer.isValid else { return }
-            _streamSession?.appendVideoSample(sampleBuffer)
+            streamSessionSink.appendVideo(sampleBuffer)
         case .audio:
-            _streamSession?.appendAudioSample(sampleBuffer)
+            streamSessionSink.appendAudio(sampleBuffer)
+        case .microphone:
+            break
         @unknown default:
             break
         }

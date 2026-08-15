@@ -2,12 +2,12 @@ import SwiftUI
 import Carbon
 
 enum SettingsSection: String, CaseIterable, Identifiable {
-    case general = "General"
-    case capture = "Capture"
-    case recording = "Recording"
-    case history = "History"
-    case videos = "Videos"
-    case about = "About"
+    case general = "通用"
+    case capture = "截图"
+    case recording = "录屏"
+    case history = "截图记录"
+    case videos = "录屏记录"
+    case about = "关于"
 
     var id: String { rawValue }
 
@@ -101,8 +101,8 @@ struct GeneralSettingsTab: View {
 
     var body: some View {
         Form {
-            Section("Appearance") {
-                Picker("Mode", selection: appAppearance) {
+            Section("外观") {
+                Picker("模式", selection: appAppearance) {
                     ForEach(AppAppearance.allCases) { appearance in
                         Text(appearance.label).tag(appearance)
                     }
@@ -110,15 +110,15 @@ struct GeneralSettingsTab: View {
                 .pickerStyle(.segmented)
             }
 
-            Section("Save") {
+            Section("保存") {
                 HStack {
-                    Text("Save to")
+                    Text("保存到")
                     Spacer()
                     Text(saveDirDisplayName)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.head)
-                    Button("Choose...") {
+                    Button("选择…") {
                         let panel = NSOpenPanel()
                         panel.canChooseFiles = false
                         panel.canChooseDirectories = true
@@ -131,25 +131,25 @@ struct GeneralSettingsTab: View {
                     .controlSize(.small)
                 }
 
-                Toggle("Copy to clipboard after saving", isOn: $copyAfterSave)
+                Toggle("保存后复制到剪贴板", isOn: $copyAfterSave)
             }
 
-            Section("Capture") {
-                Toggle("Play shutter sound", isOn: $playSound)
+            Section("截图") {
+                Toggle("播放快门声", isOn: $playSound)
             }
 
-            Section("Default Effects") {
+            Section("默认效果") {
                 DefaultConfigPreview(config: defaultConfig)
                     .frame(height: 120)
                     .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4))
 
-                defaultSlider(label: "Padding", value: $defaultConfig.padding, range: 0.0...0.45) {
+                defaultSlider(label: "边距", value: $defaultConfig.padding, range: 0.0...0.45) {
                     "\(Int($0 * 100))%"
                 }
-                defaultSlider(label: "Corner Radius", value: $defaultConfig.cornerRadius, range: 0.0...0.12) {
+                defaultSlider(label: "圆角", value: $defaultConfig.cornerRadius, range: 0.0...0.12) {
                     "\(Int($0 * 1000))"
                 }
-                defaultSlider(label: "Shadow", value: $defaultConfig.shadowStrength, range: 0.0...1.0) {
+                defaultSlider(label: "阴影", value: $defaultConfig.shadowStrength, range: 0.0...1.0) {
                     "\(Int($0 * 100))%"
                 }
             }
@@ -160,7 +160,7 @@ struct GeneralSettingsTab: View {
             Section {
                 DefaultBackgroundPicker(selectedStyle: $defaultConfig.style)
 
-                Button("Reset Effects to Defaults") {
+                Button("恢复默认效果") {
                     defaultConfig = .default
                     AppPreferences.defaultBeautifierConfig = .default
                 }
@@ -168,7 +168,7 @@ struct GeneralSettingsTab: View {
                 .foregroundStyle(.secondary)
             } header: {
                 HStack {
-                    Text("Default Background")
+                    Text("默认背景")
                     Spacer()
                     Text(backgroundLabel(for: defaultConfig.style))
                         .font(.caption)
@@ -177,8 +177,8 @@ struct GeneralSettingsTab: View {
                 }
             }
 
-            Section("Export") {
-                Picker("Format", selection: exportFormat) {
+            Section("导出") {
+                Picker("格式", selection: exportFormat) {
                     ForEach(ExportFormat.allCases, id: \.self) { format in
                         Text(format.rawValue.uppercased()).tag(format)
                     }
@@ -187,12 +187,12 @@ struct GeneralSettingsTab: View {
 
                 if exportFormatRaw == ExportFormat.jpeg.rawValue {
                     Slider(value: $exportQuality, in: 0.1...1.0, step: 0.05) {
-                        Text("Quality: \(Int(exportQuality * 100))%")
+                        Text("质量：\(Int(exportQuality * 100))%")
                     }
                 }
 
                 // M2 自动命名保存：文件名格式选择
-                Picker("File naming", selection: Binding(
+                Picker("文件命名", selection: Binding(
                     get: { FileNameFormat(rawValue: fileNameFormatRaw) ?? .systemStyle },
                     set: { fileNameFormatRaw = $0.rawValue }
                 )) {
@@ -203,7 +203,7 @@ struct GeneralSettingsTab: View {
             }
 
             Section {
-                Button("Reset All General Settings to Defaults") {
+                Button("恢复全部通用设置") {
                     appAppearanceRaw = AppAppearance.system.rawValue
                     AppPreferences.applyAppearance()
                     saveDir = NSHomeDirectory() + "/Desktop"
@@ -239,11 +239,11 @@ struct GeneralSettingsTab: View {
 
     private func backgroundLabel(for style: BackgroundStyle) -> String {
         switch style {
-        case .none: return "Transparent"
+        case .none: return "透明"
         case .solid(let c): return c.name
         case .gradient(let g): return g.name
-        case .wallpaper: return "Custom Image"
-        case .bundledImage: return "macOS Wallpaper"
+        case .wallpaper: return "自定义图片"
+        case .bundledImage: return "macOS 壁纸"
         }
     }
 }
@@ -301,7 +301,7 @@ private struct DefaultBackgroundPicker: View {
             )
         }
         .buttonStyle(.plain)
-        .help("No background")
+        .help("无背景")
     }
 
     private func solidButton(_ color: SolidColor) -> some View {
@@ -395,14 +395,14 @@ private struct DefaultBackgroundPicker: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer()
-                Button("Change") { pickCustomImage() }
+                Button("更换") { pickCustomImage() }
                     .controlSize(.mini)
             }
         } else {
             Button { pickCustomImage() } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "plus").font(.caption2)
-                    Text("Custom Image...").font(.caption2)
+                    Text("自定义图片…").font(.caption2)
                 }
             }
             .buttonStyle(.bordered)
@@ -415,7 +415,7 @@ private struct DefaultBackgroundPicker: View {
         panel.allowedContentTypes = [.image, .png, .jpeg]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
-        panel.title = "Choose Background Image"
+        panel.title = "选择背景图片"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         selectedStyle = .wallpaper(WallpaperSource(path: url.path))
     }
@@ -592,8 +592,8 @@ struct CaptureSettingsTab: View {
 
     var body: some View {
         Form {
-            Section("Self Timer") {
-                Picker("Delay", selection: selfTimerDelay) {
+            Section("延时截图") {
+                Picker("延时", selection: selfTimerDelay) {
                     ForEach(SelfTimerDelay.allCases, id: \.self) { delay in
                         Text(delay.label).tag(delay)
                     }
@@ -601,16 +601,16 @@ struct CaptureSettingsTab: View {
                 .pickerStyle(.segmented)
             }
 
-            Section("Preview Overlay") {
-                Picker("Position", selection: overlayPosition) {
-                    Text("Bottom Right").tag(OverlayPosition.bottomRight)
-                    Text("Bottom Left").tag(OverlayPosition.bottomLeft)
+            Section("截图预览") {
+                Picker("位置", selection: overlayPosition) {
+                    Text("右下角").tag(OverlayPosition.bottomRight)
+                    Text("左下角").tag(OverlayPosition.bottomLeft)
                 }
 
                 HStack {
-                    Text("Dismiss after")
+                    Text("自动关闭时间")
                     Spacer()
-                    Text("\(Int(overlayDismissDelay))s")
+                    Text("\(Int(overlayDismissDelay)) 秒")
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }
@@ -618,19 +618,19 @@ struct CaptureSettingsTab: View {
                     .controlSize(.small)
             }
 
-            Section("Keyboard Shortcuts") {
+            Section("键盘快捷键") {
                 VStack(alignment: .leading, spacing: 8) {
-                    ShortcutRow(label: "Region", action: .region)
-                    ShortcutRow(label: "Fullscreen", action: .fullscreen)
-                    ShortcutRow(label: "Window", action: .window)
-                    ShortcutRow(label: "OCR Region", action: .ocr)
-                    ShortcutRow(label: "Color Picker", action: .colorPicker)
-                    ShortcutRow(label: "Record Screen", action: .recording)
-                    ShortcutRow(label: "Burst (金手指)", action: .burst)
+                    ShortcutRow(label: "区域截图", action: .region)
+                    ShortcutRow(label: "全屏截图", action: .fullscreen)
+                    ShortcutRow(label: "窗口截图", action: .window)
+                    ShortcutRow(label: "区域文字识别", action: .ocr)
+                    ShortcutRow(label: "取色器", action: .colorPicker)
+                    ShortcutRow(label: "录制屏幕", action: .recording)
+                    ShortcutRow(label: "连续截图（金手指）", action: .burst)
                 }
                 .id(shortcutResetID)
 
-                Button("Reset Shortcuts to Defaults") {
+                Button("恢复默认快捷键") {
                     for action in ShortcutService.Action.allCases {
                         let def: ShortcutService.Shortcut? = switch action {
                         case .region: .defaultRegion
@@ -652,7 +652,7 @@ struct CaptureSettingsTab: View {
             }
 
             Section {
-                Button("Reset All Capture Settings to Defaults") {
+                Button("恢复全部截图设置") {
                     selfTimerRaw = 0
                     overlayPositionRaw = OverlayPosition.bottomRight.rawValue
                     overlayDismissDelay = 5.0
@@ -691,34 +691,34 @@ struct RecordingSettingsTab: View {
 
     var body: some View {
         Form {
-            Section("Quality") {
-                Picker("Frame Rate", selection: $recordingFPS) {
-                    Text("24 fps").tag(24)
-                    Text("30 fps").tag(30)
-                    Text("60 fps").tag(60)
+            Section("画质") {
+                Picker("帧率", selection: $recordingFPS) {
+                    Text("24 帧/秒").tag(24)
+                    Text("30 帧/秒").tag(30)
+                    Text("60 帧/秒").tag(60)
                 }
                 .pickerStyle(.segmented)
 
-                Text("Higher frame rates produce smoother video but larger files.")
+                Text("帧率越高，视频越流畅，但文件也会更大。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            Section("Capture") {
-                Toggle("Show cursor in recording", isOn: $showCursor)
-                Toggle("Capture system audio", isOn: $captureAudio)
+            Section("录制内容") {
+                Toggle("录制鼠标指针", isOn: $showCursor)
+                Toggle("录制系统声音", isOn: $captureAudio)
             }
 
-            Section("After Recording") {
-                Toggle("Open editor after stopping", isOn: $openEditor)
+            Section("录制完成后") {
+                Toggle("停止后打开编辑器", isOn: $openEditor)
 
-                Text("When disabled, recordings are saved directly without opening the trim editor.")
+                Text("关闭后，录屏会直接保存，不再打开裁剪编辑器。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             Section {
-                Button("Reset All Recording Settings to Defaults") {
+                Button("恢复全部录屏设置") {
                     recordingFPS = 30
                     showCursor = true
                     captureAudio = false
@@ -805,7 +805,7 @@ struct ShortcutRow: View {
         switch action {
         case .region: return .defaultRegion
         case .fullscreen: return .defaultFullscreen
-        case .window: return ShortcutService.Shortcut(keyCode: 0, modifiers: 0, enabled: false)
+        case .window: return .defaultWindow
         case .ocr: return .defaultOCR
         case .colorPicker: return .defaultColorPicker
         case .recording: return .defaultRecording
@@ -905,7 +905,7 @@ final class ShortcutRecorderNSView: NSView {
         path.lineWidth = 1.5
         path.stroke()
 
-        let text = "Press shortcut..." as NSString
+        let text = "请按下快捷键…" as NSString
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 11, weight: .medium),
             .foregroundColor: NSColor.controlAccentColor,
@@ -949,7 +949,7 @@ struct HistoryTab: View {
 
     var body: some View {
         if screenshots.isEmpty {
-            ContentUnavailableView("No screenshots yet", systemImage: "photo.on.rectangle.angled")
+            ContentUnavailableView("还没有截图", systemImage: "photo.on.rectangle.angled")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             VStack(spacing: 0) {
@@ -959,7 +959,7 @@ struct HistoryTab: View {
                         thumbnails.removeAll()
                         screenshots.forEach { HistoryStore.shared.deleteRecord($0) }
                     } label: {
-                        Label("Clear All", systemImage: "trash")
+                        Label("全部清空", systemImage: "trash")
                             .font(.caption)
                     }
                     .buttonStyle(.plain)
@@ -990,7 +990,7 @@ struct HistoryTab: View {
                                 Text(record.filename)
                                     .font(.caption.weight(.medium))
                                     .lineLimit(1)
-                                Text("\(record.pixelWidth) x \(record.pixelHeight)")
+                                Text("\(record.pixelWidth) × \(record.pixelHeight)")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                 Text(record.createdAt, style: .relative)
@@ -1009,7 +1009,7 @@ struct HistoryTab: View {
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(.secondary)
-                            .help("Preview")
+                            .help("预览")
 
                             Button {
                                 thumbnails.removeValue(forKey: record.id.uuidString)
@@ -1051,7 +1051,7 @@ struct VideosTab: View {
 
     var body: some View {
         if recordings.isEmpty {
-            ContentUnavailableView("No recordings yet", systemImage: "video.circle")
+            ContentUnavailableView("还没有录屏", systemImage: "video.circle")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             VStack(spacing: 0) {
@@ -1061,7 +1061,7 @@ struct VideosTab: View {
                         thumbnails.removeAll()
                         recordings.forEach { HistoryStore.shared.deleteRecord($0) }
                     } label: {
-                        Label("Clear All", systemImage: "trash")
+                        Label("全部清空", systemImage: "trash")
                             .font(.caption)
                     }
                     .buttonStyle(.plain)
@@ -1097,7 +1097,7 @@ struct VideosTab: View {
                                         .font(.system(size: 8))
                                         .foregroundStyle(.secondary)
                                 }
-                                Text("\(record.pixelWidth) x \(record.pixelHeight)")
+                                Text("\(record.pixelWidth) × \(record.pixelHeight)")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                 Text(record.createdAt, style: .relative)
@@ -1116,7 +1116,7 @@ struct VideosTab: View {
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(.secondary)
-                            .help("Open in editor")
+                            .help("在编辑器中打开")
 
                             Button {
                                 thumbnails.removeValue(forKey: record.id.uuidString)
@@ -1150,8 +1150,6 @@ struct VideosTab: View {
 // MARK: - About
 
 struct AboutTab: View {
-    private let updater = AppUpdater.shared
-
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
     }
@@ -1180,53 +1178,34 @@ struct AboutTab: View {
                     }
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("BetterShot")
+                        Text("轻截")
                             .font(.system(size: 20, weight: .bold))
 
-                        Text("Version \(version)")
+                        Text("版本 \(version)（构建 \(build)）")
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
 
-                        Text("A native screenshot and editor tool for macOS.")
+                        Text("轻量、原生、中文的 macOS 截图工具。")
                             .font(.system(size: 12))
                             .foregroundStyle(.tertiary)
                     }
                 }
                 .padding(.bottom, 20)
 
-                // Updates section
-                aboutSection("Updates") {
-                    updateContent
-                }
-
-                // Project section
-                aboutSection("Project") {
+                aboutSection("软件说明") {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("BetterShot is an open-source screenshot tool for capturing, editing and beautifying screenshots on macOS.")
+                        Text("这是你的独立版本，不连接原项目的更新服务，也不会自动检查或下载更新。新版本由你自己编译和安装。")
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                             .lineSpacing(2)
-
-                        Link("GitHub", destination: URL(string: "https://github.com/KartikLabhshetwar/better-shot")!)
-                            .font(.system(size: 12))
                     }
                 }
 
-                // Credits section
-                aboutSection("Credits") {
+                aboutSection("开源致谢") {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Built by Kartik Labhshetwar")
+                        Text("本软件基于 BetterShot 开源项目独立改造，原项目采用 BSD-3-Clause 许可证。版权说明保留在软件包的 LICENSE 文件中。")
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
-
-                        Link(destination: URL(string: "https://x.com/code_kartik")!) {
-                            HStack(spacing: 2) {
-                                Text("Follow on X")
-                                    .font(.system(size: 12))
-                                Image(systemName: "arrow.up.right")
-                                    .font(.system(size: 9, weight: .semibold))
-                            }
-                        }
                     }
                 }
             }
@@ -1247,94 +1226,4 @@ struct AboutTab: View {
         }
     }
 
-    @ViewBuilder
-    private var updateContent: some View {
-        switch updater.state {
-        case .idle:
-            Button("Check for Updates...") {
-                Task { await updater.checkForUpdates() }
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-
-        case .checking:
-            HStack(spacing: 8) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("Checking for updates...")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-
-        case .available(let newVersion, let url):
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Version \(newVersion) is available!")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.green)
-
-                Button("Download & Install") {
-                    Task { await updater.downloadAndInstall(version: newVersion, url: url) }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-            }
-
-        case .downloading(let progress):
-            VStack(alignment: .leading, spacing: 6) {
-                ProgressView(value: progress)
-                    .progressViewStyle(.linear)
-                    .frame(maxWidth: 220)
-
-                Text("Downloading… \(Int(progress * 100))%")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-
-                Button("Cancel") {
-                    updater.cancelDownload()
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.mini)
-            }
-
-        case .readyToInstall(let newVersion, let dmgPath):
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Version \(newVersion) downloaded")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.green)
-
-                Button("Install & Relaunch") {
-                    Task { await updater.installUpdate(dmgPath: dmgPath) }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-            }
-
-        case .installing:
-            HStack(spacing: 8) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("Installing update…")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-
-        case .upToDate:
-            Label("You're up to date", systemImage: "checkmark.circle.fill")
-                .font(.system(size: 12))
-                .foregroundStyle(.green)
-
-        case .failed(let message):
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Update failed: \(message)")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.red)
-
-                Button("Retry") {
-                    Task { await updater.checkForUpdates() }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            }
-        }
-    }
 }

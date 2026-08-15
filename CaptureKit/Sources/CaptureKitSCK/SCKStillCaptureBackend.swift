@@ -35,6 +35,16 @@ public final class SCKStillCaptureBackend: StillCaptureBackend, @unchecked Senda
 
     public func capture(_ target: CaptureTarget) async throws -> CapturedFrame {
         let content = try await fetchShareableContent()
+
+        // 跨显示器选区：分别截取每块屏幕上的交集，再按全局位置拼成一张图。
+        // 单块显示器路径仍走下面的轻量单帧逻辑。
+        if case .region(let globalRect) = target {
+            let intersecting = content.displays.filter { !$0.frame.intersection(globalRect).isNull }
+            if intersecting.count > 1 {
+                return try await captureCrossDisplayRegion(globalRect, displays: intersecting, content: content)
+            }
+        }
+
         let (filter, displayID) = try buildFilter(for: target, in: content)
         let config = SCStreamConfiguration()
         configure(config: config, filter: filter, target: target, content: content)
@@ -49,12 +59,85 @@ public final class SCKStillCaptureBackend: StillCaptureBackend, @unchecked Senda
             throw CaptureError.captureFailed
         }
 
-        let scaleFactor = await Self.mainScreenScaleFactor()
+        let scaleFactor: CGFloat
+        if filter.contentRect.width > 0 {
+            scaleFactor = CGFloat(image.width) / filter.contentRect.width
+        } else {
+            scaleFactor = await Self.mainScreenScaleFactor()
+        }
         return CapturedFrame(
             image: image,
             scaleFactor: scaleFactor,
             displayID: displayID
         )
+    }
+
+    private func captureCrossDisplayRegion(
+        _ globalRect: CGRect,
+        displays: [SCDisplay],
+        content: SCShareableContent
+    ) async throws -> CapturedFrame {
+        let excludedApps = content.applications.filter {
+            excludingBundleIDs.contains($0.bundleIdentifier)
+        }
+        var pieces: [(rect: CGRect, image: CGImage, scale: CGFloat)] = []
+
+        for display in displays {
+            let intersection = globalRect.intersection(display.frame)
+            guard !intersection.isNull, intersection.width > 0, intersection.height > 0 else { continue }
+            let filter = SCContentFilter(
+                display: display,
+                excludingApplications: excludedApps,
+                exceptingWindows: []
+            )
+            let scale = CGFloat(filter.pointPixelScale)
+            let config = SCStreamConfiguration()
+            config.sourceRect = CGRect(
+                x: intersection.minX - display.frame.minX,
+                y: intersection.minY - display.frame.minY,
+                width: intersection.width,
+                height: intersection.height
+            )
+            config.width = Int(intersection.width * scale)
+            config.height = Int(intersection.height * scale)
+            config.showsCursor = false
+            config.pixelFormat = kCVPixelFormatType_32BGRA
+
+            let image = try await SCScreenshotManager.captureImage(
+                contentFilter: filter,
+                configuration: config
+            )
+            pieces.append((intersection, image, scale))
+        }
+
+        guard !pieces.isEmpty else { throw CaptureError.captureFailed }
+        let outputScale = pieces.map(\.scale).max() ?? 1
+        let width = max(1, Int(globalRect.width * outputScale))
+        let height = max(1, Int(globalRect.height * outputScale))
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
+        ) else { throw CaptureError.captureFailed }
+
+        context.interpolationQuality = .high
+        context.translateBy(x: 0, y: CGFloat(height))
+        context.scaleBy(x: 1, y: -1)
+        for piece in pieces {
+            let destination = CGRect(
+                x: (piece.rect.minX - globalRect.minX) * outputScale,
+                y: (piece.rect.minY - globalRect.minY) * outputScale,
+                width: piece.rect.width * outputScale,
+                height: piece.rect.height * outputScale
+            )
+            context.draw(piece.image, in: destination)
+        }
+        guard let image = context.makeImage() else { throw CaptureError.captureFailed }
+        return CapturedFrame(image: image, scaleFactor: outputScale, displayID: nil)
     }
 
     // MARK: - 私有：内容获取 / 过滤器 / 配置

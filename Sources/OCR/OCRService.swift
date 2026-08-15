@@ -46,7 +46,7 @@ final class OCRService {
             textRequest.usesLanguageCorrection = true
             // 先中文后英文：符合主要用户群（中文界面），中文优先匹配
             // 注意：需确认系统支持这些语言，否则 Vision 会抛错。用 try? 安全降级。
-            let supported = (try? VNRecognizeTextRequest.supportedRecognitionLanguages(for: .accurate, revision: VNRecognizeTextRequestRevision3)) ?? []
+            let supported = (try? textRequest.supportedRecognitionLanguages()) ?? []
             let desired = ["zh-Hans", "zh-Hant", "en-US"].filter { supported.contains($0) }
             if !desired.isEmpty {
                 textRequest.recognitionLanguages = desired
@@ -92,7 +92,7 @@ final class OCRService {
             let textRequest = VNRecognizeTextRequest()
             textRequest.recognitionLevel = .accurate
             textRequest.usesLanguageCorrection = true
-            let supported = (try? VNRecognizeTextRequest.supportedRecognitionLanguages(for: .accurate, revision: VNRecognizeTextRequestRevision3)) ?? []
+            let supported = (try? textRequest.supportedRecognitionLanguages()) ?? []
             let desired = ["zh-Hans", "zh-Hant", "en-US"].filter { supported.contains($0) }
             if !desired.isEmpty { textRequest.recognitionLanguages = desired }
 

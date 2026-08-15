@@ -46,7 +46,7 @@ enum PIIRedactor {
                 guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
                 let range = NSRange(obs.text.startIndex..., in: obs.text)
                 regex.enumerateMatches(in: obs.text, range: range) { result, _, _ in
-                    guard let result else { return }
+                    guard result != nil else { return }
                     // 用匹配子串在行内的相对位置，结合该行的 boundingBox，估算 PII 的位置。
                     // 简化处理：PII 在行内，用行的 boundingBox 作为打码区域（保守覆盖整行）。
                     // 更精确的定位需要字符级 boundingBox（VNRecognizedText 的 boundingBox 行级已够用）。

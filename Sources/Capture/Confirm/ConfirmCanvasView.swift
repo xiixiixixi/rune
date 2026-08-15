@@ -109,15 +109,42 @@ final class ConfirmCanvasView: NSView {
         )
         ctx.restoreGState()
 
-        // 3. 选中高亮（红色细框）
+        // 3. 选中高亮：红色圆角虚线框 + 四角白色手柄方块（视觉上"可操作"）
         if let id = selectedID,
            let item = annotations.first(where: { $0.id == id }) {
-            let r = viewRect(for: item.bounds)
-            ctx.strokePath()
+            let r = viewRect(for: item.bounds).insetBy(dx: -4, dy: -4)
+            let path = CGPath(roundedRect: r, cornerWidth: 6, cornerHeight: 6, transform: nil)
+            ctx.addPath(path)
             ctx.setLineWidth(1.5)
-            ctx.setStrokeColor(NSColor.systemRed.withAlphaComponent(0.9).cgColor)
-            ctx.stroke(r.insetBy(dx: -3, dy: -3))
+            ctx.setStrokeColor(NSColor.systemRed.withAlphaComponent(0.85).cgColor)
+            ctx.setLineDash(phase: 0, lengths: [4, 3])
+            ctx.strokePath()
+            ctx.setLineDash(phase: 0, lengths: [])
+            // 四角手柄：白底红边小方块
+            let hs: CGFloat = 7
+            for corner in [r.origin,
+                           CGPoint(x: r.maxX, y: r.minY),
+                           CGPoint(x: r.minX, y: r.maxY),
+                           CGPoint(x: r.maxX, y: r.maxY)] {
+                let rect = CGRect(x: corner.x - hs/2, y: corner.y - hs/2, width: hs, height: hs)
+                ctx.setFillColor(NSColor.white.cgColor)
+                ctx.setStrokeColor(NSColor.systemRed.cgColor)
+                ctx.setLineWidth(1.5)
+                ctx.fill(rect)
+                ctx.stroke(rect)
+            }
         }
+    }
+
+    /// 按当前工具切换光标：画图=十字，选择=箭头。
+    override func resetCursorRects() {
+        let cursor: NSCursor = (selectedTool == .select) ? .arrow : .crosshair
+        addCursorRect(bounds, cursor: cursor)
+    }
+
+    /// 工具切换后刷新光标（工具栏改 selectedTool 后调）。
+    func refreshCursor() {
+        window?.invalidateCursorRects(for: self)
     }
 
     /// 归一化 rect → 视图 rect。

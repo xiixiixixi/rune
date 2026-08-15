@@ -1,13 +1,12 @@
-# 如何参与贡献 BetterShot
+# 如何维护轻截
 
 感谢你愿意为这个项目出力。这份指南会告诉你怎么上手。
 
 ## 快速开始
 
 ```bash
-# 1. 先 fork（复制一份到你自己的账号下），然后克隆到本地
-git clone https://github.com/YOUR_USERNAME/better-shot.git
-cd better-shot
+# 1. 进入本地代码目录
+cd /Users/tc/git/snapshot/better-shot
 
 # 2. 编译并运行
 make run
@@ -15,9 +14,7 @@ make run
 
 就这样。Makefile 会处理一切，不需要额外装工具。
 
-> 小白说明："fork"就是把别人的项目复制一份到你自己的 GitHub 账号下，这样你就能随便改，不影响原项目。"克隆（clone）"是把网上的项目下载到你电脑上。
-
-> **另一种方式**：用 Xcode 打开 `BetterShot.xcodeproj`，按 `⌘R` 运行。
+> **另一种方式**：用 Xcode 打开 `BetterShot.xcodeproj`，按 `⌘R` 运行。这个工程文件保留旧内部名称，但编译出的产品名称是“轻截”。
 
 ### 如果你改了 `project.yml`
 
@@ -39,10 +36,7 @@ xcodegen generate
 
 ### 权限
 
-首次启动时，需要授予两个权限：
-
-1. **屏幕录制** —— 系统设置 > 隐私与安全性 > 屏幕录制
-2. **辅助功能** —— 系统设置 > 隐私与安全性 > 辅助功能
+首次启动时，需要授予**屏幕与系统音频录制**权限。全局快捷键已经使用系统级热键方式实现，不需要辅助功能权限。
 
 ## 项目结构
 
@@ -55,7 +49,7 @@ Sources/
   Preview/               浮动预览层和钉住的截图
   History/               截图历史（存在 Application Support 里的 JSON）
   Recording/             屏幕/窗口录制、视频编辑器、裁剪时间轴、特效导出
-  Services/              美化渲染器、快捷键、应用更新
+  Services/              美化渲染器、快捷键、隐私打码和显式上传
   Settings/              设置窗口（侧边栏导航）和设置窗口控制器
   Views/                 菜单栏弹出框、提示通知
 Resources/

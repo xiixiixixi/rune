@@ -48,7 +48,7 @@ struct VideoEditorView: View {
             ToolbarItemGroup(placement: .primaryAction) {
                 Spacer()
 
-                Button("Cancel") {
+                Button("取消") {
                     model.cleanup()
                     NSApp.keyWindow?.close()
                 }
@@ -57,7 +57,7 @@ struct VideoEditorView: View {
                 Button {
                     deleteRecording()
                 } label: {
-                    Label("Delete", systemImage: "trash")
+                    Label("删除", systemImage: "trash")
                         .foregroundStyle(.red)
                 }
 
@@ -69,7 +69,7 @@ struct VideoEditorView: View {
                             .controlSize(.small)
                             .padding(.horizontal, 8)
                     } else {
-                        Label("Export", systemImage: "square.and.arrow.down")
+                        Label("导出", systemImage: "square.and.arrow.down")
                     }
                 }
                 .disabled(model.isExporting)
@@ -299,9 +299,9 @@ struct VideoEditorView: View {
                     HistoryStore.shared.deleteRecord(oldRecord)
                 }
             }
-            _ = HistoryStore.shared.importCapture(from: exportedURL, deleteSource: false, kind: .recording)
+            _ = await HistoryStore.shared.importCapture(from: exportedURL, deleteSource: false, kind: .recording)
             let appIcon = NSImage(named: "AppIcon") ?? NSApp.applicationIconImage
-            ToastWindow.shared.show(message: "Recording exported!", icon: appIcon)
+            ToastWindow.shared.show(message: "录屏已导出！", icon: appIcon)
             model.cleanup()
             NSApp.keyWindow?.close()
         }
@@ -342,7 +342,7 @@ private struct VideoTrimSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                VideoInspectorSectionHeader("TRIM")
+                VideoInspectorSectionHeader("裁剪")
                 Spacer()
                 if model.hasTrim {
                     Button {
@@ -353,7 +353,7 @@ private struct VideoTrimSection: View {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.counterclockwise")
                                 .font(.caption)
-                            Text("Reset")
+                            Text("重置")
                                 .font(.caption2)
                         }
                         .padding(.vertical, 4)
@@ -366,7 +366,7 @@ private struct VideoTrimSection: View {
 
             VStack(spacing: 4) {
                 HStack {
-                    Text("Start")
+                    Text("开始")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                     Spacer()
@@ -375,7 +375,7 @@ private struct VideoTrimSection: View {
                         .foregroundStyle(model.hasTrim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.quaternary))
                 }
                 HStack {
-                    Text("End")
+                    Text("结束")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                     Spacer()
@@ -384,7 +384,7 @@ private struct VideoTrimSection: View {
                         .foregroundStyle(model.hasTrim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.quaternary))
                 }
                 HStack {
-                    Text("Duration")
+                    Text("时长")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                     Spacer()
@@ -394,7 +394,7 @@ private struct VideoTrimSection: View {
                 }
             }
 
-            Text("Drag the yellow handles on the timeline to trim.")
+            Text("拖动时间轴上的黄色把手来裁剪视频。")
                 .font(.caption2)
                 .foregroundStyle(.quaternary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -409,11 +409,11 @@ private struct VideoEffectsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            VideoInspectorSectionHeader("EFFECTS")
+            VideoInspectorSectionHeader("效果")
 
             VStack(spacing: 4) {
                 HStack {
-                    Text("Padding")
+                    Text("边距")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                     Spacer()
@@ -427,7 +427,7 @@ private struct VideoEffectsSection: View {
 
             VStack(spacing: 4) {
                 HStack {
-                    Text("Corner Radius")
+                    Text("圆角")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                     Spacer()
@@ -441,7 +441,7 @@ private struct VideoEffectsSection: View {
 
             VStack(spacing: 4) {
                 HStack {
-                    Text("Shadow")
+                    Text("阴影")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                     Spacer()
@@ -467,9 +467,9 @@ private struct VideoBackgroundSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            VideoInspectorSectionHeader("BACKGROUND")
+            VideoInspectorSectionHeader("背景")
 
-            Text("Solid")
+            Text("纯色")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
 
@@ -481,7 +481,7 @@ private struct VideoBackgroundSection: View {
                 }
             }
 
-            Text("Gradients")
+            Text("渐变")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
 
@@ -628,7 +628,7 @@ private struct VideoBackgroundSection: View {
                 Spacer()
 
                 Button { pickCustomWallpaper() } label: {
-                    Text("Change").font(.caption2)
+                    Text("更换").font(.caption2)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.mini)
@@ -637,7 +637,7 @@ private struct VideoBackgroundSection: View {
             Button { pickCustomWallpaper() } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "plus").font(.caption2)
-                    Text("Custom Image...").font(.caption2)
+                    Text("自定义图片…").font(.caption2)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 6)
@@ -658,7 +658,7 @@ private struct VideoBackgroundSection: View {
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.canCreateDirectories = false
-        panel.title = "Choose Background Image"
+        panel.title = "选择背景图片"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         model.config.style = .wallpaper(WallpaperSource(path: url.path))
     }
@@ -671,7 +671,7 @@ private struct VideoCropSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            VideoInspectorSectionHeader("CROP")
+            VideoInspectorSectionHeader("裁剪")
 
             HStack {
                 Button {
@@ -680,7 +680,7 @@ private struct VideoCropSection: View {
                     HStack(spacing: 4) {
                         Image(systemName: "crop")
                             .font(.caption)
-                        Text(model.isCropping ? "Done" : "Crop")
+                        Text(model.isCropping ? "完成" : "裁剪")
                             .font(.caption2)
                     }
                     .frame(maxWidth: .infinity)
@@ -700,7 +700,7 @@ private struct VideoCropSection: View {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.counterclockwise")
                                 .font(.caption)
-                            Text("Reset")
+                            Text("重置")
                                 .font(.caption2)
                         }
                         .padding(.vertical, 6)

@@ -81,8 +81,10 @@ final class MenuBarPopoverController: NSObject {
             ctx.allowsImplicitAnimation = true
             closingPanel.animator().alphaValue = 0
         }, completionHandler: {
-            closingPanel.orderOut(nil)
-            closingPanel.contentView = nil
+            Task { @MainActor in
+                closingPanel.orderOut(nil)
+                closingPanel.contentView = nil
+            }
         })
     }
 

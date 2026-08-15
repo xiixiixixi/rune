@@ -53,18 +53,18 @@ enum AppPreferences {
     }
 
     /// 生成截图文件名（不含目录）。
-    /// - systemStyle: `Screenshot 2026-08-09 at 15.20.33.png`（冒号在文件名非法，用点分隔时分秒）
-    /// - legacy: `bettershot_<毫秒时间戳>.<ext>`
+    /// - systemStyle: `截图 2026-08-09 15.20.33.png`（冒号在文件名非法，用点分隔时分秒）
+    /// - legacy: `轻截_<毫秒时间戳>.<ext>`
     static func generateFileName(date: Date = Date(), ext: String) -> String {
         let safeExt = ext.isEmpty ? "png" : ext
         switch fileNameFormat {
         case .systemStyle:
             let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
-            return "Screenshot \(formatter.string(from: date)).\(safeExt)"
+            formatter.locale = Locale(identifier: "zh_CN")
+            formatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
+            return "截图 \(formatter.string(from: date)).\(safeExt)"
         case .legacy:
-            return "bettershot_\(Int(date.timeIntervalSince1970 * 1000)).\(safeExt)"
+            return "轻截_\(Int(date.timeIntervalSince1970 * 1000)).\(safeExt)"
         }
     }
 
@@ -174,9 +174,9 @@ enum AppAppearance: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .system: return "System"
-        case .light: return "Light"
-        case .dark: return "Dark"
+        case .system: return "跟随系统"
+        case .light: return "浅色"
+        case .dark: return "深色"
         }
     }
 
@@ -220,23 +220,23 @@ enum SelfTimerDelay: Int, CaseIterable {
 
     var label: String {
         switch self {
-        case .off: return "Off"
-        default: return "\(rawValue)s"
+        case .off: return "关闭"
+        default: return "\(rawValue) 秒"
         }
     }
 }
 
 /// 截图文件名格式（M2 自动命名保存）。
 enum FileNameFormat: String, CaseIterable {
-    /// 系统截图风格：`Screenshot 2026-08-09 at 15.20.33.png`
+    /// 中文截图风格：`截图 2026-08-09 15.20.33.png`
     case systemStyle = "system"
-    /// 旧风格：`bettershot_<毫秒时间戳>.png`（向后兼容）
+    /// 旧风格：`轻截_<毫秒时间戳>.png`
     case legacy = "legacy"
 
     var label: String {
         switch self {
-        case .systemStyle: return "Screenshot 风格（推荐）"
-        case .legacy: return "bettershot_ 时间戳（旧）"
+        case .systemStyle: return "中文日期（推荐）"
+        case .legacy: return "轻截_时间戳"
         }
     }
 }

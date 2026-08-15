@@ -1,6 +1,6 @@
 name: BetterShot
 options:
-  bundleIdPrefix: com.bettershot
+  bundleIdPrefix: com.tc.qingjie
   deploymentTarget:
     macOS: "14.0"
   xcodeVersion: "16.0"
@@ -19,9 +19,6 @@ settings:
 packages:
   CaptureKit:
     path: CaptureKit
-  Sparkle:
-    url: https://github.com/sparkle-project/Sparkle
-    from: 2.6.0
 
 targets:
   BetterShot:
@@ -39,18 +36,20 @@ targets:
         product: CaptureKit
       - package: CaptureKit
         product: CaptureKitSCK
-      - package: Sparkle
-        product: Sparkle
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.bettershot.app
-        PRODUCT_NAME: BetterShot
+        PRODUCT_BUNDLE_IDENTIFIER: com.tc.qingjie
+        PRODUCT_NAME: 轻截
         INFOPLIST_FILE: Resources/Info.plist
         CODE_SIGN_ENTITLEMENTS: Resources/BetterShot.entitlements
         MARKETING_VERSION: "0.3.7"
         CURRENT_PROJECT_VERSION: "10"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_HARDENED_RUNTIME: true
+        # Xcode 26 默认把调试代码拆到动态库；本地自签名证书没有 Apple Team ID，
+        # 系统的库验证会拒绝加载。调试版改为单一可执行文件，身份更稳定也能直接启动。
+        ENABLE_DEBUG_DYLIB: NO
+        ENABLE_PREVIEWS: NO
         COMBINE_HIDPI_IMAGES: true
         LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
         # M2 §6 Universal 2：单包双架构。本机 arm64 可编译；x86_64 产物待 Intel 机器验证。

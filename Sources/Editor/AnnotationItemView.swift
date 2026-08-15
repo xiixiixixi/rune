@@ -173,7 +173,7 @@ struct AnnotationItemView: View {
             if px > 3 {
                 let midX = (start.x + end.x) / 2
                 let midY = (start.y + end.y) / 2
-                Text("\(px)px")
+                Text("\(px) 像素")
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 4)
@@ -387,7 +387,7 @@ private struct AnnotationTextBoxView: NSViewRepresentable {
         context.coordinator.textView = textView
 
         if isEditing {
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self.updateTextViewFrame(textView, in: scrollView)
                 textView.window?.makeFirstResponder(textView)
                 self.reportSize(textView)
@@ -417,16 +417,16 @@ private struct AnnotationTextBoxView: NSViewRepresentable {
         applyStyle(to: textView)
 
         if isEditing && textView.window?.firstResponder !== textView {
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 textView.window?.makeFirstResponder(textView)
             }
         } else if !isEditing && textView.window?.firstResponder === textView {
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 textView.window?.makeFirstResponder(nil)
             }
         }
 
-        DispatchQueue.main.async {
+        Task { @MainActor in
             self.reportSize(textView)
         }
     }
@@ -509,6 +509,7 @@ private struct AnnotationTextBoxView: NSViewRepresentable {
         textView.needsDisplay = true
     }
 
+    @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
         var text: Binding<String>
         var onCommit: () -> Void

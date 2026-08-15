@@ -34,18 +34,18 @@ struct SolidColor: Codable, Equatable, Hashable, Identifiable {
 
 extension SolidColor {
     static let presets: [SolidColor] = [
-        SolidColor(id: "obsidian", name: "Obsidian", red: 0.02, green: 0.02, blue: 0.03),
-        SolidColor(id: "chalk", name: "Chalk", red: 0.96, green: 0.96, blue: 0.94),
-        SolidColor(id: "slate", name: "Slate", red: 0.17, green: 0.18, blue: 0.22),
-        SolidColor(id: "ember", name: "Ember", red: 0.94, green: 0.24, blue: 0.28),
-        SolidColor(id: "tangerine", name: "Tangerine", red: 0.97, green: 0.53, blue: 0.16),
-        SolidColor(id: "saffron", name: "Saffron", red: 0.96, green: 0.74, blue: 0.23),
-        SolidColor(id: "fern", name: "Fern", red: 0.23, green: 0.62, blue: 0.36),
-        SolidColor(id: "cobalt", name: "Cobalt", red: 0.16, green: 0.50, blue: 0.88),
-        SolidColor(id: "iris", name: "Iris", red: 0.48, green: 0.27, blue: 0.91),
-        SolidColor(id: "rose", name: "Rose", red: 0.93, green: 0.67, blue: 0.63),
-        SolidColor(id: "seafoam", name: "Seafoam", red: 0.66, green: 0.90, blue: 0.74),
-        SolidColor(id: "cloud", name: "Cloud", red: 0.63, green: 0.80, blue: 0.94),
+        SolidColor(id: "obsidian", name: "黑曜石", red: 0.02, green: 0.02, blue: 0.03),
+        SolidColor(id: "chalk", name: "粉笔白", red: 0.96, green: 0.96, blue: 0.94),
+        SolidColor(id: "slate", name: "石板灰", red: 0.17, green: 0.18, blue: 0.22),
+        SolidColor(id: "ember", name: "余烬红", red: 0.94, green: 0.24, blue: 0.28),
+        SolidColor(id: "tangerine", name: "橘子橙", red: 0.97, green: 0.53, blue: 0.16),
+        SolidColor(id: "saffron", name: "藏红花黄", red: 0.96, green: 0.74, blue: 0.23),
+        SolidColor(id: "fern", name: "蕨叶绿", red: 0.23, green: 0.62, blue: 0.36),
+        SolidColor(id: "cobalt", name: "钴蓝", red: 0.16, green: 0.50, blue: 0.88),
+        SolidColor(id: "iris", name: "鸢尾紫", red: 0.48, green: 0.27, blue: 0.91),
+        SolidColor(id: "rose", name: "玫瑰粉", red: 0.93, green: 0.67, blue: 0.63),
+        SolidColor(id: "seafoam", name: "海沫绿", red: 0.66, green: 0.90, blue: 0.74),
+        SolidColor(id: "cloud", name: "云朵蓝", red: 0.63, green: 0.80, blue: 0.94),
     ]
 }
 
@@ -108,52 +108,52 @@ extension GradientPreset {
         }
 
         return [
-            GradientPreset(id: "dawn-fire", name: "Dawn Fire",
+            GradientPreset(id: "dawn-fire", name: "晨曦火光",
                 stops: [s(0.98, 0.31, 0.58), s(0.40, 0.32, 0.95), s(0.29, 0.84, 0.80)],
                 startPoint: tl, endPoint: br),
-            GradientPreset(id: "deep-ocean", name: "Deep Ocean",
+            GradientPreset(id: "deep-ocean", name: "深海",
                 stops: [s(0.04, 0.05, 0.50), s(0.26, 0.19, 0.93), s(0.42, 0.67, 0.98)],
                 startPoint: t, endPoint: br),
-            GradientPreset(id: "coral-bloom", name: "Coral Bloom",
+            GradientPreset(id: "coral-bloom", name: "珊瑚花开",
                 stops: [s(0.98, 0.38, 0.36), s(0.99, 0.71, 0.36), s(0.90, 0.33, 0.65)],
                 startPoint: tl, endPoint: br),
-            GradientPreset(id: "arctic-lens", name: "Arctic Lens",
+            GradientPreset(id: "arctic-lens", name: "极地之镜",
                 stops: [s(0.87, 0.95, 0.94), s(0.46, 0.77, 0.86), s(0.25, 0.53, 0.93)],
                 startPoint: tl, endPoint: br),
-            GradientPreset(id: "neon-pulse", name: "Neon Pulse",
+            GradientPreset(id: "neon-pulse", name: "霓虹脉冲",
                 stops: [s(0.08, 0.02, 0.22), s(0.35, 0.12, 0.84), s(0.95, 0.26, 0.42)],
                 startPoint: tr, endPoint: bl),
-            GradientPreset(id: "ripe-mango", name: "Ripe Mango",
+            GradientPreset(id: "ripe-mango", name: "熟芒果",
                 stops: [s(0.99, 0.75, 0.20), s(0.96, 0.33, 0.21), s(0.67, 0.19, 0.89)],
                 startPoint: tl, endPoint: br),
-            GradientPreset(id: "soft-linen", name: "Soft Linen",
+            GradientPreset(id: "soft-linen", name: "柔软亚麻",
                 stops: [s(0.94, 0.94, 0.92), s(0.80, 0.88, 0.94), s(0.95, 0.76, 0.70)],
                 startPoint: tl, endPoint: br),
-            GradientPreset(id: "tidal-pool", name: "Tidal Pool",
+            GradientPreset(id: "tidal-pool", name: "潮汐池",
                 stops: [s(0.08, 0.30, 0.54), s(0.25, 0.64, 0.72), s(0.70, 0.92, 0.78)],
                 startPoint: bl, endPoint: tr),
-            GradientPreset(id: "forge", name: "Forge",
+            GradientPreset(id: "forge", name: "熔炉",
                 stops: [s(0.18, 0.03, 0.08), s(0.86, 0.17, 0.18), s(1.00, 0.67, 0.25)],
                 startPoint: tl, endPoint: br),
-            GradientPreset(id: "twilight", name: "Twilight",
+            GradientPreset(id: "twilight", name: "暮色",
                 stops: [s(0.24, 0.08, 0.51), s(0.59, 0.22, 0.94), s(0.96, 0.42, 0.74)],
                 startPoint: t, endPoint: br),
-            GradientPreset(id: "lagoon", name: "Lagoon",
+            GradientPreset(id: "lagoon", name: "泻湖",
                 stops: [s(0.43, 0.86, 0.75), s(0.25, 0.62, 0.80), s(0.22, 0.35, 0.75)],
                 startPoint: tl, endPoint: br),
-            GradientPreset(id: "orchard", name: "Orchard",
+            GradientPreset(id: "orchard", name: "果园",
                 stops: [s(0.99, 0.91, 0.30), s(0.44, 0.78, 0.29), s(0.12, 0.58, 0.42)],
                 startPoint: tr, endPoint: bl),
-            GradientPreset(id: "gemstone", name: "Gemstone",
+            GradientPreset(id: "gemstone", name: "宝石",
                 stops: [s(0.10, 0.08, 0.28), s(0.35, 0.15, 0.65), s(0.76, 0.39, 0.95)],
                 startPoint: bl, endPoint: tr),
-            GradientPreset(id: "sherbet", name: "Sherbet",
+            GradientPreset(id: "sherbet", name: "果味冰沙",
                 stops: [s(1.00, 0.49, 0.51), s(1.00, 0.74, 0.48), s(0.56, 0.78, 0.98)],
                 startPoint: tl, endPoint: br),
-            GradientPreset(id: "granite", name: "Granite",
+            GradientPreset(id: "granite", name: "花岗岩",
                 stops: [s(0.93, 0.96, 0.95), s(0.64, 0.72, 0.82), s(0.33, 0.42, 0.55)],
                 startPoint: tl, endPoint: br),
-            GradientPreset(id: "sunrise", name: "Sunrise",
+            GradientPreset(id: "sunrise", name: "日出",
                 stops: [s(0.98, 0.62, 0.77), s(0.98, 0.82, 0.47), s(0.42, 0.71, 0.96)],
                 startPoint: bl, endPoint: tr),
         ]
@@ -214,6 +214,10 @@ enum CanvasAspectRatio: String, Codable, CaseIterable {
     case threeTwo = "3:2"
     case sixteenNine = "16:9"
     case nineSixteen = "9:16"
+
+    var displayName: String {
+        self == .auto ? "自动" : rawValue
+    }
 
     var numericValue: CGFloat? {
         switch self {

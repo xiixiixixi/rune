@@ -76,7 +76,7 @@ struct MenuBarContentView: View {
             if PinnedScreenshotController.shared.hasPinnedWindows {
                 TrayDivider()
 
-                TrayFullWidthButton(title: "Unpin All", icon: "pin.slash") {
+                TrayFullWidthButton(title: "取消全部贴图", icon: "pin.slash") {
                     PinnedScreenshotController.shared.unpinAll()
                     dismissPopover()
                 }
@@ -105,24 +105,32 @@ struct MenuBarContentView: View {
         ]
 
         return LazyVGrid(columns: columns, spacing: 6) {
-            TrayGridButton(title: "Region", icon: "rectangle.dashed", shortcut: "\u{2318}4") {
+            TrayGridButton(title: "区域截图", icon: "rectangle.dashed", shortcut: "⇧⌘E") {
                 dismissAndRun(.region)
             }
 
-            TrayGridButton(title: "Screen", icon: "desktopcomputer", shortcut: "\u{2318}3") {
+            TrayGridButton(title: "全屏截图", icon: "desktopcomputer", shortcut: "⇧⌘S") {
                 dismissAndRun(.fullscreen)
             }
 
-            TrayGridButton(title: "Window", icon: "macwindow") {
+            TrayGridButton(title: "窗口截图", icon: "macwindow", shortcut: "⇧⌘W") {
                 dismissAndRun(.window)
             }
 
-            TrayGridButton(title: "Pick Color", icon: "eyedropper") {
-                dismissAndRun(.colorPicker)
-            }
+            TrayGridMenu(title: "连续截图", icon: "camera.burst", menuItems: [
+                TrayMenuItem(title: "连续模式（⌘⇧B）", icon: "camera.burst") {
+                    dismissAndRunBurst(mode: .burst)
+                },
+                TrayMenuItem(title: "固定拍摄 10 张", icon: "10.circle") {
+                    dismissAndRunBurst(mode: .fixedCount)
+                },
+                TrayMenuItem(title: "延时拍摄（每 5 秒）", icon: "timer") {
+                    dismissAndRunBurst(mode: .timelapse)
+                },
+            ])
 
-            TrayGridMenu(title: "Record", icon: "record.circle", menuItems: [
-                TrayMenuItem(title: "Full Screen", icon: "desktopcomputer") {
+            TrayGridMenu(title: "录屏", icon: "record.circle", menuItems: [
+                TrayMenuItem(title: "全屏录制", icon: "desktopcomputer") {
                     nonisolated(unsafe) let screen = originScreen
                     dismissPopover()
                     Task.detached {
@@ -130,7 +138,7 @@ struct MenuBarContentView: View {
                         await startRecording(mode: .fullScreen, on: screen)
                     }
                 },
-                TrayMenuItem(title: "Area", icon: "rectangle.dashed") {
+                TrayMenuItem(title: "区域录制", icon: "rectangle.dashed") {
                     nonisolated(unsafe) let screen = originScreen
                     dismissPopover()
                     Task.detached {
@@ -139,6 +147,10 @@ struct MenuBarContentView: View {
                     }
                 },
             ])
+
+            TrayGridButton(title: "滚动截图", icon: "rectangle.stack") {
+                dismissAndRunScrollCapture()
+            }
         }
     }
 
@@ -159,11 +171,11 @@ struct MenuBarContentView: View {
         ]
 
         return LazyVGrid(columns: columns, spacing: 6) {
-            TrayGridButton(title: "OCR", icon: "doc.text.viewfinder", shortcut: "\u{2318}O") {
+            TrayGridButton(title: "文字识别", icon: "doc.text.viewfinder", shortcut: "⇧⌘O") {
                 dismissAndRun(.ocr)
             }
 
-            TrayGridMenu(title: "Recent", icon: "clock.arrow.circlepath", menuItems: recentMenuItems())
+            TrayGridMenu(title: "最近记录", icon: "clock.arrow.circlepath", menuItems: recentMenuItems())
         }
     }
 
@@ -176,11 +188,11 @@ struct MenuBarContentView: View {
         ]
 
         return LazyVGrid(columns: columns, spacing: 6) {
-            TrayGridButton(title: "Settings", icon: "gearshape", shortcut: "\u{2318},") {
+            TrayGridButton(title: "设置", icon: "gearshape", shortcut: "\u{2318},") {
                 openSettings()
             }
 
-            TrayGridButton(title: "Quit", icon: "power", shortcut: "\u{2318}Q") {
+            TrayGridButton(title: "退出", icon: "power", shortcut: "\u{2318}Q") {
                 NSApplication.shared.terminate(nil)
             }
         }
@@ -191,15 +203,10 @@ struct MenuBarContentView: View {
     private var versionLabel: some View {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
         return HStack(spacing: 4) {
-            Text("Version \(version)")
+            Text("版本 \(version)")
                 .font(.system(size: 10))
                 .foregroundStyle(.quaternary)
 
-            if AppUpdater.shared.latestAvailableVersion != nil {
-                Circle()
-                    .fill(.blue)
-                    .frame(width: 6, height: 6)
-            }
         }
     }
 
@@ -218,12 +225,43 @@ struct MenuBarContentView: View {
         }
     }
 
+    /// 金手指：走和快捷键一样的路径（开始/停止），不走 CaptureOrchestrator。
+    private func dismissAndRunBurst(mode: BurstMode) {
+        nonisolated(unsafe) let screen = originScreen
+        dismissPopover()
+        Task.detached {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            await MainActor.run {
+                if BurstCaptureController.shared.isActive {
+                    BurstCaptureController.shared.stop()
+                    BurstStatusBarController.shared.dismiss()
+                } else {
+                    Task {
+                        await BurstCaptureController.shared.start(mode: mode, on: screen)
+                        if BurstCaptureController.shared.isActive {
+                            BurstStatusBarController.shared.show(on: screen)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func dismissAndRunScrollCapture() {
+        nonisolated(unsafe) let screen = originScreen
+        dismissPopover()
+        Task.detached {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            await ScrollCaptureController.shared.start(on: screen)
+        }
+    }
+
     private func recentMenuItems() -> [TrayMenuItem] {
         var items: [TrayMenuItem] = []
 
         var screenshotItems: [TrayMenuItem] = []
         if recentScreenshots.isEmpty {
-            screenshotItems.append(TrayMenuItem(title: "No screenshots yet", icon: "photo", action: {}, isDisabled: true))
+            screenshotItems.append(TrayMenuItem(title: "还没有截图", icon: "photo", action: {}, isDisabled: true))
         } else {
             for record in recentScreenshots.prefix(8) {
                 screenshotItems.append(TrayMenuItem(title: record.filename, icon: "photo") { [record] in
@@ -234,17 +272,17 @@ struct MenuBarContentView: View {
                 })
             }
             screenshotItems.append(.separator())
-            screenshotItems.append(TrayMenuItem(title: "Clear Screenshots", icon: "trash", action: {
+            screenshotItems.append(TrayMenuItem(title: "清空截图", icon: "trash", action: {
                 HistoryStore.shared.records
                     .filter { $0.kind == .screenshot }
                     .forEach { HistoryStore.shared.deleteRecord($0) }
             }, isDestructive: true))
         }
-        items.append(TrayMenuItem(title: "Screenshots", icon: "photo.on.rectangle", action: {}, submenu: screenshotItems))
+        items.append(TrayMenuItem(title: "截图", icon: "photo.on.rectangle", action: {}, submenu: screenshotItems))
 
         var recordingItems: [TrayMenuItem] = []
         if recentRecordings.isEmpty {
-            recordingItems.append(TrayMenuItem(title: "No recordings yet", icon: "video", action: {}, isDisabled: true))
+            recordingItems.append(TrayMenuItem(title: "还没有录屏", icon: "video", action: {}, isDisabled: true))
         } else {
             for record in recentRecordings.prefix(8) {
                 recordingItems.append(TrayMenuItem(title: record.filename, icon: "video") { [record] in
@@ -255,13 +293,13 @@ struct MenuBarContentView: View {
                 })
             }
             recordingItems.append(.separator())
-            recordingItems.append(TrayMenuItem(title: "Clear Recordings", icon: "trash", action: {
+            recordingItems.append(TrayMenuItem(title: "清空录屏", icon: "trash", action: {
                 HistoryStore.shared.records
                     .filter { $0.kind == .recording }
                     .forEach { HistoryStore.shared.deleteRecord($0) }
             }, isDestructive: true))
         }
-        items.append(TrayMenuItem(title: "Recordings", icon: "video.circle", action: {}, submenu: recordingItems))
+        items.append(TrayMenuItem(title: "录屏", icon: "video.circle", action: {}, submenu: recordingItems))
 
         return items
     }
@@ -282,7 +320,7 @@ struct MenuBarContentView: View {
             let started: Bool
             switch mode {
             case .fullScreen:
-                started = try await ScreenRecordingManager.shared.startFullScreenRecording()
+                started = try await ScreenRecordingManager.shared.startFullScreenRecording(on: screen)
             case .area:
                 started = try await ScreenRecordingManager.shared.startAreaRecording()
             }
@@ -290,7 +328,7 @@ struct MenuBarContentView: View {
                 RecordingStatusBarController.shared.show(on: screen)
             }
         } catch {
-            print("Recording failed: \(error.localizedDescription)")
+            print("录屏失败：\(error.localizedDescription)")
         }
     }
 

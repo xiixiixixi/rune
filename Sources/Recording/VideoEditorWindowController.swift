@@ -25,7 +25,7 @@ final class VideoEditorWindowController: NSObject, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        win.title = "Video Editor"
+        win.title = "视频编辑器"
         win.contentView = hostingView
         win.isReleasedWhenClosed = false
         win.minSize = NSSize(width: 780, height: 520)

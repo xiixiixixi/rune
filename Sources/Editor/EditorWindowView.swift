@@ -61,7 +61,7 @@ struct EditorWindowView: View {
 
                 Spacer()
 
-                Button("Cancel") {
+                Button("取消") {
                     NSApp.keyWindow?.close()
                 }
                 .keyboardShortcut(.escape, modifiers: [])
@@ -75,7 +75,7 @@ struct EditorWindowView: View {
                         }
                     }
                 } label: {
-                    Label("Redact PII", systemImage: "eye.slash")
+                    Label("隐私信息打码", systemImage: "eye.slash")
                 }
                 .help("自动打码手机号/邮箱/身份证号")
 
@@ -83,28 +83,28 @@ struct EditorWindowView: View {
                 Button {
                     Task { await model.autoRedactFaces() }
                 } label: {
-                    Label("Redact Faces", systemImage: "face.dashed")
+                    Label("人脸打码", systemImage: "face.dashed")
                 }
                 .help("自动打码所有人脸")
 
                 Button {
                     deleteCapture()
                 } label: {
-                    Label("Delete", systemImage: "trash")
+                    Label("删除", systemImage: "trash")
                         .foregroundStyle(.red)
                 }
 
                 Button {
                     Task { await copyToClipboard() }
                 } label: {
-                    Label("Copy", systemImage: "doc.on.doc")
+                    Label("复制", systemImage: "doc.on.doc")
                 }
                 .keyboardShortcut("c", modifiers: [.command, .shift])
 
                 Button {
                     Task { await exportImage() }
                 } label: {
-                    Label("Export", systemImage: "square.and.arrow.down")
+                    Label("导出", systemImage: "square.and.arrow.down")
                 }
                 .keyboardShortcut("s", modifiers: .command)
             }
@@ -123,7 +123,7 @@ struct EditorWindowView: View {
         let dir = AppPreferences.saveDirectory
         let stamp = Int(Date().timeIntervalSince1970 * 1000)
         let ext = AppPreferences.exportFormat.fileExtension
-        let path = "\(dir)/bettershot_\(stamp).\(ext)"
+        let path = "\(dir)/轻截_\(stamp).\(ext)"
         let url = URL(fileURLWithPath: path)
 
         guard let dest = CGImageDestinationCreateWithURL(
@@ -151,7 +151,7 @@ struct EditorWindowView: View {
                 HistoryStore.shared.deleteRecord(record)
             }
 
-            _ = HistoryStore.shared.importCapture(from: url, deleteSource: false, kind: .screenshot)
+            _ = await HistoryStore.shared.importCapture(from: url, deleteSource: false, kind: .screenshot)
         }
 
         if AppPreferences.copyAfterSave {
@@ -162,7 +162,7 @@ struct EditorWindowView: View {
             }
         }
 
-        withAnimation { model.toastMessage = "Exported" }
+        withAnimation { model.toastMessage = "已导出" }
         try? await Task.sleep(for: .seconds(1.0))
         NSApp.keyWindow?.close()
     }
@@ -186,6 +186,6 @@ struct EditorWindowView: View {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.writeObjects([nsImage])
-        withAnimation { model.toastMessage = "Copied to clipboard" }
+        withAnimation { model.toastMessage = "已复制到剪贴板" }
     }
 }

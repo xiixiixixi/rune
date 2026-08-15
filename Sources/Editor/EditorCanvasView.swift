@@ -147,7 +147,7 @@ struct EditorCanvasView: View {
                 .onChange(of: model.selectedItemIDs) { _, _ in refreshCursor(imageFrame: sourceImageFrame) }
                 .onDisappear { setCursor(.arrow) }
             } else {
-                ContentUnavailableView("Loading image...", systemImage: "photo")
+                ContentUnavailableView("正在载入图片…", systemImage: "photo")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }

@@ -12,7 +12,7 @@ final class ToastWindow {
 
     private var panelGeneration: UInt = 0
 
-    func show(title: String = "Saved", message: String, icon: NSImage? = nil, systemIcon: String? = nil, duration: TimeInterval = 2.5, on preferredScreen: NSScreen? = nil) {
+    func show(title: String = "已保存", message: String, icon: NSImage? = nil, systemIcon: String? = nil, duration: TimeInterval = 2.5, on preferredScreen: NSScreen? = nil) {
         dismiss(animated: false)
         panelGeneration &+= 1
 
@@ -75,8 +75,8 @@ final class ToastWindow {
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
                 panel.animator().alphaValue = 0
             }, completionHandler: { [weak self] in
-                panel.orderOut(nil)
                 Task { @MainActor in
+                    panel.orderOut(nil)
                     guard let self, self.panelGeneration == gen else { return }
                     self.panel = nil
                 }

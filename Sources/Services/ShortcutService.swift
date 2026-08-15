@@ -67,8 +67,8 @@ final class ShortcutService {
             guard shortcut.enabled else { continue }
 
             var ref: EventHotKeyRef?
-            // signature：4 字节 OSType，用 'BSHT'（BetterShot Hotkey）做标识
-            let hotKeyID = EventHotKeyID(signature: OSType(0x42534854), id: action.rawValue)
+            // signature：4 字节 OSType，用 'QJIE'（轻截）做内部标识
+            let hotKeyID = EventHotKeyID(signature: OSType(0x514A4945), id: action.rawValue)
             let status = RegisterEventHotKey(
                 shortcut.keyCode,
                 shortcut.modifiers,
@@ -81,10 +81,10 @@ final class ShortcutService {
                 hotKeyRefs[action.rawValue] = ref
                 Self.actionLock.withLock { Self._actionsByID[action.rawValue] = action }
             } else {
-                print("BetterShot: 注册热键失败 action=\(action) status=\(status)（可能键位被系统占用）")
+                print("轻截：注册热键失败 action=\(action) status=\(status)（可能键位被系统占用）")
             }
         }
-        print("BetterShot: Carbon 热键已注册 \(hotKeyRefs.count)/\(Action.allCases.count) 个")
+        print("轻截：全局热键已注册 \(hotKeyRefs.count)/\(Action.allCases.count) 个")
     }
 
     func unregisterAll() {
@@ -150,7 +150,7 @@ final class ShortcutService {
         Task { @MainActor in
             if action == .recording {
                 if ScreenRecordingManager.shared.isRecording { return }
-                let started = try? await ScreenRecordingManager.shared.startRecording()
+                let started = try? await ScreenRecordingManager.shared.startRecording(on: mouseScreen)
                 if started == true {
                     RecordingStatusBarController.shared.show(on: mouseScreen)
                 }
@@ -161,7 +161,9 @@ final class ShortcutService {
                     BurstStatusBarController.shared.dismiss()
                 } else {
                     await BurstCaptureController.shared.start(mode: .burst, on: mouseScreen)
-                    BurstStatusBarController.shared.show(on: mouseScreen)
+                    if BurstCaptureController.shared.isActive {
+                        BurstStatusBarController.shared.show(on: mouseScreen)
+                    }
                 }
             } else {
                 await CaptureOrchestrator.shared.performCapture(action, on: mouseScreen)

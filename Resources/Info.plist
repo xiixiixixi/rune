@@ -3,15 +3,17 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDevelopmentRegion</key>
-    <string>en</string>
+    <string>zh_CN</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
     <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleDisplayName</key>
+    <string>轻截</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>BetterShot</string>
+    <string>轻截</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -23,15 +25,8 @@
     <key>LSUIElement</key>
     <true/>
     <key>NSScreenCaptureUsageDescription</key>
-    <string>BetterShot needs screen recording access to capture screenshots and record your screen.</string>
+    <string>轻截需要屏幕录制权限，才能截取屏幕和录制画面。所有截图均在本机处理。</string>
     <key>NSRequiresAquaSystemAppearance</key>
     <true/>
-    <!-- M2 Sparkle 更新配置：feed 地址（占位，正式分发时改）、自动检查、检查间隔 -->
-    <key>SUFeedURL</key>
-    <string>https://bettershot.example.com/appcast.xml</string>
-    <key>SUEnableAutomaticChecks</key>
-    <true/>
-    <key>SUScheduledCheckInterval</key>
-    <integer>86400</integer>
 </dict>
 </plist>

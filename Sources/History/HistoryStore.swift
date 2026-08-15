@@ -14,7 +14,14 @@ final class HistoryStore {
 
     private init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        storageDir = appSupport.appendingPathComponent("BetterShot", isDirectory: true)
+        let newStorageDir = appSupport.appendingPathComponent("轻截", isDirectory: true)
+        let oldStorageDir = appSupport.appendingPathComponent("BetterShot", isDirectory: true)
+        // 首次使用“轻截”时复制旧版本历史，旧资料保留不删，避免改名后看不到以前的截图。
+        if !FileManager.default.fileExists(atPath: newStorageDir.path),
+           FileManager.default.fileExists(atPath: oldStorageDir.path) {
+            try? FileManager.default.copyItem(at: oldStorageDir, to: newStorageDir)
+        }
+        storageDir = newStorageDir
         manifestURL = storageDir.appendingPathComponent("history.json")
 
         try? FileManager.default.createDirectory(at: storageDir, withIntermediateDirectories: true)
@@ -23,7 +30,7 @@ final class HistoryStore {
 
     // MARK: - Import
 
-    func importCapture(from tempURL: URL, deleteSource: Bool = true, kind: CaptureKind = .screenshot) -> CaptureRecord? {
+    func importCapture(from tempURL: URL, deleteSource: Bool = true, kind: CaptureKind = .screenshot) async -> CaptureRecord? {
         let ext = tempURL.pathExtension.isEmpty ? "png" : tempURL.pathExtension
         // M2 自动命名保存：用 AppPreferences 生成器，冲突时加 _2/_3 后缀（比 UUID 更友好）。
         let baseName = AppPreferences.generateFileName(ext: ext)
@@ -32,15 +39,17 @@ final class HistoryStore {
         do {
             try FileManager.default.copyItem(at: tempURL, to: destURL)
         } catch {
-            print("Failed to import capture: \(error)")
+            print("导入截图失败：\(error)")
             return nil
         }
 
         var width = 0, height = 0
         if kind == .recording {
             let asset = AVURLAsset(url: destURL)
-            if let track = asset.tracks(withMediaType: .video).first {
-                let size = track.naturalSize.applying(track.preferredTransform)
+            if let track = try? await asset.loadTracks(withMediaType: .video).first,
+               let naturalSize = try? await track.load(.naturalSize),
+               let preferredTransform = try? await track.load(.preferredTransform) {
+                let size = naturalSize.applying(preferredTransform)
                 width = Int(abs(size.width))
                 height = Int(abs(size.height))
             }

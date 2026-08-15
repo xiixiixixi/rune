@@ -10,7 +10,7 @@ struct EditorInspectorView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     // MARK: Tools
                     VStack(alignment: .leading, spacing: 10) {
-                        InspectorSectionHeader("TOOLS")
+                        InspectorSectionHeader("工具")
                         AnnotationInspectorToolGrid(selectedTool: model.selectedTool) { tool in
                             model.selectTool(tool)
                         }
@@ -23,7 +23,7 @@ struct EditorInspectorView: View {
                         Button(role: .destructive) {
                             model.clearAnnotations()
                         } label: {
-                            Label("Clear All", systemImage: "trash")
+                            Label("全部清除", systemImage: "trash")
                                 .font(.caption)
                                 .frame(maxWidth: .infinity)
                         }
@@ -38,22 +38,22 @@ struct EditorInspectorView: View {
 
                         // MARK: Style
                         VStack(alignment: .leading, spacing: 10) {
-                            InspectorSectionHeader("STYLE")
+                            InspectorSectionHeader("样式")
 
                             if model.selectionCount > 1 {
-                                Text("\(model.selectionCount) annotations selected")
+                                Text("已选择 \(model.selectionCount) 个标注")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
 
-                            InspectorRow(title: "Color") {
+                            InspectorRow(title: "颜色") {
                                 AnnotationColorMenu(selectedSwatch: model.selectedSwatch) { swatch in
                                     model.setSwatch(swatch)
                                 }
                             }
 
                             if model.isStrokeStyleAvailable {
-                                InspectorRow(title: "Stroke") {
+                                InspectorRow(title: "线条") {
                                     AnnotationStrokeMenu(strokeWidth: model.strokeWidth) { strokeWidth in
                                         model.setStrokeWidth(strokeWidth)
                                     }
@@ -63,7 +63,7 @@ struct EditorInspectorView: View {
                             if model.isRedactionStyleAvailable {
                                 VStack(spacing: 4) {
                                     HStack {
-                                        Text("Density")
+                                        Text("密度")
                                             .font(.caption2)
                                             .foregroundStyle(.tertiary)
                                         Spacer()
@@ -91,7 +91,7 @@ struct EditorInspectorView: View {
 
                         // MARK: Text
                         VStack(alignment: .leading, spacing: 10) {
-                            InspectorSectionHeader("TEXT")
+                            InspectorSectionHeader("文字")
                             AnnotationTextStyleControls(model: model)
                         }
                         .padding(.horizontal, 14)
@@ -309,7 +309,7 @@ private struct AnnotationColorPopover: View {
                         ))
                         .frame(width: 22, height: 22)
                         .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 0.5))
-                    Text("Custom")
+                    Text("自定义")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.primary)
                 }
@@ -338,7 +338,7 @@ private struct AnnotationStrokeMenu: View {
                 StrokePreview(width: strokeWidth)
                     .frame(width: 30, height: 16)
 
-                Text("\(Int(strokeWidth))px")
+                Text("\(Int(strokeWidth)) 像素")
                     .font(.system(size: 12))
                     .foregroundStyle(.primary.opacity(0.8))
                     .frame(minWidth: 28, alignment: .leading)
@@ -528,13 +528,13 @@ private struct AnnotationTextStyleControls: View {
 
     private var textStyleToggles: some View {
         HStack(spacing: 0) {
-            styleToggle("B", isActive: model.selectedTextIsBold, font: .system(size: 12, weight: .bold)) {
+            styleToggle("粗", isActive: model.selectedTextIsBold, font: .system(size: 12, weight: .bold)) {
                 model.selectedTextIsBold.toggle()
             }
-            styleToggle("I", isActive: model.selectedTextIsItalic, font: .system(size: 12, weight: .regular, design: .serif).italic()) {
+            styleToggle("斜", isActive: model.selectedTextIsItalic, font: .system(size: 12, weight: .regular, design: .serif).italic()) {
                 model.selectedTextIsItalic.toggle()
             }
-            styleToggle("U", isActive: model.selectedTextIsUnderline, font: .system(size: 12, weight: .regular), underline: true) {
+            styleToggle("下", isActive: model.selectedTextIsUnderline, font: .system(size: 12, weight: .regular), underline: true) {
                 model.selectedTextIsUnderline.toggle()
             }
         }
@@ -639,10 +639,10 @@ private struct LayoutSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            InspectorSectionHeader("LAYOUT")
+            InspectorSectionHeader("布局")
 
             HStack(spacing: 10) {
-                Text("Ratio")
+                Text("比例")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .frame(width: 52, alignment: .leading)
@@ -653,15 +653,15 @@ private struct LayoutSection: View {
                             model.updateConfig { $0.aspectRatio = ratio }
                         } label: {
                             if model.config.aspectRatio == ratio {
-                                Label(ratio.rawValue, systemImage: "checkmark")
+                                Label(ratio.displayName, systemImage: "checkmark")
                             } else {
-                                Text(ratio.rawValue)
+                                Text(ratio.displayName)
                             }
                         }
                     }
                 } label: {
                     HStack(spacing: 6) {
-                        Text(model.config.aspectRatio.rawValue)
+                        Text(model.config.aspectRatio.displayName)
                             .font(.system(size: 12))
                             .foregroundStyle(.primary.opacity(0.8))
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -687,7 +687,7 @@ private struct LayoutSection: View {
             }
 
             HStack(alignment: .top, spacing: 10) {
-                Text("Align")
+                Text("对齐")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .frame(width: 52, alignment: .leading)
@@ -759,9 +759,9 @@ struct BackgroundPickerSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            InspectorSectionHeader("BACKGROUND")
+            InspectorSectionHeader("背景")
 
-            Text("Solid")
+            Text("纯色")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
 
@@ -773,7 +773,7 @@ struct BackgroundPickerSection: View {
                 }
             }
 
-            Text("Gradients")
+            Text("渐变")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
 
@@ -823,7 +823,7 @@ struct BackgroundPickerSection: View {
             )
         }
         .buttonStyle(.plain)
-        .help("No background")
+        .help("无背景")
     }
 
     private func solidButton(_ color: SolidColor) -> some View {
@@ -923,7 +923,7 @@ struct BackgroundPickerSection: View {
                 Button {
                     pickCustomWallpaper()
                 } label: {
-                    Text("Change")
+                    Text("更换")
                         .font(.caption2)
                 }
                 .buttonStyle(.bordered)
@@ -935,7 +935,7 @@ struct BackgroundPickerSection: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "plus").font(.caption2)
-                    Text("Custom Image...").font(.caption2)
+                    Text("自定义图片…").font(.caption2)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 6)
@@ -956,7 +956,7 @@ struct BackgroundPickerSection: View {
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.canCreateDirectories = false
-        panel.title = "Choose Background Image"
+        panel.title = "选择背景图片"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let path = url.path
         model.updateConfig { $0.style = .wallpaper(WallpaperSource(path: path)) }
@@ -970,7 +970,7 @@ private struct ImageCropSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            InspectorSectionHeader("CROP")
+            InspectorSectionHeader("裁剪")
 
             HStack {
                 Button {
@@ -979,7 +979,7 @@ private struct ImageCropSection: View {
                     HStack(spacing: 4) {
                         Image(systemName: "crop")
                             .font(.caption)
-                        Text(model.isCropping ? "Done" : "Crop")
+                        Text(model.isCropping ? "完成" : "裁剪")
                             .font(.caption2)
                     }
                     .frame(maxWidth: .infinity)
@@ -999,7 +999,7 @@ private struct ImageCropSection: View {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.counterclockwise")
                                 .font(.caption)
-                            Text("Reset")
+                            Text("重置")
                                 .font(.caption2)
                         }
                         .padding(.vertical, 6)
@@ -1031,10 +1031,10 @@ struct BeautifierControlsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            InspectorSectionHeader("EFFECTS")
+            InspectorSectionHeader("效果")
 
             LabeledSlider(
-                label: "Padding",
+                label: "边距",
                 value: Binding(get: { model.config.padding }, set: { model.config.padding = $0 }),
                 range: 0.0...0.45,
                 format: { "\(Int($0 * 100))%" },
@@ -1042,7 +1042,7 @@ struct BeautifierControlsSection: View {
             )
 
             LabeledSlider(
-                label: "Corner Radius",
+                label: "圆角",
                 value: Binding(get: { model.config.cornerRadius }, set: { model.config.cornerRadius = $0 }),
                 range: 0.0...0.12,
                 format: { "\(Int($0 * 1000))" },
@@ -1050,7 +1050,7 @@ struct BeautifierControlsSection: View {
             )
 
             LabeledSlider(
-                label: "Shadow",
+                label: "阴影",
                 value: Binding(get: { model.config.shadowStrength }, set: { model.config.shadowStrength = $0 }),
                 range: 0.0...1.0,
                 format: { "\(Int($0 * 100))%" },

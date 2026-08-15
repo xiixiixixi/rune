@@ -48,9 +48,10 @@ final class BurstCaptureController: NSObject {
 
     private var stream: SCStream?
     private var outputDir: URL?
-    private var captureQueue = DispatchQueue(label: "bettershot.burst", qos: .userInitiated)
+    private var captureQueue = DispatchQueue(label: "com.tc.qingjie.burst", qos: .userInitiated)
     private var timelapseTimer: DispatchSourceTimer?
     private var singleShotEngine = SCKStillCaptureBackend()
+    private var selectedDisplayID: CGDirectDisplayID?
     /// nonisolated 回调写入用（SCStreamOutput 回调从 captureQueue 来）。
     private var pendingStop = false
     /// 原子计数器：收帧回调从 captureQueue 来，用 NSLock 保护，避免跳 MainActor 的并发开销。
@@ -70,13 +71,31 @@ final class BurstCaptureController: NSObject {
     /// - 延时：按间隔调 SCScreenshotManager 单帧截图（延时不需要高帧率）。
     func start(mode: BurstMode, on screen: NSScreen? = nil) async {
         guard !isActive else { return }
+
+        // 权限处理：用系统 API 请求（触发系统弹框），而不是自己弹自定义框。
+        // CGPreflightScreenCaptureAccess 只检查不请求；CGRequestScreenCaptureAccess 会触发系统弹框。
+        if !CGPreflightScreenCaptureAccess() {
+            // 主动请求权限——系统会弹出“轻截想要录制屏幕”的系统级对话框
+            let granted = CGRequestScreenCaptureAccess()
+            if !granted {
+                let alert = NSAlert()
+                alert.messageText = "需要屏幕录制权限"
+                alert.informativeText = "请在系统设置的「隐私与安全性 > 屏幕与系统音频录制」中允许“轻截”，然后重新打开轻截。"
+                alert.addButton(withTitle: "知道了")
+                alert.runModal()
+            }
+            // 请求后不继续（用户需要去授权，下次再按才会真正截图）
+            return
+        }
+
         isActive = true
         currentMode = mode
         capturedCount = 0
         pendingStop = false
+        selectedDisplayID = screen.flatMap { Self.displayID(for: $0) }
         frameLock.withLock { _frameIndex = 0 }
 
-        // 创建输出文件夹：~/Library/Application Support/BetterShot/bursts/<时间戳>/
+        // 创建输出文件夹：~/Library/Application Support/轻截/连续截图/<时间戳>/
         let stamp = Int(Date().timeIntervalSince1970)
         let dir = burstBaseDir.appendingPathComponent("\(stamp)", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -108,7 +127,9 @@ final class BurstCaptureController: NSObject {
             endCapture()
             return
         }
-        guard let display = content.displays.first else {
+        let requestedDisplayID = screen.flatMap { Self.displayID(for: $0) }
+        guard let display = requestedDisplayID.flatMap({ id in content.displays.first { $0.displayID == id } })
+                ?? content.displays.first else {
             endCapture()
             return
         }
@@ -172,7 +193,8 @@ final class BurstCaptureController: NSObject {
     private func captureOneTimelapseFrame() async {
         guard let dir = outputDir else { return }
         do {
-            let frame = try await singleShotEngine.capture(CaptureTarget.fullscreen)
+            let target = selectedDisplayID.map(CaptureTarget.display) ?? .fullscreen
+            let frame = try await singleShotEngine.capture(target)
             try writePNG(frame.image, to: dir, index: capturedCount + 1)
             capturedCount += 1
         } catch {
@@ -197,7 +219,7 @@ final class BurstCaptureController: NSObject {
             return _frameIndex
         }
         // 写盘（线程安全：每个文件名唯一，CGImageDestination 是栈上局部变量）
-        let name = String(format: "burst_%03d.png", index)
+        let name = String(format: "连续截图_%03d.png", index)
         let url = dir.appendingPathComponent(name)
         if let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) {
             CGImageDestinationAddImage(dest, cg, nil)
@@ -217,7 +239,7 @@ final class BurstCaptureController: NSObject {
     // MARK: - 写盘
 
     private func writePNG(_ image: CGImage, to dir: URL, index: Int) throws {
-        let name = String(format: "burst_%03d.png", index)
+        let name = String(format: "连续截图_%03d.png", index)
         let url = dir.appendingPathComponent(name)
         guard let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) else {
             throw NSError(domain: "BurstCapture", code: 1)
@@ -245,21 +267,32 @@ final class BurstCaptureController: NSObject {
 
         let dir = outputDir
         let count = capturedCount
-        // 回调 + 在 Finder 打开
-        if let dir {
-            onComplete?(dir)
-            NSWorkspace.shared.open(dir)
+
+        if count > 0 {
+            // 抓到了图：回调 + 在 Finder 打开输出文件夹
+            if let dir {
+                onComplete?(dir)
+                NSWorkspace.shared.open(dir)
+            }
+            print("金手指：结束，共抓 \(count) 张，输出到 \(dir?.path ?? "?")")
+        } else {
+            // 一张都没抓到：SCStream 启动失败或权限问题，不弹 Finder
+            print("金手指：启动失败（可能屏幕录制权限未授或 SCStream 初始化失败），未抓到任何帧")
         }
-        print("金手指：结束，共抓 \(count) 张，输出到 \(dir?.path ?? "?")")
     }
 
     // MARK: - 输出目录
 
     private var burstBaseDir: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = appSupport.appendingPathComponent("BetterShot/bursts", isDirectory: true)
+        let dir = appSupport.appendingPathComponent("轻截/连续截图", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
+    }
+
+    private static func displayID(for screen: NSScreen) -> CGDirectDisplayID? {
+        let key = NSDeviceDescriptionKey(rawValue: "NSScreenNumber")
+        return (screen.deviceDescription[key] as? NSNumber).map { CGDirectDisplayID($0.uint32Value) }
     }
 }
 
