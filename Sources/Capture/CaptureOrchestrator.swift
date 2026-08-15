@@ -115,6 +115,9 @@ final class CaptureOrchestrator {
             await CountdownOverlay.shared.showCountdown(seconds: delay.rawValue)
         }
 
+        // 拖框期间后台预热引擎（屏幕清单+采集管线），松手即拍
+        prewarmEngineInBackground()
+
         // 1. 弹应用自己的选区 overlay，拿全局点坐标矩形
         let selection = await RegionSelectionOverlay().selectRegion()
         guard let selection else { return }  // 用户取消（Esc 等）
@@ -134,8 +137,23 @@ final class CaptureOrchestrator {
 
     /// M1 第⑤步（续）：窗口截图经应用自己的 WindowPickerOverlay 拿窗口 ID，
     /// 再走 SCK 引擎截取该窗口。不再用 screencapture -w 系统命令。
+    /// 后台预热截图引擎（不阻塞当前流程）。
+    /// 屏幕清单查询 0.5–1.5s 是截图卡顿的元凶；在 overlay 交互期间提前做完。
+    private func prewarmEngineInBackground() {
+        Task.detached(priority: .userInitiated) { [sckEngine] in
+            try? await sckEngine.prewarm()
+        }
+    }
+
+    /// 供启动时调用：把引擎焐热，首次截图也快。
+    func prewarm() {
+        prewarmEngineInBackground()
+    }
+
     private func captureWindowViaSCK() async {
         guard ensureScreenCapturePermission() else { return }
+        // 挑窗口期间后台预热引擎
+        prewarmEngineInBackground()
         // 1. 弹窗口选择器，拿 CGWindowID
         let selection = await WindowPickerOverlay().pickWindow()
         guard let selection else { return }  // 用户取消

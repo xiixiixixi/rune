@@ -21,6 +21,10 @@ public final class SCKStillCaptureBackend: StillCaptureBackend, @unchecked Senda
     /// 排除的应用 bundleID 集合（默认排除本应用自身，避免把悬浮 UI 录进去）。
     private let excludingBundleIDs: Set<String>
 
+    /// 屏幕清单缓存：SCShareableContent 查询要 0.5–1.5s（截图卡顿的元凶），
+    /// 用 actor 存 5 秒内的快照；prewarm 提前填好，capture 直接命中。
+    private let store = ContentStore()
+
     public init(excludingBundleIDs: Set<String> = []) {
         var ids = excludingBundleIDs
         if let myBundleID = Bundle.main.bundleIdentifier {
@@ -31,10 +35,27 @@ public final class SCKStillCaptureBackend: StillCaptureBackend, @unchecked Senda
 
     // MARK: - CaptureEngine
 
-    // prewarm() 使用协议默认空实现；预热缓存留到下一轮。
+    /// 预热：填屏幕清单缓存 + 用 1×1 像素不可见小图焐热采集管线。
+    /// 在选区 overlay 弹出时调用，拖框期间就完成，松手即拍。
+    public func prewarm() async throws {
+        let content = try await store.fetch(force: true).content
+        guard let display = content.displays.first else { return }
+        let filter = SCContentFilter(
+            display: display,
+            excludingApplications: content.applications.filter {
+                excludingBundleIDs.contains($0.bundleIdentifier)
+            },
+            exceptingWindows: []
+        )
+        let config = SCStreamConfiguration()
+        config.width = 1
+        config.height = 1
+        config.showsCursor = false
+        _ = try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+    }
 
     public func capture(_ target: CaptureTarget) async throws -> CapturedFrame {
-        let content = try await fetchShareableContent()
+        let content = try await contentFor(target)
 
         // 跨显示器选区：分别截取每块屏幕上的交集，再按全局位置拼成一张图。
         // 单块显示器路径仍走下面的轻量单帧逻辑。
@@ -142,11 +163,19 @@ public final class SCKStillCaptureBackend: StillCaptureBackend, @unchecked Senda
 
     // MARK: - 私有：内容获取 / 过滤器 / 配置
 
+    /// 取屏幕清单：命中缓存直接用；窗口目标在缓存里找不到对应窗口时
+    /// （窗口刚打开等），强制刷新一次再试。
+    private func contentFor(_ target: CaptureTarget) async throws -> SCShareableContent {
+        let cached = try await store.fetch().content
+        if case .window(let windowID) = target,
+           !cached.windows.contains(where: { $0.windowID == windowID }) {
+            return try await store.fetch(force: true).content
+        }
+        return cached
+    }
+
     private func fetchShareableContent() async throws -> SCShareableContent {
-        try await SCShareableContent.excludingDesktopWindows(
-            false,
-            onScreenWindowsOnly: true
-        )
+        try await store.fetch().content
     }
 
     private func buildFilter(
@@ -262,5 +291,36 @@ public final class SCKStillCaptureBackend: StillCaptureBackend, @unchecked Senda
     @MainActor
     private static func mainScreenScaleFactor() -> CGFloat {
         NSScreen.main?.backingScaleFactor ?? 2.0
+    }
+}
+
+// MARK: - 屏幕清单缓存
+
+/// SCShareableContent 不符合 Sendable，用 @unchecked Sendable 包一层存进 actor。
+/// 它本身是不可变快照，跨隔离区只读是安全的。
+private actor ContentStore {
+    struct Snapshot: @unchecked Sendable {
+        let content: SCShareableContent
+    }
+
+    private var snapshot: Snapshot?
+    private var fetchedAt: Date = .distantPast
+    /// 屏幕布局很少变；30 秒内直接复用快照（覆盖慢慢拖框的场景），过期自动重查
+    private let ttl: TimeInterval = 30
+
+    /// 返回值必须是 Sendable 包装（Swift 6 禁止 actor 直接返回非 Sendable），
+    /// 调用方自行 .content 拆箱。
+    func fetch(force: Bool = false) async throws -> Snapshot {
+        if !force, let snapshot, Date().timeIntervalSince(fetchedAt) < ttl {
+            return snapshot
+        }
+        let fresh = try await SCShareableContent.excludingDesktopWindows(
+            false,
+            onScreenWindowsOnly: true
+        )
+        let newSnapshot = Snapshot(content: fresh)
+        self.snapshot = newSnapshot
+        self.fetchedAt = Date()
+        return newSnapshot
     }
 }
