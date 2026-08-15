@@ -15,8 +15,7 @@ struct ConfirmToolbarView: View {
     @State private var swatch: AnnotationSwatch = .red
     @State private var widthRaw: Int = 1
 
-    // 注：spotlight（聚光灯）暂未通过端到端验证，先不放入工具栏（代码保留）
-    private let tools: [AnnotationTool] = [.select, .rectangle, .arrow, .text, .blur, .numberedCircle]
+    private let tools: [AnnotationTool] = [.select, .rectangle, .arrow, .text, .blur, .spotlight, .numberedCircle]
     private let swatches: [AnnotationSwatch] = [.red, .black, .white, .blue, .yellow]
     private let widths: [CGFloat] = [2, 4, 8]
 
