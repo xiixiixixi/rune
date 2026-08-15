@@ -3,6 +3,7 @@ import AppKit
 @MainActor
 final class BetterShotDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        ExceptionLogger.install()
         AppPreferences.applyAppearance()
         NSApp.setActivationPolicy(.accessory)
 

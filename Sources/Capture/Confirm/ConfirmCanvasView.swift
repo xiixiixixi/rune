@@ -391,8 +391,9 @@ final class ConfirmCanvasView: NSView {
     // MARK: - 工具栏动作（复制 / 贴图）
 
     /// 渲染"截图+标注"成品（复用 BeautifierRenderer 的标注烘焙）。
+    /// 用用户设置的美化配置（与保存链一致——此前写死默认值，贴图/复制会和保存效果不一致）。
     func renderedImage() -> CGImage? {
-        let config = BeautifierConfig.default
+        let config = AppPreferences.defaultBeautifierConfig
         return BeautifierRenderer.render(image: image, config: config, annotations: annotations)
     }
 

@@ -281,7 +281,6 @@ final class CaptureOrchestrator {
     /// 不再用老的 screencapture 命令 + ScreenCapture.captureAndOCR。
     private func performOCR() async {
         guard ensureScreenCapturePermission() else { return }
-
         // 1. 选区（复用区域截图的选区 overlay）
         let selection = await RegionSelectionOverlay().selectRegion()
         guard let selection else { return }  // 用户取消
@@ -313,11 +312,10 @@ final class CaptureOrchestrator {
             pasteboard.clearContents()
             pasteboard.setString(result.combinedText, forType: .string)
             ScreenCapture.shared.playShutterSound()
-
             ToastWindow.shared.show(
                 title: "文字识别",
                 message: "识别结果已复制到剪贴板",
-                systemIcon: "doc.text.viewfinder",
+                icon: NSImage(named: "AppIcon") ?? NSApp.applicationIconImage,
                 on: captureScreen
             )
         } catch {
