@@ -57,6 +57,15 @@ final class ConfirmCanvasView: NSView {
 
     var canUndo: Bool { !undoStack.isEmpty }
 
+    /// 选中态下改颜色/粗细（CleanShot 式：点工具栏色点/粗细直接改选中标注）
+    func updateSelectedAnnotation(swatch: AnnotationSwatch? = nil, strokeWidth: CGFloat? = nil) {
+        guard let id = selectedID,
+              let idx = annotations.firstIndex(where: { $0.id == id }) else { return }
+        if let swatch { annotations[idx].swatch = swatch }
+        if let strokeWidth { annotations[idx].strokeWidth = strokeWidth }
+        needsDisplay = true
+    }
+
     func deleteSelected() {
         guard let id = selectedID else { return }
         pushUndo()
@@ -352,6 +361,8 @@ final class ConfirmCanvasView: NSView {
             item = AnnotationItem(tool: .arrow, rect: rect, points: [n, n], swatch: selectedSwatch, strokeWidth: strokeWidth)
         case .blur:
             item = AnnotationItem(tool: .blur, rect: rect, points: [], swatch: selectedSwatch, strokeWidth: strokeWidth, redactionDensity: 0.6)
+        case .spotlight:
+            item = AnnotationItem(tool: .spotlight, rect: rect, points: [], swatch: selectedSwatch, strokeWidth: strokeWidth)
         case .numberedCircle:
             let next = annotations.filter { $0.tool == .numberedCircle }.count + 1
             item = AnnotationItem(tool: .numberedCircle, rect: rect, points: [], swatch: selectedSwatch, strokeWidth: strokeWidth, text: "\(next)")
@@ -364,7 +375,7 @@ final class ConfirmCanvasView: NSView {
     private func updateDraft(to n: CGPoint) {
         guard var d = draft else { return }
         switch d.tool {
-        case .rectangle, .blur:
+        case .rectangle, .blur, .spotlight:
             d.rect = rectFrom(dragStart ?? n, n)
         case .arrow:
             d.points = [dragStart ?? n, n]

@@ -15,12 +15,13 @@ struct ConfirmToolbarView: View {
     @State private var swatch: AnnotationSwatch = .red
     @State private var widthRaw: Int = 1
 
+    // 注：spotlight（聚光灯）暂未通过端到端验证，先不放入工具栏（代码保留）
     private let tools: [AnnotationTool] = [.select, .rectangle, .arrow, .text, .blur, .numberedCircle]
     private let swatches: [AnnotationSwatch] = [.red, .black, .white, .blue, .yellow]
     private let widths: [CGFloat] = [2, 4, 8]
 
-    /// 画图工具才需要颜色/粗细；选择工具时收起属性组，保持一条短干净的条
-    private var showsToolOptions: Bool { activeTool != .select }
+    /// 属性组常驻（CleanShot 式）：画新标注用它，选中已有标注也能随时改色/改粗细
+    private var showsToolOptions: Bool { true }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -51,6 +52,7 @@ struct ConfirmToolbarView: View {
                             Button {
                                 swatch = s
                                 canvas?.selectedSwatch = s
+                                canvas?.updateSelectedAnnotation(swatch: s)
                             } label: {
                                 Circle()
                                     .fill(Color(s.nsColor))
@@ -74,6 +76,7 @@ struct ConfirmToolbarView: View {
                             Button {
                                 widthRaw = i
                                 canvas?.strokeWidth = widths[i]
+                                canvas?.updateSelectedAnnotation(strokeWidth: widths[i])
                             } label: {
                                 Circle()
                                     .fill(widthRaw == i ? QJTheme.textPrimary : QJTheme.textSecondary.opacity(0.45))
@@ -184,6 +187,7 @@ struct ConfirmToolbarView: View {
         case .arrow: "arrow.up.right"
         case .text: "character.cursor.ibeam"
         case .blur: "checkerboard.rectangle"
+        case .spotlight: "light.max"
         case .numberedCircle: "1.circle"
         default: "circle"
         }
@@ -197,6 +201,7 @@ struct ConfirmToolbarView: View {
         case .arrow: "箭头：拖拽画一个指示箭头"
         case .text: "文字：点击图上任意位置输入文字"
         case .blur: "马赛克：拖拽框住想打码的区域"
+        case .spotlight: "聚光灯：拖一块区域，其余部分压暗突出重点"
         case .numberedCircle: "编号圆点：点击放置编号（1、2、3…自动递增）"
         default: tool.title
         }

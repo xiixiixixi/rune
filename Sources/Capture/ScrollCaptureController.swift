@@ -16,6 +16,9 @@ final class ScrollCaptureController {
     private(set) var statusMessage = "请选择要滚动的区域"
 
     private let engine = SCKStillCaptureBackend()
+    /// 钉钉式自动滚动：轮询时自动发滚轮；连续多次无新内容=到底，自动生成
+    private var autoScroll = true
+    private var staleRounds = 0
     private var captureTask: Task<Void, Never>?
     private var targetRect: CGRect?
     private var previousImage: CGImage?
@@ -59,6 +62,7 @@ final class ScrollCaptureController {
 
     func stop() async {
         guard isActive else { return }
+        autoScroll = false
         isActive = false
         captureTask?.cancel()
         captureTask = nil
@@ -80,6 +84,7 @@ final class ScrollCaptureController {
     }
 
     func cancel() {
+        autoScroll = false
         captureTask?.cancel()
         captureTask = nil
         isActive = false
@@ -88,18 +93,49 @@ final class ScrollCaptureController {
     }
 
     private func beginPolling() {
+        autoScroll = true
+        staleRounds = 0
+        statusMessage = "自动滚动中…到底自动完成（也可手动滚）"
         captureTask?.cancel()
         captureTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(350))
                 guard !Task.isCancelled, let self, self.isActive else { break }
-                await self.captureNextFrame()
+                // 自动滚：向选区中心发一次小步滚轮（与轮询同步，不会滚过头）
+                if self.autoScroll { Self.postScrollWheel(at: self.targetRectCenter) }
+                let grew = await self.captureNextFrame()
+                // 连续 4 轮（≈1.4s）没有新内容 → 判定到底，自动生成长图
+                if grew { self.staleRounds = 0 } else {
+                    self.staleRounds += 1
+                    if self.staleRounds >= 4, self.autoScroll {
+                        await self.stop()
+                        break
+                    }
+                }
             }
         }
     }
 
-    private func captureNextFrame() async {
-        guard let targetRect, let previousImage else { return }
+    private var targetRectCenter: CGPoint? {
+        guard let targetRect else { return nil }
+        // CG 全局坐标（左上原点）→ CGEvent 用同一坐标系
+        return CGPoint(x: targetRect.midX, y: targetRect.midY)
+    }
+
+    /// 向指定位置发一次向下的滚轮事件（自动滚动）。
+    private static func postScrollWheel(at point: CGPoint?) {
+        guard let point else { return }
+        let src = CGEventSource(stateID: .combinedSessionState)
+        guard let e = CGEvent(scrollWheelEvent2Source: src, units: .pixel, wheelCount: 1,
+                              wheel1: -90, wheel2: 0, wheel3: 0) else { return }
+        // 位置设为选区中心：滚轮作用于该点下的窗口（否则滚的是鼠标所在处）
+        e.location = point
+        e.post(tap: .cghidEventTap)
+    }
+
+    @discardableResult
+    private func captureNextFrame() async -> Bool {
+        guard let targetRect, let previousImage else { return false }
         do {
             let next = try await engine.capture(.region(targetRect))
             guard next.image.width == previousImage.width,
@@ -109,7 +145,7 @@ final class ScrollCaptureController {
                   previousGray.width == currentGray.width,
                   previousGray.height == currentGray.height else {
                 statusMessage = "画面尺寸发生变化，请保持窗口大小不变"
-                return
+                return false
             }
 
             guard let sampledRows = ScrollOverlapDetector.appendedRowCount(
@@ -119,16 +155,16 @@ final class ScrollCaptureController {
                 height: previousGray.height
             ) else {
                 statusMessage = "没有找到重叠内容，请滚动慢一点"
-                return
+                return false
             }
-            guard sampledRows > 0 else { return }
+            guard sampledRows > 0 else { return false }   // 静止：无新内容
 
             let appendedRows = max(1, Int(
                 (CGFloat(sampledRows) / CGFloat(previousGray.height) * CGFloat(next.image.height)).rounded()
             ))
             guard stitchedHeight + appendedRows <= 60_000 else {
                 statusMessage = "长图已达到 60000 像素，请生成当前长图"
-                return
+                return false
             }
             let cropRect = CGRect(
                 x: 0,
@@ -136,14 +172,16 @@ final class ScrollCaptureController {
                 width: next.image.width,
                 height: appendedRows
             )
-            guard let newBottom = next.image.cropping(to: cropRect) else { return }
+            guard let newBottom = next.image.cropping(to: cropRect) else { return false }
             segments.append(newBottom)
             self.previousImage = next.image
             capturedFrameCount += 1
             stitchedHeight += appendedRows
-            statusMessage = "已拼接 \(capturedFrameCount) 屏，高度 \(stitchedHeight) 像素"
+            statusMessage = "自动滚动中：已拼接 \(capturedFrameCount) 屏，高度 \(stitchedHeight) 像素"
+            return true
         } catch {
             statusMessage = "抓取画面失败，请稍后重试"
+            return false
         }
     }
 

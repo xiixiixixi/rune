@@ -17,6 +17,8 @@ final class CaptureConfirmController: NSObject {
     private var targetScreen: NSScreen?
     /// 原始选区（CG 全局点坐标）——「滚动长图」用它重启滚动截图
     private var capturedRegion: CGRect?
+    /// 焦点守护：点完工具栏按钮后把键盘焦点还给画布（否则 Enter/Esc 失灵）
+    private var focusMonitor: Any?
 
     /// 画布视图（弱引用供工具栏驱动）
     private(set) weak var canvas: ConfirmCanvasView?
@@ -36,6 +38,7 @@ final class CaptureConfirmController: NSObject {
 
         let targetScreen = screen ?? NSScreen.main ?? NSScreen.screens.first!
         capturedRegion = region
+        installFocusGuard()
 
         return await withCheckedContinuation { cont in
             self.continuation = cont
@@ -164,7 +167,35 @@ final class CaptureConfirmController: NSObject {
         cont?.resume(returning: result)
     }
 
+    /// 每次鼠标抬起：若画布窗丢了 key（被工具栏按钮点击影响）就立刻拿回来。
+    private func installFocusGuard() {
+        removeFocusGuard()
+        focusMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { [weak self] event in
+            Task { @MainActor in
+                guard let self, let win = self.canvasWindow, win.isVisible else { return }
+                if !win.isKeyWindow {
+                    NSLog("QJFOCUS 画布丢 key，抢回")
+                    win.makeKeyAndOrderFront(nil)
+                }
+                // 键盘焦点兜底：first responder 不是画布就重设
+                if !(win.firstResponder is ConfirmCanvasView) {
+                    NSLog("QJFOCUS firstResponder=\(String(describing: win.firstResponder)) 重设画布")
+                    win.makeFirstResponder(self.canvas)
+                }
+            }
+            return event
+        }
+    }
+
+    private func removeFocusGuard() {
+        if let focusMonitor {
+            NSEvent.removeMonitor(focusMonitor)
+        }
+        focusMonitor = nil
+    }
+
     private func closeWindows() {
+        removeFocusGuard()
         toolbarPanel?.orderOut(nil)
         toolbarPanel = nil
         canvasWindow?.orderOut(nil)
