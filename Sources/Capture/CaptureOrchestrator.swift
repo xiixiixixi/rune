@@ -132,7 +132,8 @@ final class CaptureOrchestrator {
         }
 
         ScreenCapture.shared.playShutterSound()
-        await processCapturedFrame(frame)
+        // 冻结屏+底部工具栏跟随实际框选所在屏（而非按热键时鼠标所在屏）
+        await processCapturedFrame(frame, on: Self.screen(forDisplayID: selection.displayID))
     }
 
     /// M1 第⑤步（续）：窗口截图经应用自己的 WindowPickerOverlay 拿窗口 ID，
@@ -175,11 +176,11 @@ final class CaptureOrchestrator {
     /// 流程：截图 → 确认模式（冻结屏+底部工具栏，可就地标注）→
     /// - 取消/Esc：直接 return，零残留（不写文件、不建历史）
     /// - 保存/Enter：带着标注走落盘链（临时文件→HistoryStore→美化烘焙标注→预览）
-    private func processCapturedFrame(_ frame: CapturedFrame) async {
+    private func processCapturedFrame(_ frame: CapturedFrame, on screen: NSScreen? = nil) async {
         // 确认模式：用户在冻结屏上标注，点保存才继续
         let annotations = await CaptureConfirmController.shared.present(
             image: frame.image,
-            on: captureScreen
+            on: screen ?? captureScreen
         )
         guard let annotations else { return }   // 取消：零残留
 
@@ -222,6 +223,11 @@ final class CaptureOrchestrator {
         return (screen.deviceDescription[key] as? NSNumber).map {
             CGDirectDisplayID($0.uint32Value)
         }
+    }
+
+    /// 显示器编号 → NSScreen（RegionSelection 只传编号，这里换回屏幕对象）。
+    private static func screen(forDisplayID id: CGDirectDisplayID) -> NSScreen? {
+        NSScreen.screens.first { displayID(for: $0) == id }
     }
 
     private func captureAndProcess(_ capture: () async throws -> URL?) async {

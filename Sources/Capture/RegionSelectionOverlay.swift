@@ -6,6 +6,9 @@ import ScreenCaptureKit
 struct RegionSelection {
     let pointsRect: CGRect  // In global display points (top-left origin, matching SCK coordinates)
     let scaleFactor: CGFloat
+    /// 实际框选所在显示器的编号（NSScreen 非 Sendable 不能直接传出；
+    /// 消费方用编号换回屏幕，冻结屏+工具栏跟随框选所在屏）
+    let displayID: CGDirectDisplayID
 }
 
 @MainActor
@@ -97,9 +100,12 @@ final class RegionSelectionOverlay {
             height: rect.height
         )
 
+        let screenNumberKey = NSDeviceDescriptionKey(rawValue: "NSScreenNumber")
+        let displayID = (screen.deviceDescription[screenNumberKey] as? CGDirectDisplayID) ?? 0
         let selection = RegionSelection(
             pointsRect: pointsRect,
-            scaleFactor: screen.backingScaleFactor
+            scaleFactor: screen.backingScaleFactor,
+            displayID: displayID
         )
 
         closeOverlays()
