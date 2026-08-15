@@ -9,6 +9,17 @@ struct RegionSelection {
     /// 实际框选所在显示器的编号（NSScreen 非 Sendable 不能直接传出；
     /// 消费方用编号换回屏幕，冻结屏+工具栏跟随框选所在屏）
     let displayID: CGDirectDisplayID
+    /// 区域+窗口合并模式：单击命中窗口时为该窗口 ID（nil = 普通拖拽选区）
+    let windowID: CGWindowID?
+}
+
+/// 区域+窗口合并模式的候选窗口（Sendable：SCWindow 不能直接传出）。
+struct WindowCandidate: Sendable {
+    let id: CGWindowID
+    /// 全局 AppKit 坐标（左下原点）
+    let globalFrame: CGRect
+    /// 所在屏的局部坐标（由 overlay 按屏换算填充）
+    var localRect: CGRect = .zero
 }
 
 @MainActor
@@ -33,6 +44,19 @@ final class RegionSelectionOverlay {
         // 先抓每个显示器的冻结帧（排除自身，避免把 overlay 拍进去）
         var frozenFrames: [CGDirectDisplayID: CGImage] = [:]
         let shareableContent = (try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true))
+        // 区域+窗口合并：收集普通层窗口（点击即截整窗）；rect 已换算到各屏局部坐标
+        var windowCandidates: [WindowCandidate] = []
+        if let windows = shareableContent?.windows {
+            let myBundleID = Bundle.main.bundleIdentifier ?? ""
+            for window in windows {
+                guard window.windowLayer == 0,
+                      window.frame.width >= 60, window.frame.height >= 40,
+                      window.owningApplication?.bundleIdentifier != myBundleID else { continue }
+                windowCandidates.append(
+                    WindowCandidate(id: window.windowID, globalFrame: window.frame)
+                )
+            }
+        }
         if let displays = shareableContent?.displays {
             let myBundleID = Bundle.main.bundleIdentifier ?? ""
             let excludedApps = shareableContent?.applications.filter { $0.bundleIdentifier == myBundleID } ?? []
@@ -67,10 +91,23 @@ final class RegionSelectionOverlay {
 
             // 取该屏的冻结帧（取不到时为 nil，回退到纯遮罩模式）
             let screenNumberKey = NSDeviceDescriptionKey(rawValue: "NSScreenNumber")
-            let displayID = (screen.deviceDescription[screenNumberKey] as? CGDirectDisplayID) ?? 0
+            let displayID = (screen.deviceDescription[screenNumberKey] as? NSNumber).map { CGDirectDisplayID($0.uint32Value) } ?? 0
             let frozenFrame = frozenFrames[displayID]
-            let overlayView = SelectionView(screen: screen, frozenFrame: frozenFrame, cursor: crosshair) { [weak self] rect in
+            // 本屏的候选窗口（局部坐标 = 全局 frame − 本屏原点）
+            let localWindows = windowCandidates.map { candidate -> WindowCandidate in
+                var c = candidate
+                c.localRect = candidate.globalFrame.offsetBy(dx: -screen.frame.origin.x, dy: -screen.frame.origin.y)
+                return c
+            }.filter { !$0.localRect.intersection(screen.frame).isNull }
+            let overlayView = SelectionView(
+                screen: screen,
+                frozenFrame: frozenFrame,
+                windows: localWindows,
+                cursor: crosshair
+            ) { [weak self] rect in
                 self?.finishSelection(rect: rect, screen: screen)
+            } onSelectWindow: { [weak self] windowID, rect in
+                self?.finishWindowSelection(windowID: windowID, rect: rect, screen: screen)
             } onCancel: { [weak self] in
                 self?.cancelSelection()
             }
@@ -107,7 +144,32 @@ final class RegionSelectionOverlay {
         let selection = RegionSelection(
             pointsRect: pointsRect,
             scaleFactor: screen.backingScaleFactor,
-            displayID: displayID
+            displayID: displayID,
+            windowID: nil
+        )
+
+        closeOverlays()
+        continuation?.resume(returning: selection)
+        continuation = nil
+    }
+
+    /// 单击命中窗口：整窗捕获（走 SCK desktopIndependentWindow，不带阴影）。
+    private func finishWindowSelection(windowID: CGWindowID, rect: CGRect, screen: NSScreen) {
+        NSCursor.pop()
+
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
+        let globalX = screen.frame.origin.x + rect.origin.x
+        let globalY = primaryHeight - (screen.frame.origin.y + rect.origin.y + rect.height)
+        let pointsRect = CGRect(x: globalX, y: globalY, width: rect.width, height: rect.height)
+
+        let screenNumberKey = NSDeviceDescriptionKey(rawValue: "NSScreenNumber")
+        let displayID = (screen.deviceDescription[screenNumberKey] as? NSNumber)
+            .map { CGDirectDisplayID($0.uint32Value) } ?? 0
+        let selection = RegionSelection(
+            pointsRect: pointsRect,
+            scaleFactor: screen.backingScaleFactor,
+            displayID: displayID,
+            windowID: windowID
         )
 
         closeOverlays()
@@ -211,18 +273,33 @@ private final class SelectionView: NSView {
     private let screen: NSScreen
     private let frozenFrame: CGImage?  // M1 §3.3 冻结帧（选区背景）
     private let crosshairCursor: NSCursor
+    /// 区域+窗口合并：本屏候选窗口（局部坐标）。数组顺序=前到后，命中取第一个。
+    private let windows: [WindowCandidate]
+    /// 当前悬停命中的窗口（画高亮；单击=截整窗）
+    private var hoveredWindow: WindowCandidate?
     private let onSelect: (CGRect) -> Void
+    private let onSelectWindow: (CGWindowID, CGRect) -> Void
     private let onCancel: () -> Void
 
     /// M1 §3.4 状态机：驱动选区流程（比例轮换、方向键微调、确认、取消）。
     /// 用 CaptureKit 的 CaptureStateMachine（纯值类型，可独立测试）。
     private var machine = CaptureStateMachine()
 
-    init(screen: NSScreen, frozenFrame: CGImage?, cursor: NSCursor, onSelect: @escaping (CGRect) -> Void, onCancel: @escaping () -> Void) {
+    init(
+        screen: NSScreen,
+        frozenFrame: CGImage?,
+        windows: [WindowCandidate],
+        cursor: NSCursor,
+        onSelect: @escaping (CGRect) -> Void,
+        onSelectWindow: @escaping (CGWindowID, CGRect) -> Void,
+        onCancel: @escaping () -> Void
+    ) {
         self.screen = screen
         self.frozenFrame = frozenFrame
+        self.windows = windows
         self.crosshairCursor = cursor
         self.onSelect = onSelect
+        self.onSelectWindow = onSelectWindow
         self.onCancel = onCancel
         super.init(frame: screen.frame)
     }
@@ -282,9 +359,78 @@ private final class SelectionView: NSView {
 
         if let start = dragStart, let current = dragCurrent {
             drawSelection(start: start, current: current)
-        } else if let mouse = mouseLocation {
-            drawGuideLines(at: mouse)
+        } else {
+            // 区域+窗口合并：悬停窗口 = 红框高亮 + 挖空遮罩 + 尺寸标签
+            if let hovered = hoveredWindow ?? mouseLocation.flatMap({ hitWindow(at: $0) }) {
+                hoveredWindow = hovered
+                drawWindowHighlight(hovered)
+            }
+            if let mouse = mouseLocation {
+                drawGuideLines(at: mouse)
+            }
+            drawHint()
         }
+    }
+
+    /// 悬停窗口高亮：挖空遮罩 + 红色圆角描边 + 顶部"窗口 · 尺寸"标签。
+    private func drawWindowHighlight(_ window: WindowCandidate) {
+        let rect = window.localRect
+
+        // 遮罩挖空窗口区域（窗口内保持清晰）
+        let maskPath = NSBezierPath(rect: bounds)
+        maskPath.append(NSBezierPath(rect: rect))
+        maskPath.windingRule = .evenOdd
+        NSColor.black.withAlphaComponent(0.25).setFill()
+        maskPath.fill()
+
+        // 红色圆角描边（轻截点缀红）
+        let accent = NSColor(red: 1.0, green: 0.231, blue: 0.189, alpha: 1)
+        let border = NSBezierPath(roundedRect: rect.insetBy(dx: -3, dy: -3), xRadius: 8, yRadius: 8)
+        border.lineWidth = 2.5
+        accent.setStroke()
+        border.stroke()
+
+        // 标签：窗口尺寸（物理像素）+ 提示
+        let w = Int(rect.width * screen.backingScaleFactor)
+        let h = Int(rect.height * screen.backingScaleFactor)
+        let label = "窗口 · \(w) × \(h) · 单击截取" as NSString
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
+            .foregroundColor: NSColor.white,
+        ]
+        let labelSize = label.size(withAttributes: attrs)
+        var labelRect = CGRect(
+            x: rect.midX - labelSize.width / 2 - 8,
+            y: rect.maxY + 10,
+            width: labelSize.width + 16,
+            height: labelSize.height + 6
+        )
+        // 标签超出屏幕顶部时挪到窗口内底部
+        if labelRect.maxY > bounds.maxY {
+            labelRect.origin.y = rect.minY - labelRect.height - 10
+        }
+        NSColor.black.withAlphaComponent(0.75).setFill()
+        NSBezierPath(roundedRect: labelRect, xRadius: 5, yRadius: 5).fill()
+        label.draw(at: NSPoint(x: labelRect.minX + 8, y: labelRect.minY + 3), withAttributes: attrs)
+    }
+
+    /// 底部操作提示（拖拽开始前显示）：教会"单击=整窗 / 拖拽=自定义"。
+    private func drawHint() {
+        let hint = "单击窗口＝截整窗　·　拖拽＝自定义区域　·　Esc＝取消" as NSString
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 12, weight: .medium),
+            .foregroundColor: NSColor.white,
+        ]
+        let size = hint.size(withAttributes: attrs)
+        let rect = CGRect(
+            x: bounds.midX - size.width / 2 - 12,
+            y: bounds.minY + 64,
+            width: size.width + 24,
+            height: size.height + 8
+        )
+        NSColor.black.withAlphaComponent(0.65).setFill()
+        NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8).fill()
+        hint.draw(at: NSPoint(x: rect.minX + 12, y: rect.minY + 4), withAttributes: attrs)
     }
 
     private func drawGuideLines(at point: NSPoint) {
@@ -359,6 +505,8 @@ private final class SelectionView: NSView {
     override func mouseMoved(with event: NSEvent) {
         crosshairCursor.set()
         mouseLocation = convert(event.locationInWindow, from: nil)
+        // 区域+窗口合并：悬停识别窗口（未进入拖拽时）
+        hoveredWindow = (dragStart == nil) ? hitWindow(at: mouseLocation!) : nil
         needsDisplay = true
     }
 
@@ -379,6 +527,10 @@ private final class SelectionView: NSView {
         // M1 §3.3：若有比例约束，按 aspectRatioMode 调整 dragCurrent
         loc = constrainToAspectRatio(loc)
         dragCurrent = loc
+        // 拖出幅度超过阈值 → 明确是自定义拉取，窗口高亮退场
+        if let start = dragStart, hypot(loc.x - start.x, loc.y - start.y) > 4 {
+            hoveredWindow = nil
+        }
         machine.reduce(.selectionChanged)
         needsDisplay = true
     }
@@ -391,10 +543,19 @@ private final class SelectionView: NSView {
         if rect.width > 3, rect.height > 3 {
             machine.reduce(.confirm)
             onSelect(rect)
+        } else if let hit = hitWindow(at: end) {
+            // 区域+窗口合并：原地点击命中窗口 → 截整窗
+            machine.reduce(.confirm)
+            onSelectWindow(hit.id, hit.localRect)
         } else {
             machine.reduce(.cancel)
             onCancel()
         }
+    }
+
+    /// 命中检测：候选按前到后排序，取第一个包含点的窗口。
+    private func hitWindow(at point: NSPoint) -> WindowCandidate? {
+        windows.first { $0.localRect.insetBy(dx: -2, dy: -2).contains(point) }
     }
 
     /// M1 §3.4 键盘交互：Esc 取消、Tab 轮换比例、方向键微调选区、Enter 确认。

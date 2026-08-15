@@ -45,8 +45,9 @@ final class CaptureOrchestrator {
             // M1 第⑤步：全屏截图改走 ScreenCaptureKit（单帧 API），不再用系统命令。
             await captureFullscreenViaSCK()
         case .window:
-            // M1 第⑤步（续）：窗口截图改走应用自己的 WindowPickerOverlay + SCK 引擎。
-            await captureWindowViaSCK()
+            // 区域+窗口合并：窗口截图并入区域交互（悬停识别窗口单击截取，
+            // 拖拽=自定义区域）。旧 WindowPickerOverlay 保留但不再触发。
+            await captureRegionViaSCK()
         case .ocr:
             await performOCR()
         case .colorPicker:
@@ -122,10 +123,14 @@ final class CaptureOrchestrator {
         let selection = await RegionSelectionOverlay().selectRegion()
         guard let selection else { return }  // 用户取消（Esc 等）
 
-        // 2. 走 SCK 引擎截取该区域
+        // 2. 走 SCK 引擎：单击命中窗口=整窗捕获（无阴影）；拖拽=区域裁剪
         let frame: CapturedFrame
         do {
-            frame = try await sckEngine.capture(.region(selection.pointsRect))
+            if let windowID = selection.windowID {
+                frame = try await sckEngine.capture(.window(windowID))
+            } else {
+                frame = try await sckEngine.capture(.region(selection.pointsRect))
+            }
         } catch {
             print("区域截图失败：\(error.localizedDescription)")
             return
