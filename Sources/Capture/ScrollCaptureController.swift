@@ -182,12 +182,14 @@ final class ScrollCaptureController {
             bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
         ) else { return nil }
 
-        context.translateBy(x: 0, y: CGFloat(totalHeight))
-        context.scaleBy(x: 1, y: -1)
-        var y: CGFloat = 0
+        // 注意：不翻 CTM。实测裸 CGContext 里 draw(image) 本来就是正立的，
+        // 先翻再画会把长图上下颠倒（与跨屏拼接器同款 bug）。
+        // segments[0]=第一帧(顶部)，在 y-up 画布里从顶部往下排：
+        var yUp: CGFloat = CGFloat(totalHeight)
         for segment in segments {
-            context.draw(segment, in: CGRect(x: 0, y: y, width: CGFloat(first.width), height: CGFloat(segment.height)))
-            y += CGFloat(segment.height)
+            let h = CGFloat(segment.height)
+            yUp -= h
+            context.draw(segment, in: CGRect(x: 0, y: yUp, width: CGFloat(first.width), height: h))
         }
         return context.makeImage()
     }
