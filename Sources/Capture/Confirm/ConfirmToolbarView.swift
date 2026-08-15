@@ -143,9 +143,18 @@ struct ConfirmToolbarView: View {
         .padding(.horizontal, 14)
         .frame(height: QJTheme.barHeight)
         .background(QJTheme.barBackground)
-        .onChange(of: activeTool) { _, _ in
-            controller.toolbarNeedsLayout()
-        }
+        // 铁保险：内容绝不允许被横向压缩（宁可溢出也不压扁按钮）；
+        // 真实宽度由 GeometryReader 量好后上报给控制器，面板照抄这个数。
+        .fixedSize(horizontal: true, vertical: false)
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { controller.toolbarWidthChanged(geo.size.width) }
+                    .onChange(of: geo.size.width) { _, w in
+                        controller.toolbarWidthChanged(w)
+                    }
+            }
+        )
     }
 
     /// 精选图标映射（统一线性风格；覆盖编辑器的默认选型）

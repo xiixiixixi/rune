@@ -79,7 +79,7 @@ final class CaptureConfirmController: NSObject {
         panel.contentView = NSHostingView(rootView: toolbar)
 
         toolbarPanel = panel
-        layoutToolbar(animated: false)
+        layoutToolbarInitial()
         panel.orderFrontRegardless()
 
         NSApp.activate(ignoringOtherApps: true)
@@ -87,36 +87,36 @@ final class CaptureConfirmController: NSObject {
 
     // MARK: - 工具栏布局
 
-    /// 按内容实际宽度调整面板（居中贴底）。宽度来源 = SwiftUI fittingSize，
-    /// 杜绝 v2 写死 620pt 导致"取消/保存"被裁出窗口外的问题。
-    func toolbarNeedsLayout() {
-        layoutToolbar(animated: true)
+    /// SwiftUI 量好的真实内容宽度上报：面板直接照抄（瞬时定位，不走动画——
+    /// 动画过渡帧面板比内容窄，会把按钮压扁）。
+    func toolbarWidthChanged(_ width: CGFloat) {
+        guard toolbarPanel != nil, width > 50 else { return }
+        applyToolbarWidth(ceil(width))
     }
 
-    private func layoutToolbar(animated: Bool) {
-        guard let panel = toolbarPanel,
-              let hosting = panel.contentView as? NSHostingView<ConfirmToolbarView> else { return }
+    /// 初始尽力 sizing（onAppear 的宽度上报随后会立刻校正）。
+    private func layoutToolbarInitial() {
+        guard let hosting = toolbarPanel?.contentView as? NSHostingView<ConfirmToolbarView> else { return }
         let fitWidth = ceil(hosting.fittingSize.width)
         guard fitWidth > 50, fitWidth < 4000 else { return }
-        let sf = targetScreen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        // 屏幕太窄时装不下就等比缩到屏幕内（保留最小边距 16）
-        let maxWidth = sf.width - 32
-        let width = min(fitWidth, maxWidth)
+        applyToolbarWidth(fitWidth)
+    }
+
+    private func applyToolbarWidth(_ width: CGFloat) {
+        guard let panel = toolbarPanel else { return }
+        let sf = targetScreen?.visibleFrame ?? NSScreen.main?.visibleFrame
+            ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        // 屏幕太窄时装不下就缩到屏幕内（保留最小边距 16）
+        let finalWidth = min(width, sf.width - 32)
         let newFrame = NSRect(
-            x: sf.midX - width / 2,
+            x: sf.midX - finalWidth / 2,
             y: sf.minY + 20,
-            width: width,
+            width: finalWidth,
             height: QJTheme.barHeight
         )
-        if animated {
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.18
-                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                panel.animator().setFrame(newFrame, display: true)
-            }
-        } else {
-            panel.setFrame(newFrame, display: true)
-        }
+        guard abs(newFrame.width - panel.frame.width) > 0.5,
+              abs(newFrame.minX - panel.frame.minX) > 0.5 else { return }
+        panel.setFrame(newFrame, display: true)
     }
 
     // MARK: - 结束

@@ -170,11 +170,13 @@ final class ConfirmCanvasView: NSView {
     }
 
     /// 视图点 → 归一化点（Y-down）。
+    /// 注意：AppKit 视图坐标原点在左下角（Y 向上），模型要 Y-down（顶部=0），
+    /// 所以 Y 必须用 maxY 反着算，否则标注上下镜像（往下拉却往上画）。
     private func normalizedPoint(_ p: CGPoint) -> CGPoint {
         let r = imageDrawRect
         return CGPoint(
             x: (p.x - r.minX) / r.width,
-            y: (p.y - r.minY) / r.height    // Y-down 语义：视图顶部 = 0
+            y: (r.maxY - p.y) / r.height
         )
     }
 
@@ -200,19 +202,20 @@ final class ConfirmCanvasView: NSView {
             return
         }
 
-        // 文字：点击放置
+        // 文字：点击放置 + 就地输入（回车确认；留空=不放置）
         if selectedTool == .text {
             pushUndo()
             let item = AnnotationItem(
                 tool: .text,
-                rect: CGRect(x: n.x, y: n.y, width: 0.3, height: 0.06),
+                rect: CGRect(x: n.x, y: max(0, n.y - 0.02), width: 0.3, height: 0.06),
                 points: [],
                 swatch: selectedSwatch,
                 strokeWidth: strokeWidth,
-                text: "双击输入文字"
+                text: ""
             )
             annotations.append(item)
             selectedID = item.id
+            beginTextEditing(item: item, at: loc)
             needsDisplay = true
             return
         }
@@ -291,6 +294,55 @@ final class ConfirmCanvasView: NSView {
         default:
             super.keyDown(with: event)
         }
+    }
+
+    // MARK: - 文字就地输入
+
+    private var editingTextField: NSTextField?
+    private var editingItemID: AnnotationItem.ID?
+
+    /// 在点击位置弹一个输入框，回车/点别处确认；留空则放弃放置。
+    private func beginTextEditing(item: AnnotationItem, at viewPoint: CGPoint) {
+        endTextEditing(commit: true)
+        let tf = NSTextField(frame: NSRect(x: viewPoint.x, y: viewPoint.y - 14, width: 180, height: 28))
+        tf.font = .systemFont(ofSize: 15)
+        tf.placeholderString = "输入文字，回车确认"
+        tf.focusRingType = .none
+        tf.bezelStyle = .roundedBezel
+        tf.backgroundColor = .white
+        tf.delegate = self
+        tf.target = self
+        tf.action = #selector(textFieldCommit(_:))
+        addSubview(tf)
+        editingTextField = tf
+        editingItemID = item.id
+        window?.makeFirstResponder(tf)
+    }
+
+    @objc private func textFieldCommit(_ sender: NSTextField) {
+        endTextEditing(commit: true)
+    }
+
+    private func endTextEditing(commit: Bool) {
+        guard let tf = editingTextField else { return }
+        let id = editingItemID
+        editingTextField = nil
+        editingItemID = nil
+
+        if commit, let id,
+           let idx = annotations.firstIndex(where: { $0.id == id }) {
+            let text = tf.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if text.isEmpty {
+                annotations.remove(at: idx)
+                if selectedID == id { selectedID = nil }
+            } else {
+                annotations[idx].text = text
+                selectedID = id
+            }
+        }
+        tf.removeFromSuperview()
+        window?.makeFirstResponder(self)
+        needsDisplay = true
     }
 
     // MARK: - 草稿构建
@@ -374,5 +426,12 @@ final class ConfirmCanvasView: NSView {
                 try? FileManager.default.removeItem(at: url)
             }
         }
+    }
+}
+
+// MARK: - 文字输入框代理：点别处/回车/按 Esc 都走提交路径（留空=放弃）
+extension ConfirmCanvasView: NSTextFieldDelegate {
+    func controlTextDidEndEditing(_ obj: Notification) {
+        endTextEditing(commit: true)
     }
 }
