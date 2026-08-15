@@ -42,8 +42,10 @@ final class CaptureOrchestrator {
             // M1 第⑤步（续）：区域截图改走应用自己的 overlay + SCK 引擎。
             await captureRegionViaSCK()
         case .fullscreen:
-            // M1 第⑤步：全屏截图改走 ScreenCaptureKit（单帧 API），不再用系统命令。
-            await captureFullscreenViaSCK()
+            // 区域+窗口+全屏合并：三种截图同一交互
+            // （拖拽=区域 / 点窗口=整窗 / 点桌面空白=全屏）。
+            // 旧 captureFullscreenViaSCK 保留但不再触发。
+            await captureRegionViaSCK()
         case .window:
             // 区域+窗口合并：窗口截图并入区域交互（悬停识别窗口单击截取，
             // 拖拽=自定义区域）。旧 WindowPickerOverlay 保留但不再触发。
