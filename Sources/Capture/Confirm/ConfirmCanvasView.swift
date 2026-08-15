@@ -77,15 +77,8 @@ final class ConfirmCanvasView: NSView {
         // 1. 画截图（铺满本屏区域；图按屏绘制，非拉伸）
         ctx.saveGState()
         ctx.interpolationQuality = .medium
-        // 图像物理像素 → 本屏点尺寸
-        let scale = screen.backingScaleFactor
-        let pointSize = CGSize(width: CGFloat(image.width) / scale, height: CGFloat(image.height) / scale)
-        let drawRect = CGRect(
-            x: frame.midX - pointSize.width / 2,
-            y: frame.midY - pointSize.height / 2,
-            width: pointSize.width,
-            height: pointSize.height
-        )
+        // 图像物理像素 → 本屏点尺寸（用 bounds：副屏 frame 是全局坐标会画到屏外）
+        let drawRect = imageDrawRect
         ctx.draw(image, in: drawRect)
         ctx.restoreGState()
 
@@ -148,12 +141,14 @@ final class ConfirmCanvasView: NSView {
     }
 
     /// 归一化 rect → 视图 rect。
+    /// 注意用 bounds 而非 frame：副屏的 frame 带全局原点（如 2560,540），
+    /// 当局部坐标用会把图整个画到可视区外。
     private var imageDrawRect: CGRect {
         let scale = screen.backingScaleFactor
         let pointSize = CGSize(width: CGFloat(image.width) / scale, height: CGFloat(image.height) / scale)
         return CGRect(
-            x: frame.midX - pointSize.width / 2,
-            y: frame.midY - pointSize.height / 2,
+            x: bounds.midX - pointSize.width / 2,
+            y: bounds.midY - pointSize.height / 2,
             width: pointSize.width,
             height: pointSize.height
         )

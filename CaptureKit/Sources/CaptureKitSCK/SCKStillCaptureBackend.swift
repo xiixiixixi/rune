@@ -146,16 +146,18 @@ public final class SCKStillCaptureBackend: StillCaptureBackend, @unchecked Senda
         ) else { throw CaptureError.captureFailed }
 
         context.interpolationQuality = .high
-        context.translateBy(x: 0, y: CGFloat(height))
-        context.scaleBy(x: 1, y: -1)
+        // 注意：不翻转 CTM。实测（红蓝探针）裸 CGContext 里 draw(image) 本来
+        // 就是正立的；此前先 scaleBy(y:-1) 再画，会把拼接结果上下颠倒。
         for piece in pieces {
-            let destination = CGRect(
+            // piece.rect 是 CG 坐标（y 向下），换算到画布的 y 向上坐标：
+            // 只翻"位置"，不翻画面方向
+            let dest = CGRect(
                 x: (piece.rect.minX - globalRect.minX) * outputScale,
-                y: (piece.rect.minY - globalRect.minY) * outputScale,
+                y: CGFloat(height) - (piece.rect.maxY - globalRect.minY) * outputScale,
                 width: piece.rect.width * outputScale,
                 height: piece.rect.height * outputScale
             )
-            context.draw(piece.image, in: destination)
+            context.draw(piece.image, in: dest)
         }
         guard let image = context.makeImage() else { throw CaptureError.captureFailed }
         return CapturedFrame(image: image, scaleFactor: outputScale, displayID: nil)
