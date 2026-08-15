@@ -14,8 +14,7 @@ final class CaptureOrchestrator {
     private var pendingCaptures: [(ShortcutService.Action, NSScreen?)] = []
     private var captureScreen: NSScreen?
 
-    /// M1 第⑤步：基于 ScreenCaptureKit 的单帧截图引擎。
-    /// 当前仅全屏截图走此引擎；区域/窗口/OCR/取色仍走旧的 `ScreenCapture`（系统命令）。
+    /// 基于 ScreenCaptureKit 的单帧截图引擎，供全屏、区域、窗口和 OCR 使用。
     private let sckEngine = SCKStillCaptureBackend()
 
     private init() {}
@@ -69,7 +68,7 @@ final class CaptureOrchestrator {
         // 无权限：弹引导框
         let alert = NSAlert()
         alert.messageText = "需要屏幕录制权限"
-        alert.informativeText = "BetterShot 需要屏幕录制权限才能截图。请在系统设置的「隐私与安全性 > 屏幕录制」中允许 BetterShot，然后重启应用。"
+        alert.informativeText = "轻截需要屏幕录制权限才能截图。请在系统设置的「隐私与安全性 > 屏幕与系统音频录制」中允许“轻截”，然后重新打开轻截。"
         alert.alertStyle = .warning
         alert.addButton(withTitle: "打开系统设置")
         alert.addButton(withTitle: "以后再说")
@@ -93,9 +92,13 @@ final class CaptureOrchestrator {
 
         let frame: CapturedFrame
         do {
-            frame = try await sckEngine.capture(.fullscreen)
+            if let captureScreen, let displayID = Self.displayID(for: captureScreen) {
+                frame = try await sckEngine.capture(.display(displayID))
+            } else {
+                frame = try await sckEngine.capture(.fullscreen)
+            }
         } catch {
-            print("SCK fullscreen capture failed: \(error.localizedDescription)")
+            print("全屏截图失败：\(error.localizedDescription)")
             return
         }
 
@@ -121,7 +124,7 @@ final class CaptureOrchestrator {
         do {
             frame = try await sckEngine.capture(.region(selection.pointsRect))
         } catch {
-            print("SCK region capture failed: \(error.localizedDescription)")
+            print("区域截图失败：\(error.localizedDescription)")
             return
         }
 
@@ -142,23 +145,29 @@ final class CaptureOrchestrator {
         do {
             frame = try await sckEngine.capture(.window(selection.windowID))
         } catch {
-            print("SCK window capture failed: \(error.localizedDescription)")
+            print("窗口截图失败：\(error.localizedDescription)")
             return
         }
 
         ScreenCapture.shared.playShutterSound()
         await processCapturedFrame(frame)
     }
-    /// 处理一张截图（全屏/区域/窗口通用）：写入历史、美化、保存、预览。
+    /// 处理一张截图（全屏/区域/窗口通用）：**先确认后保存**（docs/交互设计.md 确认模式）。
     ///
-    /// M1 §3.2 数据流对接（轻量版）：接收完整 CapturedFrame（保留 scaleFactor/displayID/capturedAt），
-    /// 而非立即拆 .image。当前因 Editor/PreviewOverlay/HistoryStore 全链路仍是 URL 驱动，
-    /// 这里仍需落盘喂给 HistoryStore；scaleFactor 已保留供未来多倍率导出使用。
-    /// 全量内存传递（去掉落盘）留待 M2 模块化重组时，连同 Editor 入口重构一起做。
+    /// 流程：截图 → 确认模式（冻结屏+底部工具栏，可就地标注）→
+    /// - 取消/Esc：直接 return，零残留（不写文件、不建历史）
+    /// - 保存/Enter：带着标注走落盘链（临时文件→HistoryStore→美化烘焙标注→预览）
     private func processCapturedFrame(_ frame: CapturedFrame) async {
+        // 确认模式：用户在冻结屏上标注，点保存才继续
+        let annotations = await CaptureConfirmController.shared.present(
+            image: frame.image,
+            on: captureScreen
+        )
+        guard let annotations else { return }   // 取消：零残留
+
         guard let tempURL = writeCGImageToTemp(frame.image) else { return }
 
-        let record = HistoryStore.shared.importCapture(from: tempURL)
+        let record = await HistoryStore.shared.importCapture(from: tempURL)
         if let record {
             lastCaptureURL = HistoryStore.shared.urlForRecord(record)
         }
@@ -167,14 +176,19 @@ final class CaptureOrchestrator {
         // 清理临时文件（importCapture 已复制到保存目录）
         try? FileManager.default.removeItem(at: tempURL)
 
-        await galleryApplyAndSave(capturedURL, recordID: record?.id)
+        await galleryApplyAndSave(capturedURL, recordID: record?.id, annotations: annotations)
+    }
+
+    /// 供滚动截图等扩展功能复用统一的保存、美化、历史与预览流程。
+    func processExternalFrame(_ frame: CapturedFrame) async {
+        await processCapturedFrame(frame)
     }
 
     /// 把 CGImage 写到临时目录，返回 URL。供 processFullscreenFrame 喂给 HistoryStore。
     private func writeCGImageToTemp(_ cgImage: CGImage) -> URL? {
         let dir = NSTemporaryDirectory()
         let stamp = Int(Date().timeIntervalSince1970 * 1000)
-        let url = URL(fileURLWithPath: "\(dir)bettershot_sck_\(stamp).png")
+        let url = URL(fileURLWithPath: "\(dir)轻截_临时_\(stamp).png")
         guard let destination = CGImageDestinationCreateWithURL(
             url as CFURL,
             "public.png" as CFString,
@@ -183,6 +197,13 @@ final class CaptureOrchestrator {
         CGImageDestinationAddImage(destination, cgImage, nil)
         guard CGImageDestinationFinalize(destination) else { return nil }
         return url
+    }
+
+    private static func displayID(for screen: NSScreen) -> CGDirectDisplayID? {
+        let key = NSDeviceDescriptionKey(rawValue: "NSScreenNumber")
+        return (screen.deviceDescription[key] as? NSNumber).map {
+            CGDirectDisplayID($0.uint32Value)
+        }
     }
 
     private func captureAndProcess(_ capture: () async throws -> URL?) async {
@@ -196,7 +217,7 @@ final class CaptureOrchestrator {
 
             ScreenCapture.shared.playShutterSound()
 
-            let record = HistoryStore.shared.importCapture(from: url)
+            let record = await HistoryStore.shared.importCapture(from: url)
             if let record {
                 lastCaptureURL = HistoryStore.shared.urlForRecord(record)
             }
@@ -205,7 +226,7 @@ final class CaptureOrchestrator {
 
             await galleryApplyAndSave(capturedURL, recordID: record?.id)
         } catch {
-            print("Capture failed: \(error.localizedDescription)")
+            print("截图失败：\(error.localizedDescription)")
         }
     }
 
@@ -218,8 +239,8 @@ final class CaptureOrchestrator {
         pasteboard.setString(hex, forType: .string)
         ScreenCapture.shared.playShutterSound()
         ToastWindow.shared.show(
-            title: "Copied",
-            message: "\(hex) copied to clipboard",
+            title: "已复制",
+            message: "颜色值 \(hex) 已复制到剪贴板",
             systemIcon: "eyedropper",
             on: captureScreen
         )
@@ -249,7 +270,7 @@ final class CaptureOrchestrator {
             guard !result.isEmpty else {
                 ScreenCapture.shared.playShutterSound()
                 ToastWindow.shared.show(
-                    title: "OCR",
+                    title: "文字识别",
                     message: "未识别到文字",
                     systemIcon: "doc.text.viewfinder",
                     on: captureScreen
@@ -262,23 +283,9 @@ final class CaptureOrchestrator {
             pasteboard.setString(result.combinedText, forType: .string)
             ScreenCapture.shared.playShutterSound()
 
-            // 翻译（参考 macshot：OCR 后附带翻译，失败则只复制原文）
-            // 隐私：翻译会联网发送文字（非原图），用户主动触发 OCR 即视为同意。
-            let translationMessage: String
-            do {
-                let translated = try await TranslationService.translate(result.combinedText)
-                // 译文追加到剪贴板（原文 + 空行 + 译文）
-                let combined = result.combinedText + "\n\n--- 译文 ---\n" + translated
-                pasteboard.clearContents()
-                pasteboard.setString(combined, forType: .string)
-                translationMessage = "原文 + 译文已复制（译为 \(TranslationService.availableLanguages.first { $0.code == TranslationService.targetLanguage }?.name ?? TranslationService.targetLanguage)）"
-            } catch {
-                translationMessage = "原文已复制（翻译失败：\(error.localizedDescription)）"
-            }
-
             ToastWindow.shared.show(
-                title: "OCR",
-                message: translationMessage,
+                title: "文字识别",
+                message: "识别结果已复制到剪贴板",
                 systemIcon: "doc.text.viewfinder",
                 on: captureScreen
             )
@@ -287,12 +294,13 @@ final class CaptureOrchestrator {
         }
     }
 
-    private func galleryApplyAndSave(_ url: URL, recordID: UUID? = nil) async {
+    private func galleryApplyAndSave(_ url: URL, recordID: UUID? = nil, annotations: [AnnotationItem] = []) async {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return }
 
         let config = AppPreferences.defaultBeautifierConfig
-        let rendered = BeautifierRenderer.render(image: cgImage, config: config)
+        // 确认模式：标注随成品一起烘焙（底图 base 仍存无标注原图，编辑器可重编）
+        let rendered = BeautifierRenderer.render(image: cgImage, config: config, annotations: annotations)
 
         guard let rendered else { return }
 
@@ -315,7 +323,7 @@ final class CaptureOrchestrator {
         if savedURL != nil {
             let appIcon = NSImage(named: "AppIcon") ?? NSApp.applicationIconImage
             ToastWindow.shared.show(
-                message: AppPreferences.copyAfterSave ? "Screenshot saved & copied!" : "Screenshot saved!",
+                message: AppPreferences.copyAfterSave ? "截图已保存并复制！" : "截图已保存！",
                 icon: appIcon,
                 on: captureScreen
             )
@@ -362,7 +370,7 @@ final class CaptureOrchestrator {
 
     private static var baseStorageDir: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = appSupport.appendingPathComponent("BetterShot/bases", isDirectory: true)
+        let dir = appSupport.appendingPathComponent("轻截/bases", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
@@ -376,6 +384,13 @@ final class CaptureOrchestrator {
         let baseURL = baseImageURL(for: url)
         if FileManager.default.fileExists(atPath: baseURL.path) {
             return baseURL
+        }
+        // 兼容改名前 BetterShot 目录中的原图。
+        let oldSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("BetterShot/bases", isDirectory: true)
+            .appendingPathComponent(baseURL.lastPathComponent)
+        if FileManager.default.fileExists(atPath: oldSupport.path) {
+            return oldSupport
         }
         // Legacy: check alongside the file for old .base.png files
         let legacyDir = url.deletingLastPathComponent()
