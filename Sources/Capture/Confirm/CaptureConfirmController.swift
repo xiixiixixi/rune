@@ -105,6 +105,7 @@ final class CaptureConfirmController: NSObject {
     private func applyToolbarWidth(_ width: CGFloat) {
         guard let panel = toolbarPanel else { return }
         let sf = targetScreen?.visibleFrame ?? NSScreen.main?.visibleFrame
+            ?? NSScreen.screens.first?.visibleFrame
             ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         // 屏幕太窄时装不下就缩到屏幕内（保留最小边距 16）
         let finalWidth = min(width, sf.width - 32)
@@ -114,9 +115,17 @@ final class CaptureConfirmController: NSObject {
             width: finalWidth,
             height: QJTheme.barHeight
         )
-        guard abs(newFrame.width - panel.frame.width) > 0.5,
-              abs(newFrame.minX - panel.frame.minX) > 0.5 else { return }
-        panel.setFrame(newFrame, display: true)
+        // 任一分量（宽/高/横/纵）没到位就重设。注意不能用 &&
+        // ——面板装 contentView 时会自动变到内容宽度但停在原点，
+        // 只比宽度会误判"已就位"，工具栏就永远留在左下角。
+        let f = panel.frame
+        let needsMove = abs(newFrame.width - f.width) > 0.5
+            || abs(newFrame.height - f.height) > 0.5
+            || abs(newFrame.minX - f.minX) > 0.5
+            || abs(newFrame.minY - f.minY) > 0.5
+        if needsMove {
+            panel.setFrame(newFrame, display: true)
+        }
     }
 
     // MARK: - 结束

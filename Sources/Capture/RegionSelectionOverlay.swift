@@ -100,8 +100,10 @@ final class RegionSelectionOverlay {
             height: rect.height
         )
 
+        // deviceDescription 里存的是 NSNumber，直接 as? CGDirectDisplayID 会失败
         let screenNumberKey = NSDeviceDescriptionKey(rawValue: "NSScreenNumber")
-        let displayID = (screen.deviceDescription[screenNumberKey] as? CGDirectDisplayID) ?? 0
+        let displayID = (screen.deviceDescription[screenNumberKey] as? NSNumber)
+            .map { CGDirectDisplayID($0.uint32Value) } ?? 0
         let selection = RegionSelection(
             pointsRect: pointsRect,
             scaleFactor: screen.backingScaleFactor,
