@@ -16,9 +16,11 @@ struct RegionSelection {
 /// 区域+窗口合并模式的候选窗口（Sendable：SCWindow 不能直接传出）。
 struct WindowCandidate: Sendable {
     let id: CGWindowID
-    /// 全局 AppKit 坐标（左下原点）
-    let globalFrame: CGRect
-    /// 所在屏的局部坐标（由 overlay 按屏换算填充）
+    /// SCWindow.frame 的原始值——**CG 坐标系：主屏左上为原点、y 向下**
+    /// （探针实测：探针窗 AppKit y=500 → SCK 报 608 = 1440-500-332）。
+    /// 尺寸=窗口实际 frame 不含阴影；SCShareableContent 顺序=前到后。
+    let cgFrame: CGRect
+    /// 所在屏的局部坐标（AppKit 左下原点；由 overlay 按屏换算填充）
     var localRect: CGRect = .zero
 }
 
@@ -53,7 +55,7 @@ final class RegionSelectionOverlay {
                       window.frame.width >= 60, window.frame.height >= 40,
                       window.owningApplication?.bundleIdentifier != myBundleID else { continue }
                 windowCandidates.append(
-                    WindowCandidate(id: window.windowID, globalFrame: window.frame)
+                    WindowCandidate(id: window.windowID, cgFrame: window.frame)
                 )
             }
         }
@@ -93,12 +95,22 @@ final class RegionSelectionOverlay {
             let screenNumberKey = NSDeviceDescriptionKey(rawValue: "NSScreenNumber")
             let displayID = (screen.deviceDescription[screenNumberKey] as? NSNumber).map { CGDirectDisplayID($0.uint32Value) } ?? 0
             let frozenFrame = frozenFrames[displayID]
-            // 本屏的候选窗口（局部坐标 = 全局 frame − 本屏原点）
-            let localWindows = windowCandidates.map { candidate -> WindowCandidate in
+            // 本屏的候选窗口。SCWindow.frame 是 CG 坐标（主屏左上原点、y 向下），
+            // 要先翻成 AppKit 全局（左下原点）再减本屏原点：
+            // appKitY = 主屏高 − cgMaxY（与 finishSelection 的正向换算互为逆运算）
+            let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
+            let localWindows = windowCandidates.compactMap { candidate -> WindowCandidate? in
                 var c = candidate
-                c.localRect = candidate.globalFrame.offsetBy(dx: -screen.frame.origin.x, dy: -screen.frame.origin.y)
+                let appKitGlobal = CGRect(
+                    x: candidate.cgFrame.minX,
+                    y: primaryHeight - candidate.cgFrame.maxY,
+                    width: candidate.cgFrame.width,
+                    height: candidate.cgFrame.height
+                )
+                c.localRect = appKitGlobal.offsetBy(dx: -screen.frame.origin.x, dy: -screen.frame.origin.y)
+                guard !c.localRect.intersection(screen.frame).isNull else { return nil }
                 return c
-            }.filter { !$0.localRect.intersection(screen.frame).isNull }
+            }
             let overlayView = SelectionView(
                 screen: screen,
                 frozenFrame: frozenFrame,
