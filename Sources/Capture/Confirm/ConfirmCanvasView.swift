@@ -295,7 +295,7 @@ final class ConfirmCanvasView: NSView {
         if selectedTool == .numberedCircle {
             pushUndo()
             let r = imageDrawRect
-            let dNorm = 30.0 / max(r.height, 1)   // 固定 ≈30pt 直径（归一化）
+            let dNorm = 22.0 / max(r.height, 1)   // 固定 ≈22pt 直径（小而精致的正圆）
             let next = annotations.filter { $0.tool == .numberedCircle }.count + 1
             let item = AnnotationItem(
                 tool: .numberedCircle,

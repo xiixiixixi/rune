@@ -12,11 +12,13 @@ struct ConfirmToolbarView: View {
     private var canvas: ConfirmCanvasView? { controller.canvas }
 
     @State private var activeTool: AnnotationTool = .select
-    @State private var swatch: AnnotationSwatch = .red
+    @State private var swatch: AnnotationSwatch = .black
     @State private var widthRaw: Int = 1
+    @State private var customColor: Color = .black
 
     private let tools: [AnnotationTool] = [.select, .rectangle, .arrow, .text, .blur, .spotlight, .numberedCircle]
-    private let swatches: [AnnotationSwatch] = [.red, .black, .white, .blue, .yellow]
+    /// 克制配色：石墨黑为默认，红只做点缀；取色器可任选任意颜色
+    private let swatches: [AnnotationSwatch] = [.black, .white, .red, .yellow, .green]
     private let widths: [CGFloat] = [2, 4, 8]
 
     /// 属性组常驻（CleanShot 式）：画新标注用它，选中已有标注也能随时改色/改粗细
@@ -68,6 +70,19 @@ struct ConfirmToolbarView: View {
                             .help(s.title)
                         }
                     }
+
+                    // 自定义颜色：系统取色器，不限于预设色板
+                    ColorPicker("", selection: $customColor, supportsOpacity: false)
+                        .labelsHidden()
+                        .scaleEffect(0.72)
+                        .frame(width: 24, height: 24)
+                        .help("自定义颜色：任选任意颜色")
+                        .onChange(of: customColor) { _, newColor in
+                            let custom = AnnotationSwatch.custom(from: newColor)
+                            swatch = custom
+                            canvas?.selectedSwatch = custom
+                            canvas?.updateSelectedAnnotation(swatch: custom)
+                        }
 
                     // 粗细：小中大实心点，选中加深
                     HStack(spacing: 4) {
