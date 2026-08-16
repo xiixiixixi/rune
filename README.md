@@ -6,7 +6,7 @@
 
 ## 下载
 
-到 [Releases](https://github.com/xiixiixixi/qingjie/releases/latest) 下载最新 `轻截-x.x.x.dmg`，双击打开，把"轻截"拖进 Applications 文件夹。
+到 [Releases](https://github.com/xiixiixixi/qingjie/releases/latest) 下载最新 `qingjie-x.x.x.dmg`，双击打开，把"轻截"拖进 Applications 文件夹。
 
 第一次使用：
 1. 右键点"轻截" → 打开 → 再点"打开"（本地签名，只需这一次）
