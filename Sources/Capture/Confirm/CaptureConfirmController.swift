@@ -155,6 +155,17 @@ final class CaptureConfirmController: NSObject {
         finish(result: nil)
     }
 
+    /// 「连拍」：结束当前确认（不保存），编排器以当前选区开始连续拍摄。
+    private(set) var pendingBurstRegion: CGRect?
+    func requestBurstCapture() {
+        pendingBurstRegion = capturedRegion
+        finish(result: nil)
+    }
+
+    func clearPendingBurst() {
+        pendingBurstRegion = nil
+    }
+
     /// 编排器消费转滚动意图后清空。
     func clearPendingScroll() {
         pendingScrollRegion = nil

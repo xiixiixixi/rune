@@ -122,6 +122,14 @@ struct ConfirmToolbarView: View {
             .buttonStyle(QJTheme.QJPressStyle())
             .help("滚动长图：把当前选区转为滚动截图，往下滚完拼成一张长图")
 
+            Button {
+                controller.requestBurstCapture()
+            } label: {
+                QJTheme.toolIcon("camera.burst", active: false)
+            }
+            .buttonStyle(QJTheme.QJPressStyle())
+            .help("连拍：对当前选区连续抓拍，随时点关闭停止")
+
             // ── 复制 / 贴图（纯图标，悬停有中文提示）
             Button {
                 canvas?.copyImageToPasteboard()

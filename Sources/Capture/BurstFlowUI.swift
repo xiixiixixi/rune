@@ -174,7 +174,7 @@ final class BurstLiveBarController {
         countField = count
 
         // 停止大按钮
-        let stopBtn = NSButton(title: "停止 (⇧⌘B)", target: self, action: #selector(stopTapped))
+        let stopBtn = NSButton(title: "关闭", target: self, action: #selector(stopTapped))
         stopBtn.bezelStyle = .rounded
         stopBtn.font = .systemFont(ofSize: 12, weight: .semibold)
         stopBtn.frame = NSRect(x: 258, y: 13, width: 104, height: 30)

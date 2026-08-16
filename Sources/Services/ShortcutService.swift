@@ -159,12 +159,16 @@ final class ShortcutService {
                     RecordingStatusBarController.shared.show(on: mouseScreen)
                 }
             } else if action == .burst {
-                // 金手指：再按一次停止，否则进入 框选→控制台→开始 新流程
+                // 连拍单一入口=截图工具栏按钮；⇧⌘B 仅作为拍摄中的停止键
                 if BurstCaptureController.shared.isActive {
                     BurstCaptureController.shared.stop()
-                    BurstLiveBarController.shared.dismiss()
                 } else {
-                    await BurstCaptureController.shared.prepareAndBegin(presetMode: .burst, on: mouseScreen)
+                    ToastWindow.shared.show(
+                        title: "连拍",
+                        message: "请先 ⇧⌘A 截图，再点底部工具栏的连拍按钮",
+                        systemIcon: "camera.burst",
+                        on: mouseScreen
+                    )
                 }
             } else {
                 await CaptureOrchestrator.shared.performCapture(action, on: mouseScreen)

@@ -164,18 +164,6 @@ struct MenuBarContentView: View {
                 },
             ])
 
-            TrayGridMenu(title: "连续截图", icon: "camera.burst", menuItems: [
-                TrayMenuItem(title: "连拍模式（⌘⇧B）", icon: "camera.burst") {
-                    dismissAndRunBurst(mode: .burst)
-                },
-                TrayMenuItem(title: "固定拍摄 10 张", icon: "10.circle") {
-                    dismissAndRunBurst(mode: .fixedCount)
-                },
-                TrayMenuItem(title: "延时拍摄（每 5 秒）", icon: "timer") {
-                    dismissAndRunBurst(mode: .timelapse)
-                },
-            ])
-
             TrayGridMenu(title: "最近记录", icon: "clock.arrow.circlepath", menuItems: recentMenuItems())
         }
     }

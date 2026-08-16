@@ -216,6 +216,16 @@ final class CaptureOrchestrator {
             await ScrollCaptureController.shared.start(on: screen, presetRegion: scrollRegion)
             return
         }
+        if let burstRegion = CaptureConfirmController.shared.pendingBurstRegion {
+            CaptureConfirmController.shared.clearPendingBurst()
+            await BurstCaptureController.shared.start(mode: .burst, on: screen, region: burstRegion)
+            if BurstCaptureController.shared.isActive {
+                BurstLiveBarController.shared.show(mode: .burst) {
+                    BurstCaptureController.shared.stop()
+                }
+            }
+            return
+        }
         guard let annotations else { return }   // 取消：零残留
 
         guard let tempURL = writeCGImageToTemp(frame.image) else { return }
