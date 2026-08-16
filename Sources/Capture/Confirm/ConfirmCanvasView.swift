@@ -214,8 +214,17 @@ final class ConfirmCanvasView: NSView {
     override func mouseDown(with event: NSEvent) {
         let loc = convert(event.locationInWindow, from: nil)
 
-        // 选字模式：开始划选
+        // 选字模式：点中文字块立即复制（不依赖 mouseUp——实测其派发不稳定）；
+        // 同时记录划选起点，mouseUp 到达时走划选合并路径
         if ocrMode {
+            if let block = ocrBlocks.first(where: { $0.frame.insetBy(dx: -4, dy: -4).contains(loc) }) {
+                copyBlocks([block])
+                ToastWindow.shared.show(
+                    title: "文字识别",
+                    message: "已复制：\(block.text.prefix(24))",
+                    systemIcon: "doc.on.doc"
+                )
+            }
             ocrDragStart = loc
             ocrDragRect = nil
             needsDisplay = true
@@ -442,7 +451,7 @@ final class ConfirmCanvasView: NSView {
             exitOCRMode()
             return
         }
-        let cg = image   // 用原始截图：boundingBox 相对原图，才能对上 imageDrawRect 的映射
+        let cg = image
         onDone("识别中…（约 1-3 秒）")
         Task { @MainActor in
             guard let observations = try? await OCRService.shared.recognizeWithPositions(in: cg),
@@ -494,7 +503,6 @@ final class ConfirmCanvasView: NSView {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(text, forType: .string)
-        onDone?("已复制 \(sorted.count) 块文字")
     }
 
     /// 渲染"截图+标注"成品（复用 BeautifierRenderer 的标注烘焙）。
