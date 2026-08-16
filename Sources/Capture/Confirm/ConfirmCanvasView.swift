@@ -29,6 +29,12 @@ final class ConfirmCanvasView: NSView {
     private var movingID: AnnotationItem.ID?
     private var moveOffset: CGPoint = .zero
 
+    // 选字模式（钉钉/飞书式）：识别出的文字块可点选/划选复制
+    var ocrMode = false
+    private(set) var ocrBlocks: [(text: String, frame: CGRect)] = []   // frame=视图坐标
+    private var ocrDragStart: CGPoint?
+    private var ocrDragRect: CGRect?
+
     init(image: CGImage, screen: NSScreen, controller: CaptureConfirmController) {
         self.image = image
         self.screen = screen
@@ -111,6 +117,22 @@ final class ConfirmCanvasView: NSView {
         )
         ctx.restoreGState()
 
+        // 选字模式：所有文字块淡蓝底 + 划选相交块深蓝高亮 + 划选框
+        if ocrMode {
+            let selRect = ocrDragRect
+            for block in ocrBlocks {
+                let selected = selRect.map { !$0.intersection(block.frame).isNull } ?? false
+                NSColor.systemBlue.withAlphaComponent(selected ? 0.42 : 0.16).setFill()
+                block.frame.insetBy(dx: -2, dy: -1).fill()
+            }
+            if let selRect {
+                NSColor.systemBlue.withAlphaComponent(0.8).setStroke()
+                let path = NSBezierPath(rect: selRect)
+                path.lineWidth = 1
+                path.stroke()
+            }
+        }
+
         // 3. 选中高亮：红色圆角虚线框 + 四角白色手柄方块（视觉上"可操作"）
         if let id = selectedID,
            let item = annotations.first(where: { $0.id == id }) {
@@ -140,7 +162,9 @@ final class ConfirmCanvasView: NSView {
 
     /// 按当前工具切换光标：画图=十字，选择=箭头。
     override func resetCursorRects() {
-        let cursor: NSCursor = (selectedTool == .select) ? .arrow : .crosshair
+        let cursor: NSCursor = ocrMode
+            ? .iBeam
+            : (selectedTool == .select ? .arrow : .crosshair)
         addCursorRect(bounds, cursor: cursor)
     }
 
@@ -188,6 +212,15 @@ final class ConfirmCanvasView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         let loc = convert(event.locationInWindow, from: nil)
+
+        // 选字模式：开始划选
+        if ocrMode {
+            ocrDragStart = loc
+            ocrDragRect = nil
+            needsDisplay = true
+            return
+        }
+
         let n = normalizedPoint(loc)
 
         if selectedTool == .select {
@@ -289,8 +322,8 @@ final class ConfirmCanvasView: NSView {
             return
         }
         switch event.keyCode {
-        case 53:   // Esc → 取消（零残留）
-            controller?.cancel()
+        case 53:   // Esc → 选字模式优先退出选字；否则取消（零残留）
+            if ocrMode { exitOCRMode() } else { controller?.cancel() }
         case 36, 76:  // Enter / 小回车 → 保存
             controller?.confirm()
         case 51:   // Delete → 删除选中
@@ -401,19 +434,65 @@ final class ConfirmCanvasView: NSView {
 
     // MARK: - 工具栏动作（复制 / 贴图）
 
-    /// 「识别文字」：对当前图（含标注）做 OCR，结果进剪贴板。
-    func recognizeText(onDone: @escaping (String) -> Void) {
+    /// 「识别文字」→ 选字模式：识别出带位置的文字块，点选/划选复制（钉钉式）。
+    /// 再次调用或 Esc 退出选字，回到标注模式。
+    func toggleOCRMode(onDone: @escaping (String) -> Void) {
+        if ocrMode {
+            exitOCRMode()
+            return
+        }
         guard let cg = renderedImage() else { return }
         Task { @MainActor in
-            if let result = try? await OCRService.shared.recognize(in: cg), !result.isEmpty {
-                let pb = NSPasteboard.general
-                pb.clearContents()
-                pb.setString(result.combinedText, forType: .string)
-                onDone("识别结果已复制到剪贴板")
-            } else {
+            guard let observations = try? await OCRService.shared.recognizeWithPositions(in: cg),
+                  !observations.isEmpty else {
                 onDone("未识别到文字")
+                return
             }
+            let r = imageDrawRect
+            // Vision boundingBox：归一化、原点左下（Y 向上）→ 视图坐标
+            ocrBlocks = observations.map { obs in
+                let b = obs.boundingBox
+                return (
+                    text: obs.text,
+                    frame: CGRect(
+                        x: r.minX + b.minX * r.width,
+                        y: r.minY + b.minY * r.height,
+                        width: b.width * r.width,
+                        height: b.height * r.height
+                    )
+                )
+            }
+            ocrMode = true
+            selectedTool = .select
+            selectedID = nil
+            refreshCursor()
+            needsDisplay = true
+            onDone("选字模式：点一块复制一块，拖动选一段；Esc 退出")
         }
+    }
+
+    func exitOCRMode() {
+        ocrMode = false
+        ocrBlocks = []
+        ocrDragStart = nil
+        ocrDragRect = nil
+        refreshCursor()
+        needsDisplay = true
+    }
+
+    /// 复制选中块文字（按阅读顺序：从上到下、从左到右）
+    private func copyBlocks(_ blocks: [(text: String, frame: CGRect)], onDone: ((String) -> Void)? = nil) {
+        guard !blocks.isEmpty else { return }
+        let sorted = blocks.sorted { a, b in
+            abs(a.frame.midY - b.frame.midY) > 8
+                ? a.frame.midY > b.frame.midY
+                : a.frame.minX < b.frame.minX
+        }
+        let text = sorted.map(\.text).joined(separator: "\n")
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+        onDone?("已复制 \(sorted.count) 块文字")
     }
 
     /// 渲染"截图+标注"成品（复用 BeautifierRenderer 的标注烘焙）。
