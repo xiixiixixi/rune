@@ -125,7 +125,7 @@ struct ConfirmToolbarView: View {
             Button {
                 controller.requestBurstCapture()
             } label: {
-                QJTheme.toolIcon("camera.burst", active: false)
+                QJTheme.secondaryButtonLabel("连拍", systemImage: "camera.burst")
             }
             .buttonStyle(QJTheme.QJPressStyle())
             .help("连拍：对当前选区连续抓拍，随时点关闭停止")
