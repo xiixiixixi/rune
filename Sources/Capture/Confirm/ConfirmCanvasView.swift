@@ -97,6 +97,23 @@ final class ConfirmCanvasView: NSView {
         ctx.draw(image, in: drawRect)
         ctx.restoreGState()
 
+        // 1.5 选字模式：文字块高亮（必须在"无标注提前 return"之前，
+        // 否则刚截完图（0 标注）时蓝块永远画不出来）
+        if ocrMode {
+            let selRect = ocrDragRect
+            for block in ocrBlocks {
+                let selected = selRect.map { !$0.intersection(block.frame).isNull } ?? false
+                NSColor.systemBlue.withAlphaComponent(selected ? 0.42 : 0.16).setFill()
+                block.frame.insetBy(dx: -2, dy: -1).fill()
+            }
+            if let selRect {
+                NSColor.systemBlue.withAlphaComponent(0.8).setStroke()
+                let path = NSBezierPath(rect: selRect)
+                path.lineWidth = 1
+                path.stroke()
+            }
+        }
+
         // 2. 画标注（归一化坐标映射到 drawRect；Y-down → CG 用 flipped 渲染）
         var items = annotations
         if let draft { items.append(draft) }
@@ -116,22 +133,6 @@ final class ConfirmCanvasView: NSView {
             flipped: true
         )
         ctx.restoreGState()
-
-        // 选字模式：所有文字块淡蓝底 + 划选相交块深蓝高亮 + 划选框
-        if ocrMode {
-            let selRect = ocrDragRect
-            for block in ocrBlocks {
-                let selected = selRect.map { !$0.intersection(block.frame).isNull } ?? false
-                NSColor.systemBlue.withAlphaComponent(selected ? 0.42 : 0.16).setFill()
-                block.frame.insetBy(dx: -2, dy: -1).fill()
-            }
-            if let selRect {
-                NSColor.systemBlue.withAlphaComponent(0.8).setStroke()
-                let path = NSBezierPath(rect: selRect)
-                path.lineWidth = 1
-                path.stroke()
-            }
-        }
 
         // 3. 选中高亮：红色圆角虚线框 + 四角白色手柄方块（视觉上"可操作"）
         if let id = selectedID,
@@ -441,7 +442,7 @@ final class ConfirmCanvasView: NSView {
             exitOCRMode()
             return
         }
-        guard let cg = renderedImage() else { return }
+        let cg = image   // 用原始截图：boundingBox 相对原图，才能对上 imageDrawRect 的映射
         Task { @MainActor in
             guard let observations = try? await OCRService.shared.recognizeWithPositions(in: cg),
                   !observations.isEmpty else {
