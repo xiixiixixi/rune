@@ -159,15 +159,12 @@ final class ShortcutService {
                     RecordingStatusBarController.shared.show(on: mouseScreen)
                 }
             } else if action == .burst {
-                // 金手指：再按一次停止，否则开始连拍
+                // 金手指：再按一次停止，否则进入 框选→控制台→开始 新流程
                 if BurstCaptureController.shared.isActive {
                     BurstCaptureController.shared.stop()
-                    BurstStatusBarController.shared.dismiss()
+                    BurstLiveBarController.shared.dismiss()
                 } else {
-                    await BurstCaptureController.shared.start(mode: .burst, on: mouseScreen)
-                    if BurstCaptureController.shared.isActive {
-                        BurstStatusBarController.shared.show(on: mouseScreen)
-                    }
+                    await BurstCaptureController.shared.prepareAndBegin(presetMode: .burst, on: mouseScreen)
                 }
             } else {
                 await CaptureOrchestrator.shared.performCapture(action, on: mouseScreen)

@@ -54,6 +54,8 @@ final class BurstCaptureController: NSObject {
     private var timelapseTask: Task<Void, Never>?
     private var singleShotEngine = SCKStillCaptureBackend()
     private var selectedDisplayID: CGDirectDisplayID?
+    /// 连拍区域（CG 全局点坐标，nil=整屏）
+    private var selectedRegion: CGRect?
     /// nonisolated 回调写入用（SCStreamOutput 回调从 captureQueue 来）。
     private var pendingStop = false
     /// 原子计数器：收帧回调从 captureQueue 来，用 NSLock 保护，避免跳 MainActor 的并发开销。
@@ -69,9 +71,10 @@ final class BurstCaptureController: NSObject {
     // MARK: - 启动
 
     /// 开始抓拍。
-    /// - 连拍/定数：开 SCStream 持续收帧。
-    /// - 延时：按间隔调 SCScreenshotManager 单帧截图（延时不需要高帧率）。
-    func start(mode: BurstMode, on screen: NSScreen? = nil) async {
+    /// - 连拍/定数：开 SCStream 持续收帧（region 非空时只推选区流）。
+    /// - 延时：按间隔调 SCScreenshotManager 单帧截图（region 非空时逐张截选区）。
+    /// - region：CG 全局点坐标（框选区域；nil = 整屏）
+    func start(mode: BurstMode, on screen: NSScreen? = nil, region: CGRect? = nil) async {
         guard !isActive else { return }
 
         // 权限处理：用系统 API 请求（触发系统弹框），而不是自己弹自定义框。
@@ -95,6 +98,7 @@ final class BurstCaptureController: NSObject {
         capturedCount = 0
         pendingStop = false
         selectedDisplayID = screen.flatMap { Self.displayID(for: $0) }
+        selectedRegion = region   // CG 全局点坐标；推流走 sourceRect、延时走 .region
         frameLock.withLock { _frameIndex = 0 }
 
         // 创建输出文件夹：~/Library/Application Support/轻截/连续截图/<时间戳>/
@@ -116,6 +120,35 @@ final class BurstCaptureController: NSObject {
         guard isActive else { return }
         pendingStop = true
         endCapture()
+    }
+
+    /// 新流程入口：先框选区域（三合一：拖=区域/点窗=整窗/点桌面=全屏），
+    /// 弹"开始控制台"（选模式），点开始才真正拍。region 随后喂给引擎。
+    func prepareAndBegin(presetMode: BurstMode, on screen: NSScreen? = nil) async {
+        guard !isActive else {
+            // 已在拍：再次触发=停止
+            stop()
+            BurstLiveBarController.shared.dismiss()
+            return
+        }
+
+        let selection = await RegionSelectionOverlay().selectRegion()
+        guard let selection else { return }   // Esc/右键取消
+
+        let sizeText = "\(Int(selection.pointsRect.width))×\(Int(selection.pointsRect.height))"
+        nonisolated(unsafe) let region = selection.pointsRect
+        nonisolated(unsafe) let targetScreen = screen
+
+        BurstSetupPanelController.shared.show(regionSizeText: sizeText, presetMode: presetMode) { mode in
+            Task {
+                await self.start(mode: mode, on: targetScreen, region: region)
+                guard self.isActive else { return }
+                BurstLiveBarController.shared.show(mode: mode) {
+                    self.stop()
+                    BurstLiveBarController.shared.dismiss()
+                }
+            }
+        }
     }
 
     // MARK: - 连拍/定数：SCStream
@@ -141,8 +174,21 @@ final class BurstCaptureController: NSObject {
 
         let config = SCStreamConfiguration()
         let scale = CGFloat(filter.pointPixelScale)
-        config.width = Int(filter.contentRect.width * scale)
-        config.height = Int(filter.contentRect.height * scale)
+        if let region = selectedRegion {
+            // 区域连拍：sourceRect 只推选区流（display 局部坐标）
+            let clamped = region.intersection(display.frame)
+            config.sourceRect = CGRect(
+                x: clamped.minX - display.frame.minX,
+                y: clamped.minY - display.frame.minY,
+                width: clamped.width,
+                height: clamped.height
+            )
+            config.width = Int(clamped.width * scale)
+            config.height = Int(clamped.height * scale)
+        } else {
+            config.width = Int(filter.contentRect.width * scale)
+            config.height = Int(filter.contentRect.height * scale)
+        }
         config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(fps))
         config.pixelFormat = kCVPixelFormatType_32BGRA
         config.queueDepth = 3
@@ -194,7 +240,13 @@ final class BurstCaptureController: NSObject {
     private func captureOneTimelapseFrame() async {
         guard let dir = outputDir else { return }
         do {
-            let target = selectedDisplayID.map(CaptureTarget.display) ?? .fullscreen
+            // 区域优先：逐张截选区；否则整屏/指定屏
+            let target: CaptureTarget
+            if let selectedRegion {
+                target = .region(selectedRegion)
+            } else {
+                target = selectedDisplayID.map(CaptureTarget.display) ?? .fullscreen
+            }
             let frame = try await singleShotEngine.capture(target)
             try writePNG(frame.image, to: dir, index: capturedCount + 1)
             capturedCount += 1
@@ -265,11 +317,18 @@ final class BurstCaptureController: NSObject {
         // 停延时定时器
         timelapseTask?.cancel()
         timelapseTask = nil
+        // 收掉拍摄状态条，弹完成提示（说清拍了多少、去哪了）
+        BurstLiveBarController.shared.dismiss()
 
         let dir = outputDir
         let count = capturedCount
 
         if count > 0 {
+            ToastWindow.shared.show(
+                title: "连拍完成",
+                message: "已拍 \(count) 张，已为你打开保存文件夹",
+                systemIcon: "camera.burst"
+            )
             // 抓到了图：回调 + 在 Finder 打开输出文件夹
             if let dir {
                 onComplete?(dir)

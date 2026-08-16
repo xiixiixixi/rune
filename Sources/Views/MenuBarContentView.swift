@@ -226,23 +226,15 @@ struct MenuBarContentView: View {
         }
     }
 
-    /// 金手指：走和快捷键一样的路径（开始/停止），不走 CaptureOrchestrator。
+    /// 金手指新流程：菜单触发也走 框选→控制台→开始。
     private func dismissAndRunBurst(mode: BurstMode) {
         nonisolated(unsafe) let screen = originScreen
         dismissPopover()
         Task.detached {
             try? await Task.sleep(nanoseconds: 200_000_000)
             await MainActor.run {
-                if BurstCaptureController.shared.isActive {
-                    BurstCaptureController.shared.stop()
-                    BurstStatusBarController.shared.dismiss()
-                } else {
-                    Task {
-                        await BurstCaptureController.shared.start(mode: mode, on: screen)
-                        if BurstCaptureController.shared.isActive {
-                            BurstStatusBarController.shared.show(on: screen)
-                        }
-                    }
+                Task {
+                    await BurstCaptureController.shared.prepareAndBegin(presetMode: mode, on: screen)
                 }
             }
         }
