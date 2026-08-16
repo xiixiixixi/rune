@@ -1,0 +1,41 @@
+# Xcode
+build/
+DerivedData/
+*.xcuserdata
+*.xcworkspace
+xcuserdata/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.moved-aside
+
+# Swift Package Manager
+.build/
+Package.resolved
+
+# macOS
+.DS_Store
+*.swp
+*.swo
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# Release builds
+release/
+build-arm64/
+build-x86_64/
+*.dmg
+
+# 备份目录
+*.bak/
+
+# Local scripts（原作者的本地脚本；但项目内的 Scripts/ 依赖检查工具要保留）
+scripts/
+!Scripts/
+
+# Claude Code
+CLAUDE.md

@@ -1,0 +1,59 @@
+name: BetterShot
+options:
+  bundleIdPrefix: com.tc.qingjie
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    ENABLE_USER_SCRIPT_SANDBOXING: false
+    # M2 §6 Universal 2：项目级强制双架构 + 关闭"仅活跃架构"，
+    # 否则 Xcode 默认 Debug 只构当前架构（arm64）。
+    ARCHS: ["arm64", "x86_64"]
+    ONLY_ACTIVE_ARCH: NO
+
+packages:
+  CaptureKit:
+    path: CaptureKit
+
+targets:
+  BetterShot:
+    type: application
+    platform: macOS
+    sources:
+      - Sources
+      - path: Resources/Assets.xcassets
+        buildPhase: resources
+      - path: Resources/Backgrounds
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - package: CaptureKit
+        product: CaptureKit
+      - package: CaptureKit
+        product: CaptureKitSCK
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tc.qingjie
+        PRODUCT_NAME: 轻截
+        INFOPLIST_FILE: Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Resources/BetterShot.entitlements
+        MARKETING_VERSION: "0.3.7"
+        CURRENT_PROJECT_VERSION: "10"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_HARDENED_RUNTIME: true
+        # Xcode 26 默认把调试代码拆到动态库；本地自签名证书没有 Apple Team ID，
+        # 系统的库验证会拒绝加载。调试版改为单一可执行文件，身份更稳定也能直接启动。
+        ENABLE_DEBUG_DYLIB: NO
+        ENABLE_PREVIEWS: NO
+        COMBINE_HIDPI_IMAGES: true
+        LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
+        # M2 §6 Universal 2：单包双架构。本机 arm64 可编译；x86_64 产物待 Intel 机器验证。
+        ARCHS: ["arm64", "x86_64"]
+        ONLY_ACTIVE_ARCH: NO
+    entitlements:
+      path: Resources/BetterShot.entitlements
