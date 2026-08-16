@@ -443,6 +443,7 @@ final class ConfirmCanvasView: NSView {
             return
         }
         let cg = image   // 用原始截图：boundingBox 相对原图，才能对上 imageDrawRect 的映射
+        onDone("识别中…（约 1-3 秒）")
         Task { @MainActor in
             guard let observations = try? await OCRService.shared.recognizeWithPositions(in: cg),
                   !observations.isEmpty else {

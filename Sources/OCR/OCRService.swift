@@ -88,24 +88,27 @@ final class OCRService {
     /// 识别文字并返回每条文字的内容+位置（供 PII 打码定位用）。
     /// 不含条码（PII 打码只关心文字）。
     func recognizeWithPositions(in image: CGImage) async throws -> [OCRTextObservation] {
+        // perform 是同步重活（大图 1-5s）——放后台线程，别卡主线程 UI
         try await withCheckedThrowingContinuation { continuation in
-            let textRequest = VNRecognizeTextRequest()
-            textRequest.recognitionLevel = .accurate
-            textRequest.usesLanguageCorrection = true
-            let supported = (try? textRequest.supportedRecognitionLanguages()) ?? []
-            let desired = ["zh-Hans", "zh-Hant", "en-US"].filter { supported.contains($0) }
-            if !desired.isEmpty { textRequest.recognitionLanguages = desired }
+            DispatchQueue.global(qos: .userInitiated).async {
+                let textRequest = VNRecognizeTextRequest()
+                textRequest.recognitionLevel = .accurate
+                textRequest.usesLanguageCorrection = true
+                let supported = (try? textRequest.supportedRecognitionLanguages()) ?? []
+                let desired = ["zh-Hans", "zh-Hant", "en-US"].filter { supported.contains($0) }
+                if !desired.isEmpty { textRequest.recognitionLanguages = desired }
 
-            let handler = VNImageRequestHandler(cgImage: image)
-            do {
-                try handler.perform([textRequest])
-                let observations = (textRequest.results ?? []).compactMap { obs -> OCRTextObservation? in
-                    guard let candidate = obs.topCandidates(1).first else { return nil }
-                    return OCRTextObservation(text: candidate.string, boundingBox: obs.boundingBox)
+                let handler = VNImageRequestHandler(cgImage: image)
+                do {
+                    try handler.perform([textRequest])
+                    let observations = (textRequest.results ?? []).compactMap { obs -> OCRTextObservation? in
+                        guard let candidate = obs.topCandidates(1).first else { return nil }
+                        return OCRTextObservation(text: candidate.string, boundingBox: obs.boundingBox)
+                    }
+                    continuation.resume(returning: observations)
+                } catch {
+                    continuation.resume(throwing: error)
                 }
-                continuation.resume(returning: observations)
-            } catch {
-                continuation.resume(throwing: error)
             }
         }
     }
