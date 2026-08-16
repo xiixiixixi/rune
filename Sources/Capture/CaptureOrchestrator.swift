@@ -158,8 +158,20 @@ final class CaptureOrchestrator {
     }
 
     /// 供启动时调用：把引擎焐热，首次截图也快。
+    /// 并启动常驻保温：每 25 秒后台续一次热（缓存 TTL 30s），
+    /// 消灭"启动 30 秒后第一次截图回到冷启动慢 1-2.5s"的问题。
+    private var keepAliveTask: Task<Void, Never>?
+
     func prewarm() {
         prewarmEngineInBackground()
+        guard keepAliveTask == nil else { return }
+        keepAliveTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(25))
+                guard !Task.isCancelled else { break }
+                self?.prewarmEngineInBackground()
+            }
+        }
     }
 
     private func captureWindowViaSCK() async {

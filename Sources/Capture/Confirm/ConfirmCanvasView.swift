@@ -100,16 +100,18 @@ final class ConfirmCanvasView: NSView {
         // 1.5 选字模式：文字块高亮（必须在"无标注提前 return"之前，
         // 否则刚截完图（0 标注）时蓝块永远画不出来）
         if ocrMode {
-            let selRect = ocrDragRect
+            // 拖动中用划选矩形；松手后用保留的选中矩形（选中态持续显示）
+            let selRect = ocrDragRect ?? ocrSelectedRect
             for block in ocrBlocks {
                 let selected = selRect.map { !$0.intersection(block.frame).isNull } ?? false
-                NSColor.systemBlue.withAlphaComponent(selected ? 0.42 : 0.16).setFill()
+                NSColor.systemBlue.withAlphaComponent(selected ? 0.45 : 0.14).setFill()
                 block.frame.insetBy(dx: -2, dy: -1).fill()
             }
             if let selRect {
-                NSColor.systemBlue.withAlphaComponent(0.8).setStroke()
+                NSColor.systemBlue.withAlphaComponent(0.85).setStroke()
                 let path = NSBezierPath(rect: selRect)
-                path.lineWidth = 1
+                path.lineWidth = 1.2
+                path.setLineDash([5, 3], count: 2, phase: 0)
                 path.stroke()
             }
         }
@@ -215,8 +217,9 @@ final class ConfirmCanvasView: NSView {
         let loc = convert(event.locationInWindow, from: nil)
 
         // 选字模式：点中文字块立即复制（不依赖 mouseUp——实测其派发不稳定）；
-        // 同时记录划选起点，mouseUp 到达时走划选合并路径
+        // 同时记录划选起点，拖动/松开由队列级兜底钩子处理
         if ocrMode {
+            ocrSelectedRect = nil   // 新一轮选择：清掉上次的选中态
             if let block = ocrBlocks.first(where: { $0.frame.insetBy(dx: -4, dy: -4).contains(loc) }) {
                 copyBlocks([block])
                 ToastWindow.shared.show(
@@ -476,10 +479,68 @@ final class ConfirmCanvasView: NSView {
             ocrMode = true
             selectedTool = .select
             selectedID = nil
+            installOCRMontior()
             refreshCursor()
             needsDisplay = true
             onDone("选字模式：点一块复制一块，拖动选一段；Esc 退出")
         }
+    }
+
+    /// 拖动/松开事件的队列级兜底：实测选字模式下 mouseDragged/mouseUp
+    /// 派发给视图不稳定（mouseDown 必到、后两者经常丢）。
+    /// local monitor 在事件出队时即可拿到，不依赖视图派发：
+    /// dragged → 实时更新划选矩形（跨行高亮预览）；up → 划选收尾复制。
+    private var ocrMouseMonitor: Any?
+    /// 已完成的选中（复制后保留显示，直到下一次点选或退出）
+    private var ocrSelectedRect: CGRect?
+
+    private func installOCRMontior() {
+        removeOCRMonitor()
+        ocrMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDragged, .leftMouseUp]) { [weak self] event in
+            guard let self, self.ocrMode, let start = self.ocrDragStart else { return event }
+            let loc = self.convert(event.locationInWindow, from: nil)
+            switch event.type {
+            case .leftMouseDragged:
+                self.ocrDragRect = CGRect(
+                    x: min(start.x, loc.x), y: min(start.y, loc.y),
+                    width: abs(loc.x - start.x), height: abs(loc.y - start.y)
+                )
+                self.needsDisplay = true
+            case .leftMouseUp:
+                self.handleOCRSelectionEnd(at: loc)
+            default:
+                break
+            }
+            return event
+        }
+    }
+
+    private func removeOCRMonitor() {
+        if let ocrMouseMonitor {
+            NSEvent.removeMonitor(ocrMouseMonitor)
+        }
+        ocrMouseMonitor = nil
+    }
+
+    /// 划选收尾：矩形足够大 → 复制所有相交块（跨行自然支持），选中态保留显示。
+    private func handleOCRSelectionEnd(at loc: CGPoint) {
+        defer {
+            ocrDragStart = nil
+            needsDisplay = true
+        }
+        guard let rect = ocrDragRect, rect.width > 6, rect.height > 6 else {
+            ocrDragRect = nil
+            return
+        }
+        let hit = ocrBlocks.filter { !$0.frame.intersection(rect).isNull }
+        guard !hit.isEmpty else { return }
+        ocrSelectedRect = rect   // 保留选中态，直到下次点选/退出
+        copyBlocks(hit)
+        ToastWindow.shared.show(
+            title: "文字识别",
+            message: "已复制 \(hit.count) 块文字",
+            systemIcon: "doc.on.doc"
+        )
     }
 
     func exitOCRMode() {
@@ -487,6 +548,8 @@ final class ConfirmCanvasView: NSView {
         ocrBlocks = []
         ocrDragStart = nil
         ocrDragRect = nil
+        ocrSelectedRect = nil
+        removeOCRMonitor()
         refreshCursor()
         needsDisplay = true
     }
