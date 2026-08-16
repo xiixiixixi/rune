@@ -49,7 +49,9 @@ final class BurstCaptureController: NSObject {
     private var stream: SCStream?
     private var outputDir: URL?
     private var captureQueue = DispatchQueue(label: "com.tc.qingjie.burst", qos: .userInitiated)
-    private var timelapseTimer: DispatchSourceTimer?
+    /// 延时拍摄循环任务（取代 DispatchSourceTimer——其回调在后台队列执行，
+    /// 曾触发 Swift 6 隔离断言崩溃 dispatch_assert_queue；Task 循环天然在 MainActor）
+    private var timelapseTask: Task<Void, Never>?
     private var singleShotEngine = SCKStillCaptureBackend()
     private var selectedDisplayID: CGDirectDisplayID?
     /// nonisolated 回调写入用（SCStreamOutput 回调从 captureQueue 来）。
@@ -171,23 +173,22 @@ final class BurstCaptureController: NSObject {
     // MARK: - 延时：定时单帧
 
     private func startTimelapseCapture(on screen: NSScreen?) {
-        // 延时用单帧截图（SCScreenshotManager），不需要持续推流
-        let timer = DispatchSource.makeTimerSource(queue: captureQueue)
-        timer.schedule(deadline: .now(), repeating: timelapseInterval)
+        // 延时用单帧截图（SCScreenshotManager），不需要持续推流。
+        // Task 循环取代 DispatchSourceTimer：在 @MainActor 方法里创建的 Task
+        // 继承 MainActor 上下文，sleep/恢复都在正确执行器，无隔离断言风险。
         let interval = timelapseInterval
         let limit = timelapseLimit
-        timer.setEventHandler { [weak self] in
-            Task { @MainActor in
+        timelapseTask = Task { [weak self] in
+            while !Task.isCancelled {
                 guard let self, self.isActive else { return }
                 await self.captureOneTimelapseFrame()
                 if self.capturedCount >= limit {
                     self.endCapture()
+                    return
                 }
+                try? await Task.sleep(for: .seconds(interval))
             }
         }
-        timer.resume()
-        timelapseTimer = timer
-        _ = interval  // 保留参数引用
     }
 
     private func captureOneTimelapseFrame() async {
@@ -262,8 +263,8 @@ final class BurstCaptureController: NSObject {
             self.stream = nil
         }
         // 停延时定时器
-        timelapseTimer?.cancel()
-        timelapseTimer = nil
+        timelapseTask?.cancel()
+        timelapseTask = nil
 
         let dir = outputDir
         let count = capturedCount
