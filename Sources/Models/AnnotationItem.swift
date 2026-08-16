@@ -737,6 +737,10 @@ struct AnnotationSwatch: Identifiable, Equatable, Hashable {
     static let red = AnnotationSwatch("red", title: "红色", red: 0.97, green: 0.22, blue: 0.2)
     static let orange = AnnotationSwatch("orange", title: "橙色", red: 1.0, green: 0.53, blue: 0.08)
     static let yellow = AnnotationSwatch("yellow", title: "黄色", red: 1, green: 0.82, blue: 0.18)
+    /// 芥末黄：沉稳的高级黄（标注默认色）
+    static let mustard = AnnotationSwatch("mustard", title: "芥末黄", red: 0.85, green: 0.64, blue: 0.25)
+    /// 琥珀：黄向暖橙过渡
+    static let amber = AnnotationSwatch("amber", title: "琥珀", red: 0.90, green: 0.56, blue: 0.17)
     static let green = AnnotationSwatch("green", title: "绿色", red: 0.18, green: 0.72, blue: 0.36)
     static let turquoise = AnnotationSwatch("turquoise", title: "青绿色", red: 0.20, green: 0.77, blue: 0.72)
     static let blue = AnnotationSwatch("blue", title: "蓝色", red: 0.18, green: 0.48, blue: 1)
@@ -745,7 +749,7 @@ struct AnnotationSwatch: Identifiable, Equatable, Hashable {
     static let white = AnnotationSwatch("white", title: "白色", red: 0.96, green: 0.96, blue: 0.96)
 
     static let allCases: [AnnotationSwatch] = [
-        .black, .red, .orange, .yellow, .green, .turquoise, .blue, .purple, .pink, .white
+        .mustard, .amber, .black, .red, .orange, .yellow, .green, .turquoise, .blue, .purple, .pink, .white
     ]
 
     static func custom(from color: Color) -> AnnotationSwatch {

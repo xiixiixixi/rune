@@ -12,13 +12,13 @@ struct ConfirmToolbarView: View {
     private var canvas: ConfirmCanvasView? { controller.canvas }
 
     @State private var activeTool: AnnotationTool = .select
-    @State private var swatch: AnnotationSwatch = .black
+    @State private var swatch: AnnotationSwatch = .mustard
     @State private var widthRaw: Int = 1
-    @State private var customColor: Color = .black
+    @State private var customColor: Color = Color(red: 0.85, green: 0.64, blue: 0.25)
 
     private let tools: [AnnotationTool] = [.select, .rectangle, .arrow, .text, .blur, .spotlight, .numberedCircle]
-    /// 克制配色：石墨黑为默认，红只做点缀；取色器可任选任意颜色
-    private let swatches: [AnnotationSwatch] = [.black, .white, .red, .yellow, .green]
+    /// 黄色系为主的高级配色：芥末黄（默认）、柠檬黄、琥珀 + 黑白基础色
+    private let swatches: [AnnotationSwatch] = [.mustard, .yellow, .amber, .black, .white]
     private let widths: [CGFloat] = [2, 4, 8]
 
     /// 属性组常驻（CleanShot 式）：画新标注用它，选中已有标注也能随时改色/改粗细
