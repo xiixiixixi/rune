@@ -17,8 +17,8 @@ struct ConfirmToolbarView: View {
     @State private var customColor: Color = Color(red: 0.85, green: 0.64, blue: 0.25)
 
     private let tools: [AnnotationTool] = [.select, .rectangle, .arrow, .text, .blur, .spotlight, .numberedCircle]
-    /// 黄色系为主的高级配色：芥末黄（默认）、柠檬黄、琥珀 + 黑白基础色
-    private let swatches: [AnnotationSwatch] = [.mustard, .yellow, .amber, .black, .white]
+    /// 跨色系专业配色：芥末黄（默认）、珊瑚红、青碧、靛蓝 + 黑白基础
+    private let swatches: [AnnotationSwatch] = [.mustard, .coral, .teal, .indigo, .black, .white]
     private let widths: [CGFloat] = [2, 4, 8]
 
     /// 属性组常驻（CleanShot 式）：画新标注用它，选中已有标注也能随时改色/改粗细

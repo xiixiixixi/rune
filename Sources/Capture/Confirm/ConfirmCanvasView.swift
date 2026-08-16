@@ -15,7 +15,7 @@ final class ConfirmCanvasView: NSView {
     private var undoStack: [[AnnotationItem]] = []
 
     var selectedTool: AnnotationTool = .select
-    var selectedSwatch: AnnotationSwatch = .red
+    var selectedSwatch: AnnotationSwatch = .mustard   // 与工具栏默认一致（曾不同步导致默认仍是红）
     var strokeWidth: CGFloat = 4
 
     /// 当前选中的标注（选择工具点中后可拖动/Delete；工具栏切工具时置 nil）
