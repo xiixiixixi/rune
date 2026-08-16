@@ -125,7 +125,7 @@ struct ConfirmToolbarView: View {
             Button {
                 controller.requestBurstCapture()
             } label: {
-                QJTheme.secondaryButtonLabel("连拍", systemImage: "camera.burst")
+                QJTheme.toolIcon("camera", active: false)
             }
             .buttonStyle(QJTheme.QJPressStyle())
             .help("连拍：对当前选区连续抓拍，随时点关闭停止")
@@ -163,7 +163,7 @@ struct ConfirmToolbarView: View {
                 Button {
                     controller.confirm()
                 } label: {
-                    QJTheme.primaryButtonLabel("保存", systemImage: "square.and.arrow.down")
+                    QJTheme.primaryButtonLabel("保存")
                 }
                 .buttonStyle(QJTheme.QJPressStyle())
                 .help("保存 (Enter)")

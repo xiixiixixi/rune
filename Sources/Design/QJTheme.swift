@@ -42,10 +42,16 @@ enum QJTheme {
             .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 1)
     }
 
-    /// 主按钮（保存）：红底白字胶囊 + 红色微投影（唯一红色块）
-    static func primaryButtonLabel(_ text: String, systemImage: String) -> some View {
-        Label(text, systemImage: systemImage)
-            .font(.system(size: 13, weight: .semibold))
+    /// 主按钮（保存）：红底白字胶囊 + 红色微投影（唯一红色块）。图标可选。
+    static func primaryButtonLabel(_ text: String, systemImage: String? = nil) -> some View {
+        Group {
+            if let systemImage {
+                Label(text, systemImage: systemImage)
+            } else {
+                Text(text)
+            }
+        }
+        .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(.white)
             .padding(.horizontal, 16)
             .frame(height: 34)

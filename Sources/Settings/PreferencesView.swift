@@ -620,13 +620,9 @@ struct CaptureSettingsTab: View {
 
             Section("键盘快捷键") {
                 VStack(alignment: .leading, spacing: 8) {
-                    ShortcutRow(label: "截图（主入口）", action: .main)
-                    ShortcutRow(label: "截图（旧键·区域）", action: .region)
-                    ShortcutRow(label: "截图（旧键·全屏）", action: .fullscreen)
-                    ShortcutRow(label: "截图（旧键·窗口）", action: .window)
-                    ShortcutRow(label: "取色器", action: .colorPicker)
-                    ShortcutRow(label: "连续截图（金手指）", action: .burst)
-                    // 文字识别/滚动截图已并入主入口：截完图后在底部工具栏选择
+                    ShortcutRow(label: "全局截图", action: .main)
+                    // 其余功能已并入截图流程（截完图后底部工具栏选择），
+                    // 或保留隐藏快捷键：⇧⌘B 连拍中停止 / ⇧⌘C 取色 / ⇧⌘2 录屏
                 }
                 .id(shortcutResetID)
 

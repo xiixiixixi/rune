@@ -65,7 +65,10 @@ final class ShortcutService {
         // 每次重注册前清空派发表
         Self.actionLock.withLock { Self._actionsByID.removeAll() }
 
-        for action in Action.allCases {
+        // 单一入口：截图类只注册主键 ⇧⌘A；region/fullscreen/window/ocr
+        // 已并入主入口流程（旧键不再注册，避免一堆全局键互相打架）
+        let activeActions: Set<Action> = [.main, .burst, .colorPicker, .recording]
+        for action in Action.allCases where activeActions.contains(action) {
             let shortcut = loadShortcut(for: action) ?? defaultShortcut(for: action)
             guard shortcut.enabled else { continue }
 
