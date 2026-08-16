@@ -295,11 +295,14 @@ final class ConfirmCanvasView: NSView {
         if selectedTool == .numberedCircle {
             pushUndo()
             let r = imageDrawRect
-            let dNorm = 22.0 / max(r.height, 1)   // 固定 ≈22pt 直径（小而精致的正圆）
+            // 宽、高分别归一化（÷各自维度）→ 映射回像素是 22×22 正圆。
+            // 只除高度的话，宽高比≠1 的图里会被横向拉成椭圆（用户实测抓到的 bug）。
+            let wNorm = 22.0 / max(r.width, 1)
+            let hNorm = 22.0 / max(r.height, 1)
             let next = annotations.filter { $0.tool == .numberedCircle }.count + 1
             let item = AnnotationItem(
                 tool: .numberedCircle,
-                rect: CGRect(x: n.x - dNorm / 2, y: n.y - dNorm / 2, width: dNorm, height: dNorm),
+                rect: CGRect(x: n.x - wNorm / 2, y: n.y - hNorm / 2, width: wNorm, height: hNorm),
                 points: [],
                 swatch: selectedSwatch,
                 strokeWidth: strokeWidth,
