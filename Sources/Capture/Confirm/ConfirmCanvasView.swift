@@ -117,8 +117,16 @@ final class ConfirmCanvasView: NSView {
         }
 
         // 2. 画标注（归一化坐标映射到 drawRect；Y-down → CG 用 flipped 渲染）
+        // 马赛克草稿特殊处理：AnnotationDrawing 的 blur 需要画布快照（此处没有），
+        // 拖拽阶段由本视图直接画棋盘格预览（选中即见"这是打码"），保存烘焙才是真马赛克
         var items = annotations
-        if let draft { items.append(draft) }
+        if let draft {
+            if draft.tool == .blur, draft.rect.width > 0.003, draft.rect.height > 0.003 {
+                drawCheckerboardPreview(in: viewRect(for: draft.rect), ctx: ctx)
+            } else {
+                items.append(draft)
+            }
+        }
         guard !items.isEmpty else { return }
 
         ctx.saveGState()
@@ -211,6 +219,37 @@ final class ConfirmCanvasView: NSView {
         )
     }
 
+    /// 棋盘格预览：马赛克拖拽时所见即所得（黑白格 = 打码的直觉符号）。
+    private func drawCheckerboardPreview(in rect: CGRect, ctx: CGContext) {
+        let cell: CGFloat = 9
+        ctx.saveGState()
+        ctx.clip(to: rect)
+        ctx.setFillColor(NSColor.black.withAlphaComponent(0.55).cgColor)
+        var row = 0
+        var y = rect.minY - cell
+        while y < rect.maxY {
+            var col = 0
+            var x = rect.minX - cell
+            while x < rect.maxX {
+                if (row + col) % 2 == 0 {
+                    ctx.fill(
+                        CGRect(x: x, y: y, width: cell, height: cell).intersection(rect)
+                    )
+                }
+                x += cell
+                col += 1
+            }
+            y += cell
+            row += 1
+        }
+        ctx.restoreGState()
+        // 边框提示范围
+        NSColor.black.withAlphaComponent(0.5).setStroke()
+        let path = NSBezierPath(rect: rect)
+        path.lineWidth = 1
+        path.stroke()
+    }
+
     // MARK: - 鼠标交互
 
     override func mouseDown(with event: NSEvent) {
@@ -248,6 +287,26 @@ final class ConfirmCanvasView: NSView {
             } else {
                 selectedID = nil
             }
+            needsDisplay = true
+            return
+        }
+
+        // 编号圆点：点击放置、固定尺寸（不做拖大拖小），颜色跟色点
+        if selectedTool == .numberedCircle {
+            pushUndo()
+            let r = imageDrawRect
+            let dNorm = 30.0 / max(r.height, 1)   // 固定 ≈30pt 直径（归一化）
+            let next = annotations.filter { $0.tool == .numberedCircle }.count + 1
+            let item = AnnotationItem(
+                tool: .numberedCircle,
+                rect: CGRect(x: n.x - dNorm / 2, y: n.y - dNorm / 2, width: dNorm, height: dNorm),
+                points: [],
+                swatch: selectedSwatch,
+                strokeWidth: strokeWidth,
+                text: "\(next)"
+            )
+            annotations.append(item)
+            selectedID = item.id
             needsDisplay = true
             return
         }
