@@ -1,27 +1,23 @@
 import SwiftUI
 
-/// 确认模式底部工具栏（红白设计 · v3 自适应版）。
-///
-/// 布局（宽度随内容自适应，面板由控制器按 fittingSize 调整，绝不裁切）：
-/// - 紧凑态（默认·选择工具）：[6 工具] │ [↩撤销] │ [⧉复制][📌贴图] │ [取消] [保存🔴]
-/// - 展开态（选中画图工具）：在工具组后多出 [5 色点 · 3 粗细] 属性组
-/// - 分组用极淡竖线 + 留白；红色只出现在：激活工具图标 + 保存主按钮
+/// 截图后的“冻结工具台”。所有功能直接可见，不用猜省略号里藏了什么。
+/// 图标统一为轻量线性 SF Symbols；文字常驻，hover 再补充一句具体用法。
 struct ConfirmToolbarView: View {
     let controller: CaptureConfirmController
 
-    private var canvas: ConfirmCanvasView? { controller.canvas }
-
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var activeTool: AnnotationTool = .select
     @State private var swatch: AnnotationSwatch = .mustard
-    @State private var widthRaw: Int = 1
-    @State private var customColor: Color = Color(red: 0.85, green: 0.64, blue: 0.25)
+    @State private var widthRaw = 1
+    @State private var customColor = Color(red: 0.85, green: 0.64, blue: 0.25)
+    @State private var canUndo = false
+    @State private var ocrActive = false
+    @State private var appeared = false
 
-    private let tools: [AnnotationTool] = [.select, .rectangle, .arrow, .text, .blur]
-    /// 跨色系专业配色：芥末黄（默认）、珊瑚红、青碧、靛蓝 + 黑白基础
+    private var canvas: ConfirmCanvasView? { controller.canvas }
     private let swatches: [AnnotationSwatch] = [.mustard, .coral, .teal, .indigo, .black, .white]
     private let widths: [CGFloat] = [2, 4, 8]
 
-    /// 只在当前工具真的需要时显示属性。默认确认态保持短而清楚。
     private var showsColorOptions: Bool {
         [.rectangle, .arrow, .text, .numberedCircle].contains(activeTool)
     }
@@ -30,247 +26,442 @@ struct ConfirmToolbarView: View {
         [.rectangle, .arrow, .numberedCircle].contains(activeTool)
     }
 
-    private var showsToolOptions: Bool { showsColorOptions || showsWidthOptions }
-
     var body: some View {
-        HStack(spacing: 0) {
-            // ── 工具组
-            HStack(spacing: 2) {
-                ForEach(tools, id: \.self) { tool in
-                    Button {
-                        activate(tool)
-                    } label: {
-                        RuneTheme.toolIcon(iconName(for: tool), active: activeTool == tool)
-                    }
-                    .buttonStyle(RuneTheme.RunePressStyle())
-                    .help(tooltip(for: tool))
-                    .accessibilityLabel(tooltip(for: tool))
-                }
+        HStack(spacing: 4) {
+            annotationTools
 
-                Menu {
-                    Button("聚光灯", systemImage: "light.max") { activate(.spotlight) }
-                    Button("编号圆点", systemImage: "1.circle") { activate(.numberedCircle) }
-                } label: {
-                    RuneTheme.toolIcon(
-                        "ellipsis.circle",
-                        active: activeTool == .spotlight || activeTool == .numberedCircle
-                    )
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .help("更多标注工具")
-                .accessibilityLabel("更多标注工具")
+            if showsColorOptions || showsWidthOptions {
+                FreezeSeparator()
+                annotationProperties
+                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
             }
 
-            // ── 属性组（按需展开）
-            if showsToolOptions {
-                RuneTheme.groupSeparator
-                HStack(spacing: 14) {
-                    // 色点：16pt 圆 + 白描边；选中=石墨环（红色只留给激活工具和保存）
-                    if showsColorOptions {
-                        HStack(spacing: 6) {
-                            ForEach(swatches, id: \.self) { s in
-                                Button {
-                                    swatch = s
-                                    canvas?.selectedSwatch = s
-                                    canvas?.updateSelectedAnnotation(swatch: s)
-                                } label: {
-                                    Circle()
-                                        .fill(Color(s.nsColor))
-                                        .frame(width: 15, height: 15)
-                                        .overlay(Circle().strokeBorder(Color.white, lineWidth: 1.5))
-                                        .overlay(
-                                            Circle()
-                                                .strokeBorder(swatch == s ? RuneTheme.textPrimary.opacity(0.75) : .clear, lineWidth: 1.5)
-                                                .frame(width: 19, height: 19)
-                                        )
-                                        .frame(width: 20, height: 24)
-                                }
-                                .buttonStyle(RuneTheme.RunePressStyle())
-                                .help(s.title)
-                                .accessibilityLabel("颜色：\(s.title)")
-                            }
-                        }
+            FreezeSeparator()
 
-                        // 自定义颜色：系统取色器，不限于预设色板
-                        ColorPicker("自定义颜色", selection: $customColor, supportsOpacity: false)
-                            .labelsHidden()
-                            .scaleEffect(0.72)
-                            .frame(width: 24, height: 24)
-                            .help("自定义颜色")
-                            .accessibilityLabel("自定义颜色")
-                            .onChange(of: customColor) { _, newColor in
-                                let custom = AnnotationSwatch.custom(from: newColor)
-                                swatch = custom
-                                canvas?.selectedSwatch = custom
-                                canvas?.updateSelectedAnnotation(swatch: custom)
-                            }
-                    }
-
-                    // 粗细：小中大实心点，选中加深
-                    if showsWidthOptions {
-                        HStack(spacing: 4) {
-                            ForEach(widths.indices, id: \.self) { i in
-                                Button {
-                                    widthRaw = i
-                                    canvas?.strokeWidth = widths[i]
-                                    canvas?.updateSelectedAnnotation(strokeWidth: widths[i])
-                                } label: {
-                                    Circle()
-                                        .fill(widthRaw == i ? RuneTheme.textPrimary : RuneTheme.textSecondary.opacity(0.45))
-                                        .frame(width: CGFloat(4 + i * 3))
-                                        .frame(width: 22, height: 24)
-                                }
-                                .buttonStyle(RuneTheme.RunePressStyle())
-                                .help("粗细：\(["细", "中", "粗"][min(i, 2)])")
-                                .accessibilityLabel("粗细：\(["细", "中", "粗"][min(i, 2)])")
-                            }
-                        }
-                    }
-                }
-            }
-
-            RuneTheme.groupSeparator
-
-            // ── 撤销
-            Button {
+            FreezeToolButton(
+                title: "撤销",
+                help: "撤销上一步标注（⌘Z）",
+                icon: "arrow.uturn.backward",
+                isEnabled: canUndo
+            ) {
                 canvas?.undo()
-                canvas?.needsDisplay = true
-            } label: {
-                RuneTheme.toolIcon("arrow.uturn.backward", active: false)
+                canUndo = canvas?.canUndo ?? false
             }
-            .buttonStyle(RuneTheme.RunePressStyle())
-            .help("撤销 (⌘Z)")
 
-            RuneTheme.groupSeparator
+            FreezeSeparator()
 
-            // ── 次频功能收进一处；连拍作为核心功能保持直接可见。
-            Menu {
-                Button("识别文字", systemImage: "doc.text.viewfinder") {
-                    canvas?.toggleOCRMode { message in
-                        ToastWindow.shared.show(title: "文字识别", message: message, systemIcon: "doc.text.viewfinder")
-                    }
-                }
-                Button("滚动长图", systemImage: "arrow.down.doc") {
-                    controller.requestScrollCapture()
-                }
-            } label: {
-                RuneTheme.toolIcon("ellipsis", active: canvas?.ocrMode == true)
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .help("更多：识别文字、滚动长图")
-            .accessibilityLabel("更多截图功能")
-
-            Button {
-                controller.requestBurstCapture()
-            } label: {
-                Label("连拍", systemImage: "camera.fill")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(RuneTheme.accent)
-                    .padding(.horizontal, 11)
-                    .frame(height: 34)
-                    .background(
-                        Capsule()
-                            .fill(RuneTheme.accent.opacity(0.09))
-                            .overlay(Capsule().strokeBorder(RuneTheme.accent.opacity(0.18), lineWidth: 0.5))
+            FreezeToolButton(
+                title: "识字",
+                help: "识别截图里的文字，点击或拖选后直接复制",
+                icon: "text.viewfinder",
+                isActive: ocrActive
+            ) {
+                ocrActive.toggle()
+                canvas?.toggleOCRMode { message in
+                    if message == "未识别到文字" { ocrActive = false }
+                    ToastWindow.shared.show(
+                        title: "文字识别",
+                        message: message,
+                        systemIcon: "text.viewfinder"
                     )
+                }
             }
-            .buttonStyle(RuneTheme.RunePressStyle())
-            .help("连拍：沿用当前选区，选择连续、定数或延时拍摄")
-            .accessibilityLabel("对当前选区连拍")
 
-            // ── 复制 / 贴图（纯图标，悬停有中文提示）
-            Button {
+            FreezeToolButton(
+                title: "长图",
+                help: "沿用当前选区开始滚动截图",
+                icon: "arrow.down.to.line.compact"
+            ) {
+                controller.requestScrollCapture()
+            }
+
+            FreezeToolButton(
+                title: "连拍",
+                help: "沿用当前选区，连续、定数或延时拍摄",
+                icon: "square.stack.3d.up.fill",
+                tint: RuneTheme.accent
+            ) {
+                controller.requestBurstCapture()
+            }
+
+            FreezeSeparator()
+
+            FreezeToolButton(
+                title: "复制",
+                help: "复制当前截图到剪贴板（⌘C）",
+                icon: "square.on.square"
+            ) {
                 canvas?.copyImageToPasteboard()
-            } label: {
-                RuneTheme.toolIcon("doc.on.doc", active: false)
             }
-            .buttonStyle(RuneTheme.RunePressStyle())
-            .help("复制到剪贴板 (⌘C)")
-            .accessibilityLabel("复制到剪贴板")
 
-            Button {
+            FreezeToolButton(
+                title: "贴图",
+                help: "把截图钉在桌面最上层，方便对照",
+                icon: "pin.fill"
+            ) {
                 canvas?.pinImage()
                 controller.cancel()
-            } label: {
-                RuneTheme.toolIcon("pin", active: false)
             }
-            .buttonStyle(RuneTheme.RunePressStyle())
-            .help("钉在桌面上（贴图）")
-            .accessibilityLabel("钉在桌面上")
 
-            RuneTheme.groupSeparator
+            FreezeSeparator()
 
-            // ── 取消 / 保存
-            HStack(spacing: 8) {
-                Button {
-                    controller.cancel()
-                } label: {
-                    RuneTheme.secondaryButtonLabel("取消")
-                }
-                .buttonStyle(RuneTheme.RunePressStyle())
-                .help("放弃截图 (Esc)")
-
-                Button {
-                    controller.confirm()
-                } label: {
-                    RuneTheme.primaryButtonLabel("保存")
-                }
-                .buttonStyle(RuneTheme.RunePressStyle())
-                .help("保存 (Enter)")
+            FreezeEndButton(title: "取消", icon: "xmark", isPrimary: false) {
+                controller.cancel()
             }
+            .help("放弃这次截图（Esc）")
+
+            FreezeEndButton(title: "保存", icon: "checkmark", isPrimary: true) {
+                controller.confirm()
+            }
+            .help("保存截图（Enter）")
         }
-        .padding(.horizontal, 14)
-        .frame(height: RuneTheme.barHeight)
-        .background(RuneTheme.barBackground)
-        // 铁保险：内容绝不允许被横向压缩（宁可溢出也不压扁按钮）；
-        // 真实宽度由 GeometryReader 量好后上报给控制器，面板照抄这个数。
-        .fixedSize(horizontal: true, vertical: false)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(FreezeToolbarBackground())
+        .fixedSize(horizontal: true, vertical: true)
+        .scaleEffect(appeared || reduceMotion ? 1 : 0.975)
+        .offset(y: appeared || reduceMotion ? 0 : -5)
+        .opacity(appeared ? 1 : 0)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: appeared)
         .background(
-            GeometryReader { geo in
+            GeometryReader { geometry in
                 Color.clear
-                    .onAppear { controller.toolbarWidthChanged(geo.size.width) }
-                    .onChange(of: geo.size.width) { _, w in
-                        controller.toolbarWidthChanged(w)
+                    .onAppear { controller.toolbarSizeChanged(geometry.size) }
+                    .onChange(of: geometry.size) { _, size in
+                        controller.toolbarSizeChanged(size)
                     }
             }
+        )
+        .onAppear {
+            canUndo = canvas?.canUndo ?? false
+            appeared = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .confirmCanvasStateDidChange)) { note in
+            guard note.object as? ConfirmCanvasView === canvas else { return }
+            canUndo = canvas?.canUndo ?? false
+        }
+    }
+
+    private var annotationTools: some View {
+        HStack(spacing: 2) {
+            FreezeToolButton(
+                title: "选择",
+                help: "选择并移动已经画好的标注，Delete 可以删除",
+                icon: "cursorarrow.rays",
+                isActive: activeTool == .select
+            ) { activate(.select) }
+
+            FreezeToolButton(
+                title: "方框",
+                help: "拖拽画出一个醒目的矩形框",
+                icon: "rectangle.dashed",
+                isActive: activeTool == .rectangle
+            ) { activate(.rectangle) }
+
+            FreezeToolButton(
+                title: "箭头",
+                help: "拖拽画一支指向重点的箭头",
+                icon: "arrow.up.right",
+                isActive: activeTool == .arrow
+            ) { activate(.arrow) }
+
+            FreezeToolButton(
+                title: "文字",
+                help: "点击截图任意位置输入说明文字",
+                icon: "character.cursor.ibeam",
+                isActive: activeTool == .text
+            ) { activate(.text) }
+
+            FreezeToolButton(
+                title: "打码",
+                help: "拖拽框住需要隐藏的隐私内容",
+                icon: "square.grid.3x3.fill",
+                isActive: activeTool == .blur
+            ) { activate(.blur) }
+
+            FreezeToolButton(
+                title: "聚光",
+                help: "保留重点区域，其余画面自动压暗",
+                icon: "viewfinder.circle",
+                isActive: activeTool == .spotlight
+            ) { activate(.spotlight) }
+
+            FreezeToolButton(
+                title: "编号",
+                help: "依次放置 1、2、3…编号圆点",
+                icon: "number.circle",
+                isActive: activeTool == .numberedCircle
+            ) { activate(.numberedCircle) }
+        }
+    }
+
+    private var annotationProperties: some View {
+        HStack(spacing: 8) {
+            if showsColorOptions {
+                HStack(spacing: 4) {
+                    ForEach(swatches, id: \.self) { color in
+                        FreezeSwatch(
+                            swatch: color,
+                            isSelected: swatch == color
+                        ) {
+                            swatch = color
+                            canvas?.selectedSwatch = color
+                            canvas?.updateSelectedAnnotation(swatch: color)
+                        }
+                    }
+
+                    ColorPicker("自定义颜色", selection: $customColor, supportsOpacity: false)
+                        .labelsHidden()
+                        .scaleEffect(0.68)
+                        .frame(width: 24, height: 32)
+                        .help("自定义标注颜色")
+                        .onChange(of: customColor) { _, newColor in
+                            let custom = AnnotationSwatch.custom(from: newColor)
+                            swatch = custom
+                            canvas?.selectedSwatch = custom
+                            canvas?.updateSelectedAnnotation(swatch: custom)
+                        }
+                }
+            }
+
+            if showsColorOptions && showsWidthOptions {
+                Rectangle()
+                    .fill(Color.white.opacity(0.10))
+                    .frame(width: 1, height: 22)
+            }
+
+            if showsWidthOptions {
+                HStack(spacing: 2) {
+                    ForEach(widths.indices, id: \.self) { index in
+                        Button {
+                            widthRaw = index
+                            canvas?.strokeWidth = widths[index]
+                            canvas?.updateSelectedAnnotation(strokeWidth: widths[index])
+                        } label: {
+                            Capsule()
+                                .fill(widthRaw == index ? Color.white : Color.white.opacity(0.50))
+                                .frame(width: 15, height: max(2, CGFloat(index + 1) * 2))
+                                .frame(width: 28, height: 34)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(widthRaw == index ? Color.white.opacity(0.11) : .clear)
+                                )
+                        }
+                        .buttonStyle(FreezePressStyle())
+                        .help("线条粗细：\(["细", "中", "粗"][index])")
+                        .accessibilityLabel("线条粗细：\(["细", "中", "粗"][index])")
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 6)
+        .frame(height: 46)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white.opacity(0.055))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                )
         )
     }
 
     private func activate(_ tool: AnnotationTool) {
-        activeTool = tool
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.14)) {
+            activeTool = tool
+        }
+        if ocrActive {
+            ocrActive = false
+            canvas?.exitOCRMode()
+        }
         canvas?.selectedTool = tool
         canvas?.selectedID = nil
         canvas?.needsDisplay = true
         canvas?.refreshCursor()
     }
+}
 
-    /// 精选图标映射（统一线性风格；覆盖编辑器的默认选型）
-    private func iconName(for tool: AnnotationTool) -> String {
-        switch tool {
-        case .select: "arrow.up.and.down.and.arrow.left.and.right"
-        case .rectangle: "rectangle"
-        case .arrow: "arrow.up.right"
-        case .text: "character.cursor.ibeam"
-        case .blur: "checkerboard.rectangle"
-        case .spotlight: "light.max"
-        case .numberedCircle: "1.circle"
-        default: "circle"
+private struct FreezeToolbarBackground: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .fill(Color(red: 0.055, green: 0.060, blue: 0.075).opacity(0.96))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.24), Color.white.opacity(0.07)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 0.8
+                    )
+            )
+            .shadow(color: .black.opacity(0.38), radius: 28, y: 12)
+            .shadow(color: RuneTheme.accent.opacity(0.10), radius: 18, y: 4)
+    }
+}
+
+private struct FreezeToolButton: View {
+    let title: String
+    let help: String
+    let icon: String
+    var isActive = false
+    var isEnabled = true
+    var tint: Color? = nil
+    let action: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .medium))
+                    .symbolRenderingMode(.monochrome)
+                    .frame(height: 19)
+
+                Text(title)
+                    .font(.system(size: 9.5, weight: .medium))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(foreground)
+            .frame(width: 44, height: 46)
+            .background(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(background)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .strokeBorder(border, lineWidth: isActive ? 0.8 : 0.5)
+            )
+            .shadow(color: isActive ? RuneTheme.accent.opacity(0.22) : .clear, radius: 8, y: 2)
+            .scaleEffect(isHovered && isEnabled && !reduceMotion ? 1.035 : 1)
+            .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovered)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: isActive)
         }
+        .buttonStyle(FreezePressStyle())
+        .disabled(!isEnabled)
+        .onHover { isHovered = $0 }
+        .help("\(title)：\(help)")
+        .accessibilityLabel(title)
+        .accessibilityHint(help)
     }
 
-    /// 悬停说明：名称 + 一句话用法（小白也能看懂）
-    private func tooltip(for tool: AnnotationTool) -> String {
-        switch tool {
-        case .select: "选择：点选已画的标注，拖动位置，按 Delete 删除"
-        case .rectangle: "矩形：在图上拖拽画一个方框"
-        case .arrow: "箭头：拖拽画一个指示箭头"
-        case .text: "文字：点击图上任意位置输入文字"
-        case .blur: "马赛克：拖拽框住想打码的区域"
-        case .spotlight: "聚光灯：拖一块区域，其余部分压暗突出重点"
-        case .numberedCircle: "编号圆点：点击放置编号（1、2、3…自动递增）"
-        default: tool.title
+    private var foreground: Color {
+        if !isEnabled { return .white.opacity(0.24) }
+        if isActive { return tint ?? RuneTheme.accent }
+        if let tint { return tint.opacity(isHovered ? 1 : 0.88) }
+        return .white.opacity(isHovered ? 1 : 0.80)
+    }
+
+    private var background: Color {
+        if !isEnabled { return .white.opacity(0.018) }
+        if isActive { return RuneTheme.accent.opacity(0.17) }
+        return isHovered ? .white.opacity(0.105) : .clear
+    }
+
+    private var border: Color {
+        if !isEnabled { return .white.opacity(0.025) }
+        if isActive { return RuneTheme.accent.opacity(0.48) }
+        return isHovered ? .white.opacity(0.15) : .clear
+    }
+}
+
+private struct FreezeEndButton: View {
+    let title: String
+    let icon: String
+    let isPrimary: Bool
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .bold))
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(isPrimary ? Color.white : Color.white.opacity(isHovered ? 1 : 0.82))
+            .padding(.horizontal, isPrimary ? 13 : 10)
+            .frame(height: 38)
+            .background(
+                Capsule()
+                    .fill(
+                        isPrimary
+                            ? RuneTheme.accent
+                            : Color.white.opacity(isHovered ? 0.12 : 0.065)
+                    )
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(
+                        isPrimary ? Color.white.opacity(0.16) : Color.white.opacity(0.10),
+                        lineWidth: 0.7
+                    )
+            )
+            .shadow(
+                color: isPrimary ? RuneTheme.accent.opacity(isHovered ? 0.46 : 0.30) : .clear,
+                radius: isHovered ? 11 : 7,
+                y: 3
+            )
         }
+        .buttonStyle(FreezePressStyle())
+        .onHover { isHovered = $0 }
+        .accessibilityLabel(title)
+    }
+}
+
+private struct FreezeSwatch: View {
+    let swatch: AnnotationSwatch
+    let isSelected: Bool
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Circle()
+                .fill(Color(swatch.nsColor))
+                .frame(width: 14, height: 14)
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.72), lineWidth: 0.7))
+                .padding(4)
+                .background(
+                    Circle()
+                        .fill(isHovered ? Color.white.opacity(0.12) : .clear)
+                )
+                .overlay(
+                    Circle()
+                        .strokeBorder(isSelected ? Color.white.opacity(0.90) : .clear, lineWidth: 1.2)
+                )
+                .scaleEffect(isHovered ? 1.08 : 1)
+        }
+        .buttonStyle(FreezePressStyle())
+        .onHover { isHovered = $0 }
+        .help("标注颜色：\(swatch.title)")
+        .accessibilityLabel("标注颜色：\(swatch.title)")
+    }
+}
+
+private struct FreezeSeparator: View {
+    var body: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.10))
+            .frame(width: 1, height: 30)
+            .padding(.horizontal, 4)
+    }
+}
+
+private struct FreezePressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.95 : 1)
+            .opacity(configuration.isPressed ? 0.82 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.08), value: configuration.isPressed)
     }
 }

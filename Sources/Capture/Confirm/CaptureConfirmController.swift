@@ -32,7 +32,12 @@ final class CaptureConfirmController: NSObject {
     ///   - image: 截好的图（CGImage）
     ///   - screen: 截图所在屏（工具栏贴这个屏的底部）
     /// - Returns: 用户确认时返回标注列表（可为空数组=不带标注保存）；取消返回 nil
-    func present(image: CGImage, on screen: NSScreen?, region: CGRect? = nil) async -> [AnnotationItem]? {
+    func present(
+        image: CGImage,
+        on screen: NSScreen?,
+        region: CGRect? = nil,
+        backgroundImage: CGImage? = nil
+    ) async -> [AnnotationItem]? {
         // 防重入：已有确认会话时直接取消新的
         guard continuation == nil else { return nil }
 
@@ -48,15 +53,29 @@ final class CaptureConfirmController: NSObject {
 
         return await withCheckedContinuation { cont in
             self.continuation = cont
-            self.showWindows(image: image, on: targetScreen)
+            self.showWindows(
+                image: image,
+                backgroundImage: backgroundImage,
+                on: targetScreen
+            )
         }
     }
 
     // MARK: - 窗口搭建
 
-    private func showWindows(image: CGImage, on screen: NSScreen) {
+    private func showWindows(
+        image: CGImage,
+        backgroundImage: CGImage?,
+        on screen: NSScreen
+    ) {
         targetScreen = screen
-        let canvas = ConfirmCanvasView(image: image, screen: screen, controller: self)
+        let canvas = ConfirmCanvasView(
+            image: image,
+            backgroundImage: backgroundImage,
+            capturedRegion: capturedRegion,
+            screen: screen,
+            controller: self
+        )
         let window = OverlayWindow(
             contentRect: screen.frame,
             styleMask: .borderless,
@@ -107,31 +126,45 @@ final class CaptureConfirmController: NSObject {
 
     /// SwiftUI 量好的真实内容宽度上报：面板直接照抄（瞬时定位，不走动画——
     /// 动画过渡帧面板比内容窄，会把按钮压扁）。
-    func toolbarWidthChanged(_ width: CGFloat) {
-        guard toolbarPanel != nil, width > 50 else { return }
-        applyToolbarWidth(ceil(width))
+    func toolbarSizeChanged(_ size: CGSize) {
+        guard toolbarPanel != nil, size.width > 50, size.height > 30 else { return }
+        applyToolbarSize(CGSize(width: ceil(size.width), height: ceil(size.height)))
     }
 
     /// 初始尽力 sizing（onAppear 的宽度上报随后会立刻校正）。
     private func layoutToolbarInitial() {
         guard let hosting = toolbarPanel?.contentView as? NSHostingView<ConfirmToolbarView> else { return }
-        let fitWidth = ceil(hosting.fittingSize.width)
-        guard fitWidth > 50, fitWidth < 4000 else { return }
-        applyToolbarWidth(fitWidth)
+        let fitSize = hosting.fittingSize
+        guard fitSize.width > 50, fitSize.width < 4000, fitSize.height > 30 else { return }
+        applyToolbarSize(CGSize(width: ceil(fitSize.width), height: ceil(fitSize.height)))
     }
 
-    private func applyToolbarWidth(_ width: CGFloat) {
+    private func applyToolbarSize(_ size: CGSize) {
         guard let panel = toolbarPanel else { return }
         let sf = targetScreen?.visibleFrame ?? NSScreen.main?.visibleFrame
             ?? NSScreen.screens.first?.visibleFrame
             ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         // 屏幕太窄时装不下就缩到屏幕内（保留最小边距 16）
-        let finalWidth = min(width, sf.width - 32)
+        let finalWidth = min(size.width, sf.width - 32)
+        let finalHeight = min(size.height, sf.height - 24)
+        let captureFrame = capturedRegion.flatMap { appKitFrame(for: $0) }
+        let x = min(
+            max((captureFrame?.midX ?? sf.midX) - finalWidth / 2, sf.minX + 16),
+            sf.maxX - finalWidth - 16
+        )
+        let y: CGFloat = {
+            guard let captureFrame else { return sf.minY + 20 }
+            let below = captureFrame.minY - finalHeight - 14
+            if below >= sf.minY + 12 { return below }
+            let above = captureFrame.maxY + 14
+            if above + finalHeight <= sf.maxY - 12 { return above }
+            return sf.minY + 20
+        }()
         let newFrame = NSRect(
-            x: sf.midX - finalWidth / 2,
-            y: sf.minY + 20,
+            x: x,
+            y: y,
             width: finalWidth,
-            height: RuneTheme.barHeight
+            height: finalHeight
         )
         // 任一分量（宽/高/横/纵）没到位就重设。注意不能用 &&
         // ——面板装 contentView 时会自动变到内容宽度但停在原点，
@@ -144,6 +177,18 @@ final class CaptureConfirmController: NSObject {
         if needsMove {
             panel.setFrame(newFrame, display: true)
         }
+    }
+
+    /// SCK 的选区坐标是“主屏左上为原点”，面板位置使用 AppKit 的“左下为原点”。
+    private func appKitFrame(for region: CGRect) -> CGRect? {
+        guard let screen = targetScreen else { return nil }
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
+        return CGRect(
+            x: region.minX,
+            y: primaryHeight - region.maxY,
+            width: region.width,
+            height: region.height
+        )
     }
 
     // MARK: - 结束

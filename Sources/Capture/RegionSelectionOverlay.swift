@@ -11,6 +11,9 @@ struct RegionSelection {
     let displayID: CGDirectDisplayID
     /// 区域+窗口合并模式：单击命中窗口时为该窗口 ID（nil = 普通拖拽选区）
     let windowID: CGWindowID?
+    /// 选区阶段已经抓到的整屏定格帧。确认界面用它压暗选区外画面，
+    /// 保留“快门按下时这一刻被冻结”的空间关系。
+    let frozenDisplayFrame: CGImage?
 }
 
 /// 区域+窗口合并模式的候选窗口（Sendable：SCWindow 不能直接传出）。
@@ -29,6 +32,7 @@ final class RegionSelectionOverlay {
 
     private var overlayWindows: [NSWindow] = []
     private var continuation: CheckedContinuation<RegionSelection?, Never>?
+    private var frozenFramesByDisplay: [CGDirectDisplayID: CGImage] = [:]
 
     /// M1 §3.3：选区前先抓冻结帧。冻结帧作为 overlay 背景，使选区时屏幕内容不变化。
     private let freezeEngine = SCKStillCaptureBackend()
@@ -131,6 +135,7 @@ final class RegionSelectionOverlay {
                 }
             }
         }
+        frozenFramesByDisplay = frozenFrames
 
         // 回填：定格帧 + 本屏局部坐标窗口清单
         let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
@@ -181,7 +186,8 @@ final class RegionSelectionOverlay {
             pointsRect: pointsRect,
             scaleFactor: screen.backingScaleFactor,
             displayID: displayID,
-            windowID: nil
+            windowID: nil,
+            frozenDisplayFrame: frozenFramesByDisplay[displayID]
         )
 
         closeOverlays()
@@ -205,7 +211,8 @@ final class RegionSelectionOverlay {
             pointsRect: pointsRect,
             scaleFactor: screen.backingScaleFactor,
             displayID: displayID,
-            windowID: windowID
+            windowID: windowID,
+            frozenDisplayFrame: frozenFramesByDisplay[displayID]
         )
 
         closeOverlays()

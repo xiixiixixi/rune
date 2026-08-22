@@ -12,6 +12,23 @@ enum DebugAuditSnapshot {
         }
     }
 
+    static func captureWindowLayoutAfter(_ filename: String, delay: TimeInterval = 0.9) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            let lines = NSApp.windows
+                .filter(\.isVisible)
+                .sorted { $0.level.rawValue < $1.level.rawValue }
+                .map { window in
+                    "\(String(describing: type(of: window))) frame=\(window.frame) level=\(window.level.rawValue)"
+                }
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try? lines.joined(separator: "\n").write(
+                to: directory.appendingPathComponent(filename),
+                atomically: true,
+                encoding: .utf8
+            )
+        }
+    }
+
     private static func captureFrontmost(_ filename: String) {
         let candidates = NSApp.windows.filter { window in
             window.isVisible

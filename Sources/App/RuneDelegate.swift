@@ -175,13 +175,60 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                 ), let image = NSImage(contentsOf: url) else { return }
                 var rect = NSRect(origin: .zero, size: image.size)
                 guard let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else { return }
+                let targetIsSecondary = ProcessInfo.processInfo.arguments.contains("--audit-secondary")
+                guard let screen = targetIsSecondary
+                    ? NSScreen.screens.dropFirst().first
+                    : NSScreen.main else { return }
+                let testsBottomEdge = ProcessInfo.processInfo.arguments.contains("--audit-bottom-edge")
+                let localRegion = testsBottomEdge
+                    ? CGRect(
+                        x: screen.frame.width * 0.25,
+                        y: screen.visibleFrame.minY - screen.frame.minY + 12,
+                        width: screen.frame.width * 0.50,
+                        height: screen.frame.height * 0.30
+                    )
+                    : CGRect(
+                        x: screen.frame.width * 0.18,
+                        y: screen.frame.height * 0.21,
+                        width: screen.frame.width * 0.64,
+                        height: screen.frame.height * 0.58
+                    )
+                let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
+                let globalRegion = CGRect(
+                    x: screen.frame.minX + localRegion.minX,
+                    y: primaryHeight - (screen.frame.minY + localRegion.maxY),
+                    width: localRegion.width,
+                    height: localRegion.height
+                )
+                let crop = CGRect(
+                    x: CGFloat(cgImage.width) * 0.18,
+                    y: CGFloat(cgImage.height) * 0.21,
+                    width: CGFloat(cgImage.width) * 0.64,
+                    height: CGFloat(cgImage.height) * 0.58
+                ).integral
+                guard let capturedImage = cgImage.cropping(to: crop) else { return }
                 Task {
                     _ = await CaptureConfirmController.shared.present(
-                        image: cgImage,
-                        on: NSScreen.main,
-                        region: NSScreen.main?.frame
+                        image: capturedImage,
+                        on: screen,
+                        region: globalRegion,
+                        backgroundImage: cgImage
                     )
                 }
+                DebugAuditSnapshot.captureAfter(
+                    targetIsSecondary
+                        ? "36-confirm-freeze-secondary.png"
+                        : "31-confirm-freeze-redesign.png",
+                    delay: 1.1
+                )
+                DebugAuditSnapshot.captureWindowLayoutAfter(
+                    testsBottomEdge
+                        ? "38-confirm-layout-bottom-edge.txt"
+                        : (targetIsSecondary
+                            ? "37-confirm-layout-secondary.txt"
+                            : "34-confirm-layout-primary.txt"),
+                    delay: 1.1
+                )
             }
         } else if ProcessInfo.processInfo.arguments.contains("--audit-editor") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {

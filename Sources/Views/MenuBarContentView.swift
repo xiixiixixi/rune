@@ -392,41 +392,27 @@ private struct TrayRecordingMenu: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(isHovered ? Color.primary.opacity(0.10) : Color.primary.opacity(0.055))
+            // Menu 在 macOS 上会把自定义 label 强制居中。视觉层单独复用同一套
+            // TrayActionLabel，透明 Menu 只负责接收点击，保证和另外三个入口左对齐。
+            TrayActionLabel(
+                title: "录屏",
+                icon: "record.circle",
+                showsChevron: true,
+                isHovered: isHovered
+            )
+            .allowsHitTesting(false)
 
             Menu {
                 Button("全屏录制", systemImage: "desktopcomputer", action: onFullScreen)
                 Button("区域录制", systemImage: "rectangle.dashed", action: onArea)
             } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "record.circle")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 17)
-
-                    Text("录屏")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.primary)
-
-                    Spacer(minLength: 2)
-                }
-                .padding(.horizontal, 10)
-                .frame(maxWidth: .infinity, minHeight: 38)
-                .contentShape(Rectangle())
+                Color.white.opacity(0.001)
+                    .frame(maxWidth: .infinity, minHeight: 38)
+                    .contentShape(Rectangle())
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .frame(maxWidth: .infinity)
-
-            HStack {
-                Spacer()
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(.tertiary)
-                    .padding(.trailing, 10)
-            }
-            .allowsHitTesting(false)
         }
         .frame(maxWidth: .infinity, minHeight: 38)
         .onHover { isHovered = $0 }

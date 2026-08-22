@@ -111,6 +111,14 @@ final class CaptureOrchestrator {
         let selection = await RegionSelectionOverlay().selectRegion()
         guard let selection else { return }  // 用户取消（Esc 等）
 
+        // 用户如果极快完成框选，选区界面的后台定格帧可能还没来得及回填。
+        // 这里补抓一次整屏，保证确认界面始终有“同一时刻”的暗场背景，而不是退回纯黑。
+        let frozenBackground: CGImage? = if let cached = selection.frozenDisplayFrame {
+            cached
+        } else {
+            try? await sckEngine.capture(.display(selection.displayID)).image
+        }
+
         // 2. 走 SCK 引擎：单击命中窗口=整窗捕获（无阴影）；拖拽=区域裁剪
         let frame: CapturedFrame
         do {
@@ -130,7 +138,8 @@ final class CaptureOrchestrator {
         await processCapturedFrame(
             frame,
             on: Self.screen(forDisplayID: selection.displayID),
-            region: selection.pointsRect
+            region: selection.pointsRect,
+            backgroundImage: frozenBackground
         )
     }
 
@@ -190,14 +199,16 @@ final class CaptureOrchestrator {
     private func processCapturedFrame(
         _ frame: CapturedFrame,
         on screen: NSScreen? = nil,
-        region: CGRect? = nil
+        region: CGRect? = nil,
+        backgroundImage: CGImage? = nil
     ) async {
         // 确认模式：用户在冻结屏上标注，点保存才继续。
         // 「滚动长图」会以 nil 结束确认并留下 pendingScrollRegion → 转滚动截图。
         let annotations = await CaptureConfirmController.shared.present(
             image: frame.image,
             on: screen ?? captureScreen,
-            region: region
+            region: region,
+            backgroundImage: backgroundImage
         )
         if let scrollRegion = CaptureConfirmController.shared.pendingScrollRegion {
             CaptureConfirmController.shared.clearPendingScroll()

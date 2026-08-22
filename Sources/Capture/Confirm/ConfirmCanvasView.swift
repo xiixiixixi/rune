@@ -1,4 +1,9 @@
 import AppKit
+import QuartzCore
+
+extension Notification.Name {
+    static let confirmCanvasStateDidChange = Notification.Name("Rune.ConfirmCanvasStateDidChange")
+}
 
 /// 确认模式画布：显示截图 + 就地标注（拖画/选中/移动/删除）。
 ///
@@ -6,8 +11,12 @@ import AppKit
 /// 键盘：Esc=取消（不保存）、Enter/⌘S=保存、⌘Z=撤销、Delete=删除选中。
 final class ConfirmCanvasView: NSView {
     private let image: CGImage
+    private let backgroundImage: CGImage?
+    private let capturedRegion: CGRect?
     private let screen: NSScreen
     private weak var controller: CaptureConfirmController?
+    private let dimLayer = CAShapeLayer()
+    private var pulseLayers: [CAShapeLayer] = []
 
     // MARK: - 标注状态（工具栏读写；确认时由控制器读走烘焙）
 
@@ -35,11 +44,20 @@ final class ConfirmCanvasView: NSView {
     private var ocrDragStart: CGPoint?
     private var ocrDragRect: CGRect?
 
-    init(image: CGImage, screen: NSScreen, controller: CaptureConfirmController) {
+    init(
+        image: CGImage,
+        backgroundImage: CGImage?,
+        capturedRegion: CGRect?,
+        screen: NSScreen,
+        controller: CaptureConfirmController
+    ) {
         self.image = image
+        self.backgroundImage = backgroundImage
+        self.capturedRegion = capturedRegion
         self.screen = screen
         self.controller = controller
         super.init(frame: screen.frame)
+        wantsLayer = true
     }
 
     @available(*, unavailable)
@@ -50,6 +68,14 @@ final class ConfirmCanvasView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         window?.makeFirstResponder(self)
+        if window != nil {
+            startFreezePulse()
+        }
+    }
+
+    override func layout() {
+        super.layout()
+        layoutFreezeLayers()
     }
 
     // MARK: - 工具栏入口（撤销 / 删除选中）
@@ -59,6 +85,7 @@ final class ConfirmCanvasView: NSView {
         annotations = undoStack.removeLast()
         selectedID = nil
         needsDisplay = true
+        postCanvasStateChange()
     }
 
     var canUndo: Bool { !undoStack.isEmpty }
@@ -82,6 +109,7 @@ final class ConfirmCanvasView: NSView {
 
     private func pushUndo() {
         undoStack.append(annotations)
+        postCanvasStateChange()
     }
 
     // MARK: - 绘制
@@ -89,15 +117,28 @@ final class ConfirmCanvasView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
 
-        // 1. 画截图（铺满本屏区域；图按屏绘制，非拉伸）
+        // 1. 先画选区时抓到的整屏定格帧。没有帧时用深色回退，绝不透出继续变化的桌面。
+        if let backgroundImage {
+            ctx.saveGState()
+            ctx.interpolationQuality = .medium
+            ctx.draw(backgroundImage, in: bounds)
+            ctx.restoreGState()
+        } else {
+            NSColor(calibratedRed: 0.025, green: 0.028, blue: 0.038, alpha: 1).setFill()
+            bounds.fill()
+        }
+
+        // 2. 截中的画面回到原来的空间位置，而不是重新居中展示。
         ctx.saveGState()
-        ctx.interpolationQuality = .medium
-        // 图像物理像素 → 本屏点尺寸（用 bounds：副屏 frame 是全局坐标会画到屏外）
+        ctx.interpolationQuality = .high
         let drawRect = imageDrawRect
         ctx.draw(image, in: drawRect)
         ctx.restoreGState()
 
-        // 1.5 选字模式：文字块高亮（必须在"无标注提前 return"之前，
+        // 3. 选区外压暗，选区内保持快门落下时的亮度；冷色暗场比纯黑更有“冻结”感。
+        drawFrozenEdge(around: drawRect)
+
+        // 3.5 选字模式：文字块高亮（必须在"无标注提前 return"之前，
         // 否则刚截完图（0 标注）时蓝块永远画不出来）
         if ocrMode {
             // 拖动中用划选矩形；松手后用保留的选中矩形（选中态持续显示）
@@ -116,7 +157,7 @@ final class ConfirmCanvasView: NSView {
             }
         }
 
-        // 2. 画标注（归一化坐标映射到 drawRect；Y-down → CG 用 flipped 渲染）
+        // 4. 画标注（归一化坐标映射到 drawRect；Y-down → CG 用 flipped 渲染）
         // 马赛克草稿特殊处理：AnnotationDrawing 的 blur 需要画布快照（此处没有），
         // 拖拽阶段由本视图直接画棋盘格预览（选中即见"这是打码"），保存烘焙才是真马赛克
         var items = annotations
@@ -144,7 +185,7 @@ final class ConfirmCanvasView: NSView {
         )
         ctx.restoreGState()
 
-        // 3. 选中高亮：红色圆角虚线框 + 四角白色手柄方块（视觉上"可操作"）
+        // 5. 选中高亮：红色圆角虚线框 + 四角白色手柄方块（视觉上"可操作"）
         if let id = selectedID,
            let item = annotations.first(where: { $0.id == id }) {
             let r = viewRect(for: item.bounds).insetBy(dx: -4, dy: -4)
@@ -187,15 +228,160 @@ final class ConfirmCanvasView: NSView {
     /// 归一化 rect → 视图 rect。
     /// 注意用 bounds 而非 frame：副屏的 frame 带全局原点（如 2560,540），
     /// 当局部坐标用会把图整个画到可视区外。
-    private var imageDrawRect: CGRect {
+    var imageDrawRect: CGRect {
+        if let capturedRegion {
+            let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
+            let appKitGlobal = CGRect(
+                x: capturedRegion.minX,
+                y: primaryHeight - capturedRegion.maxY,
+                width: capturedRegion.width,
+                height: capturedRegion.height
+            )
+            return appKitGlobal.offsetBy(
+                dx: -screen.frame.minX,
+                dy: -screen.frame.minY
+            ).intersection(bounds)
+        }
+
         let scale = screen.backingScaleFactor
         let pointSize = CGSize(width: CGFloat(image.width) / scale, height: CGFloat(image.height) / scale)
+        if abs(pointSize.width - bounds.width) < 2,
+           abs(pointSize.height - bounds.height) < 2 {
+            return bounds
+        }
         return CGRect(
             x: bounds.midX - pointSize.width / 2,
             y: bounds.midY - pointSize.height / 2,
             width: pointSize.width,
             height: pointSize.height
         )
+    }
+
+    private func drawFrozenEdge(around rect: CGRect) {
+        guard rect.width > 4, rect.height > 4 else { return }
+        let accent = NSColor(red: 1, green: 0.231, blue: 0.189, alpha: 1)
+
+        // 外层柔光与内层白线同时存在：红色负责品牌，白线负责在任何画面上都清楚。
+        accent.withAlphaComponent(0.22).setStroke()
+        let glow = NSBezierPath(roundedRect: rect.insetBy(dx: -3, dy: -3), xRadius: 11, yRadius: 11)
+        glow.lineWidth = 6
+        glow.stroke()
+
+        accent.withAlphaComponent(0.94).setStroke()
+        let accentEdge = NSBezierPath(roundedRect: rect.insetBy(dx: -1, dy: -1), xRadius: 9, yRadius: 9)
+        accentEdge.lineWidth = 1.8
+        accentEdge.stroke()
+
+        NSColor.white.withAlphaComponent(0.82).setStroke()
+        let whiteEdge = NSBezierPath(roundedRect: rect.insetBy(dx: 1, dy: 1), xRadius: 7, yRadius: 7)
+        whiteEdge.lineWidth = 0.7
+        whiteEdge.stroke()
+
+        // 四角短刻度像快门的定位框，避免使用普通矩形选框的廉价感。
+        let tick = min(18, max(9, min(rect.width, rect.height) * 0.08))
+        let inset: CGFloat = 7
+        let x0 = rect.minX - inset
+        let x1 = rect.maxX + inset
+        let y0 = rect.minY - inset
+        let y1 = rect.maxY + inset
+        let ticks = NSBezierPath()
+        ticks.lineWidth = 2.2
+        ticks.lineCapStyle = .round
+        ticks.move(to: CGPoint(x: x0, y: y0 + tick)); ticks.line(to: CGPoint(x: x0, y: y0)); ticks.line(to: CGPoint(x: x0 + tick, y: y0))
+        ticks.move(to: CGPoint(x: x1 - tick, y: y0)); ticks.line(to: CGPoint(x: x1, y: y0)); ticks.line(to: CGPoint(x: x1, y: y0 + tick))
+        ticks.move(to: CGPoint(x: x0, y: y1 - tick)); ticks.line(to: CGPoint(x: x0, y: y1)); ticks.line(to: CGPoint(x: x0 + tick, y: y1))
+        ticks.move(to: CGPoint(x: x1 - tick, y: y1)); ticks.line(to: CGPoint(x: x1, y: y1)); ticks.line(to: CGPoint(x: x1, y: y1 - tick))
+        accent.setStroke()
+        ticks.stroke()
+    }
+
+    private func startFreezePulse() {
+        pulseLayers.forEach { $0.removeFromSuperlayer() }
+        pulseLayers.removeAll()
+        guard let hostLayer = layer else { return }
+
+        dimLayer.removeFromSuperlayer()
+        dimLayer.fillRule = .evenOdd
+        dimLayer.fillColor = NSColor(
+            calibratedRed: 0.015,
+            green: 0.022,
+            blue: 0.040,
+            alpha: 0.62
+        ).cgColor
+        dimLayer.opacity = 1
+        hostLayer.addSublayer(dimLayer)
+
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if !reduceMotion {
+            let darken = CABasicAnimation(keyPath: "opacity")
+            darken.fromValue = 0.0
+            darken.toValue = 1.0
+            darken.duration = 0.20
+            darken.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            dimLayer.add(darken, forKey: "freezeDarken")
+        }
+
+        guard !reduceMotion else {
+            layoutFreezeLayers()
+            return
+        }
+
+        for delay in [0.02, 0.18] {
+            let pulse = CAShapeLayer()
+            pulse.fillColor = NSColor.clear.cgColor
+            pulse.strokeColor = NSColor(red: 1, green: 0.231, blue: 0.189, alpha: 0.82).cgColor
+            pulse.lineWidth = 1.4
+            pulse.opacity = 0
+            hostLayer.addSublayer(pulse)
+            pulseLayers.append(pulse)
+
+            let scale = CABasicAnimation(keyPath: "transform.scale")
+            scale.fromValue = 1.0
+            scale.toValue = 1.045
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 0.78
+            fade.toValue = 0.0
+            let group = CAAnimationGroup()
+            group.animations = [scale, fade]
+            group.duration = 0.72
+            group.beginTime = CACurrentMediaTime() + delay
+            group.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            group.isRemovedOnCompletion = true
+            pulse.add(group, forKey: "freezePulse")
+        }
+        layoutFreezeLayers()
+    }
+
+    private func layoutFreezeLayers() {
+        let cutout = imageDrawRect.insetBy(dx: -1, dy: -1)
+        let maskPath = CGMutablePath()
+        maskPath.addRect(bounds)
+        maskPath.addRoundedRect(
+            in: cutout,
+            cornerWidth: 8,
+            cornerHeight: 8
+        )
+
+        let pulseFrame = imageDrawRect.insetBy(dx: -7, dy: -7)
+        guard pulseFrame.width > 4, pulseFrame.height > 4 else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        dimLayer.frame = bounds
+        dimLayer.path = maskPath
+        for pulse in pulseLayers {
+            pulse.frame = pulseFrame
+            pulse.path = CGPath(
+                roundedRect: pulse.bounds.insetBy(dx: 1, dy: 1),
+                cornerWidth: 12,
+                cornerHeight: 12,
+                transform: nil
+            )
+        }
+        CATransaction.commit()
+    }
+
+    private func postCanvasStateChange() {
+        NotificationCenter.default.post(name: .confirmCanvasStateDidChange, object: self)
     }
 
     private func viewRect(for normalized: CGRect) -> CGRect {
@@ -214,8 +400,8 @@ final class ConfirmCanvasView: NSView {
     private func normalizedPoint(_ p: CGPoint) -> CGPoint {
         let r = imageDrawRect
         return CGPoint(
-            x: (p.x - r.minX) / r.width,
-            y: (r.maxY - p.y) / r.height
+            x: min(max((p.x - r.minX) / r.width, 0), 1),
+            y: min(max((r.maxY - p.y) / r.height, 0), 1)
         )
     }
 
@@ -254,6 +440,8 @@ final class ConfirmCanvasView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         let loc = convert(event.locationInWindow, from: nil)
+        // 暗场只是“时间冻结”的背景，不是可编辑画布；标注只发生在截中的亮区。
+        guard imageDrawRect.contains(loc) else { return }
 
         // 选字模式：点中文字块立即复制（不依赖 mouseUp——实测其派发不稳定）；
         // 同时记录划选起点，拖动/松开由队列级兜底钩子处理
