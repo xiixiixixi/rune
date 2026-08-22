@@ -123,7 +123,7 @@ struct EditorWindowView: View {
         let dir = AppPreferences.saveDirectory
         let stamp = Int(Date().timeIntervalSince1970 * 1000)
         let ext = AppPreferences.exportFormat.fileExtension
-        let path = "\(dir)/轻截_\(stamp).\(ext)"
+        let path = "\(dir)/Rune_\(stamp).\(ext)"
         let url = URL(fileURLWithPath: path)
 
         guard let dest = CGImageDestinationCreateWithURL(

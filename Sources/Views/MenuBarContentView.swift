@@ -82,11 +82,11 @@ struct MenuBarContentView: View {
                     .frame(height: 44)
                     .background(
                         RoundedRectangle(cornerRadius: 11, style: .continuous)
-                            .fill(QJTheme.accent)
+                            .fill(RuneTheme.accent)
                     )
                     .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
                 }
-                .buttonStyle(QJTheme.QJPressStyle())
+                .buttonStyle(RuneTheme.RunePressStyle())
                 .help("拖拽＝自定义区域 · 点窗口＝截整窗 · 点桌面空白＝截全屏")
 
                 Text("拖＝选区域 · 点窗口＝整窗 · 点桌面＝全屏，截完后再标注、识别文字或转长图")

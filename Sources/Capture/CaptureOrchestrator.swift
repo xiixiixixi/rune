@@ -71,7 +71,7 @@ final class CaptureOrchestrator {
         // 无权限：弹引导框
         let alert = NSAlert()
         alert.messageText = "需要屏幕录制权限"
-        alert.informativeText = "轻截需要屏幕录制权限才能截图。请在系统设置的「隐私与安全性 > 屏幕与系统音频录制」中允许“轻截”，然后重新打开轻截。"
+        alert.informativeText = "Rune需要屏幕录制权限才能截图。请在系统设置的「隐私与安全性 > 屏幕与系统音频录制」中允许“Rune”，然后重新打开Rune。"
         alert.alertStyle = .warning
         alert.addButton(withTitle: "打开系统设置")
         alert.addButton(withTitle: "以后再说")
@@ -251,7 +251,7 @@ final class CaptureOrchestrator {
     private func writeCGImageToTemp(_ cgImage: CGImage) -> URL? {
         let dir = NSTemporaryDirectory()
         let stamp = Int(Date().timeIntervalSince1970 * 1000)
-        let url = URL(fileURLWithPath: "\(dir)轻截_临时_\(stamp).png")
+        let url = URL(fileURLWithPath: "\(dir)Rune_临时_\(stamp).png")
         guard let destination = CGImageDestinationCreateWithURL(
             url as CFURL,
             "public.png" as CFString,
@@ -436,7 +436,7 @@ final class CaptureOrchestrator {
 
     private static var baseStorageDir: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = appSupport.appendingPathComponent("轻截/bases", isDirectory: true)
+        let dir = appSupport.appendingPathComponent("Rune/bases", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }

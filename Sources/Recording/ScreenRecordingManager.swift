@@ -51,8 +51,8 @@ final class ScreenRecordingManager: NSObject {
     private var timer: Timer?
     nonisolated private let streamSessionSink = RecordingSessionSink()
 
-    private let videoQueue = DispatchQueue(label: "com.tc.qingjie.recording.video", qos: .userInitiated)
-    private let audioQueue = DispatchQueue(label: "com.tc.qingjie.recording.audio", qos: .userInteractive)
+    private let videoQueue = DispatchQueue(label: "com.tc.rune.recording.video", qos: .userInitiated)
+    private let audioQueue = DispatchQueue(label: "com.tc.rune.recording.audio", qos: .userInteractive)
 
     private override init() { super.init() }
 

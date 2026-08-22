@@ -36,16 +36,16 @@ struct ConfirmToolbarView: View {
                         canvas?.needsDisplay = true
                         canvas?.refreshCursor()
                     } label: {
-                        QJTheme.toolIcon(iconName(for: tool), active: activeTool == tool)
+                        RuneTheme.toolIcon(iconName(for: tool), active: activeTool == tool)
                     }
-                    .buttonStyle(QJTheme.QJPressStyle())
+                    .buttonStyle(RuneTheme.RunePressStyle())
                     .help(tooltip(for: tool))
                 }
             }
 
             // ── 属性组（按需展开）
             if showsToolOptions {
-                QJTheme.groupSeparator
+                RuneTheme.groupSeparator
                 HStack(spacing: 14) {
                     // 色点：16pt 圆 + 白描边；选中=石墨环（红色只留给激活工具和保存）
                     HStack(spacing: 6) {
@@ -61,12 +61,12 @@ struct ConfirmToolbarView: View {
                                     .overlay(Circle().strokeBorder(Color.white, lineWidth: 1.5))
                                     .overlay(
                                         Circle()
-                                            .strokeBorder(swatch == s ? QJTheme.textPrimary.opacity(0.75) : .clear, lineWidth: 1.5)
+                                            .strokeBorder(swatch == s ? RuneTheme.textPrimary.opacity(0.75) : .clear, lineWidth: 1.5)
                                             .frame(width: 19, height: 19)
                                     )
                                     .frame(width: 20, height: 24)
                             }
-                            .buttonStyle(QJTheme.QJPressStyle())
+                            .buttonStyle(RuneTheme.RunePressStyle())
                             .help(s.title)
                         }
                     }
@@ -93,30 +93,30 @@ struct ConfirmToolbarView: View {
                                 canvas?.updateSelectedAnnotation(strokeWidth: widths[i])
                             } label: {
                                 Circle()
-                                    .fill(widthRaw == i ? QJTheme.textPrimary : QJTheme.textSecondary.opacity(0.45))
+                                    .fill(widthRaw == i ? RuneTheme.textPrimary : RuneTheme.textSecondary.opacity(0.45))
                                     .frame(width: CGFloat(4 + i * 3))
                                     .frame(width: 22, height: 24)
                             }
-                            .buttonStyle(QJTheme.QJPressStyle())
+                            .buttonStyle(RuneTheme.RunePressStyle())
                             .help("粗细：\(["细", "中", "粗"][min(i, 2)])")
                         }
                     }
                 }
             }
 
-            QJTheme.groupSeparator
+            RuneTheme.groupSeparator
 
             // ── 撤销
             Button {
                 canvas?.undo()
                 canvas?.needsDisplay = true
             } label: {
-                QJTheme.toolIcon("arrow.uturn.backward", active: false)
+                RuneTheme.toolIcon("arrow.uturn.backward", active: false)
             }
-            .buttonStyle(QJTheme.QJPressStyle())
+            .buttonStyle(RuneTheme.RunePressStyle())
             .help("撤销 (⌘Z)")
 
-            QJTheme.groupSeparator
+            RuneTheme.groupSeparator
 
             // ── 功能组（截图之后展示的功能：选字复制 / 滚动长图）
             Button {
@@ -124,69 +124,69 @@ struct ConfirmToolbarView: View {
                     ToastWindow.shared.show(title: "文字识别", message: message, systemIcon: "doc.text.viewfinder")
                 }
             } label: {
-                QJTheme.toolIcon("doc.text.viewfinder", active: canvas?.ocrMode == true)
+                RuneTheme.toolIcon("doc.text.viewfinder", active: canvas?.ocrMode == true)
             }
-            .buttonStyle(QJTheme.QJPressStyle())
+            .buttonStyle(RuneTheme.RunePressStyle())
             .help("选字模式：识别图里的文字，点一块复制一块，拖动选一段；再点一次或 Esc 退出")
 
             Button {
                 controller.requestScrollCapture()
             } label: {
-                QJTheme.toolIcon("arrow.down.doc", active: false)
+                RuneTheme.toolIcon("arrow.down.doc", active: false)
             }
-            .buttonStyle(QJTheme.QJPressStyle())
+            .buttonStyle(RuneTheme.RunePressStyle())
             .help("滚动长图：把当前选区转为滚动截图，往下滚完拼成一张长图")
 
             Button {
                 controller.requestBurstCapture()
             } label: {
-                QJTheme.toolIcon("camera", active: false)
+                RuneTheme.toolIcon("camera", active: false)
             }
-            .buttonStyle(QJTheme.QJPressStyle())
+            .buttonStyle(RuneTheme.RunePressStyle())
             .help("连拍：对当前选区连续抓拍，随时点关闭停止")
 
             // ── 复制 / 贴图（纯图标，悬停有中文提示）
             Button {
                 canvas?.copyImageToPasteboard()
             } label: {
-                QJTheme.toolIcon("doc.on.doc", active: false)
+                RuneTheme.toolIcon("doc.on.doc", active: false)
             }
-            .buttonStyle(QJTheme.QJPressStyle())
+            .buttonStyle(RuneTheme.RunePressStyle())
             .help("复制到剪贴板 (⌘C)")
 
             Button {
                 canvas?.pinImage()
                 controller.cancel()
             } label: {
-                QJTheme.toolIcon("pin", active: false)
+                RuneTheme.toolIcon("pin", active: false)
             }
-            .buttonStyle(QJTheme.QJPressStyle())
+            .buttonStyle(RuneTheme.RunePressStyle())
             .help("钉在桌面上（贴图）")
 
-            QJTheme.groupSeparator
+            RuneTheme.groupSeparator
 
             // ── 取消 / 保存
             HStack(spacing: 8) {
                 Button {
                     controller.cancel()
                 } label: {
-                    QJTheme.secondaryButtonLabel("取消")
+                    RuneTheme.secondaryButtonLabel("取消")
                 }
-                .buttonStyle(QJTheme.QJPressStyle())
+                .buttonStyle(RuneTheme.RunePressStyle())
                 .help("放弃截图 (Esc)")
 
                 Button {
                     controller.confirm()
                 } label: {
-                    QJTheme.primaryButtonLabel("保存")
+                    RuneTheme.primaryButtonLabel("保存")
                 }
-                .buttonStyle(QJTheme.QJPressStyle())
+                .buttonStyle(RuneTheme.RunePressStyle())
                 .help("保存 (Enter)")
             }
         }
         .padding(.horizontal, 14)
-        .frame(height: QJTheme.barHeight)
-        .background(QJTheme.barBackground)
+        .frame(height: RuneTheme.barHeight)
+        .background(RuneTheme.barBackground)
         // 铁保险：内容绝不允许被横向压缩（宁可溢出也不压扁按钮）；
         // 真实宽度由 GeometryReader 量好后上报给控制器，面板照抄这个数。
         .fixedSize(horizontal: true, vertical: false)

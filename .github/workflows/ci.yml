@@ -39,8 +39,8 @@ jobs:
       - name: 编译（Debug，不签名）
         run: |
           xcodebuild \
-            -project BetterShot.xcodeproj \
-            -scheme BetterShot \
+            -project Rune.xcodeproj \
+            -scheme Rune \
             -configuration Debug \
             -destination 'platform=macOS' \
             build \

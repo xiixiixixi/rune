@@ -1,4 +1,4 @@
-# 如何维护轻截
+# 如何维护 Rune
 
 感谢你愿意为这个项目出力。这份指南会告诉你怎么上手。
 
@@ -6,7 +6,7 @@
 
 ```bash
 # 1. 进入本地代码目录
-cd /Users/tc/git/snapshot/better-shot
+cd /Users/tc/git/snapshot/rune
 
 # 2. 编译并运行
 make run
@@ -14,7 +14,7 @@ make run
 
 就这样。Makefile 会处理一切，不需要额外装工具。
 
-> **另一种方式**：用 Xcode 打开 `BetterShot.xcodeproj`，按 `⌘R` 运行。这个工程文件保留旧内部名称，但编译出的产品名称是“轻截”。
+> **另一种方式**：用 Xcode 打开 `Rune.xcodeproj`，按 `⌘R` 运行。工程内部名称统一为 `Rune`，编译出的产品名称是“Rune”。
 
 ### 如果你改了 `project.yml`
 
@@ -56,7 +56,7 @@ Resources/
   Assets.xcassets/       应用图标、菜单栏图标
   Backgrounds/           内置壁纸和渐变图片
   Info.plist
-  BetterShot.entitlements
+  Rune.entitlements
 ```
 
 ### 关键文件
@@ -201,7 +201,7 @@ chore: 更新依赖
 |---|---|
 | `version.json` | `version`、`build` |
 | `project.yml` | `MARKETING_VERSION`、`CURRENT_PROJECT_VERSION` |
-| `BetterShot.xcodeproj/project.pbxproj` | `MARKETING_VERSION`、`CURRENT_PROJECT_VERSION`（Debug 和 Release 都要） |
+| `Rune.xcodeproj/project.pbxproj` | `MARKETING_VERSION`、`CURRENT_PROJECT_VERSION`（Debug 和 Release 都要） |
 
 `CHANGELOG.md` 记录每个版本改了什么。
 

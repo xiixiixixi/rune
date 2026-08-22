@@ -1177,7 +1177,7 @@ struct AboutTab: View {
                     }
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("轻截")
+                        Text("Rune")
                             .font(.system(size: 20, weight: .bold))
 
                         Text("版本 \(version)（构建 \(build)）")

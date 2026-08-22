@@ -71,7 +71,7 @@ final class CaptureConfirmController: NSObject {
         // 底部工具栏（同 BurstStatusBar 的 NSPanel 配方，改贴屏幕底部）
         let toolbar = ConfirmToolbarView(controller: self)
         let panel = ToolbarPanel(
-            contentRect: NSRect(origin: .zero, size: NSSize(width: 120, height: QJTheme.barHeight)),
+            contentRect: NSRect(origin: .zero, size: NSSize(width: 120, height: RuneTheme.barHeight)),
             styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -119,7 +119,7 @@ final class CaptureConfirmController: NSObject {
             x: sf.midX - finalWidth / 2,
             y: sf.minY + 20,
             width: finalWidth,
-            height: QJTheme.barHeight
+            height: RuneTheme.barHeight
         )
         // 任一分量（宽/高/横/纵）没到位就重设。注意不能用 &&
         // ——面板装 contentView 时会自动变到内容宽度但停在原点，
@@ -185,12 +185,12 @@ final class CaptureConfirmController: NSObject {
             Task { @MainActor in
                 guard let self, let win = self.canvasWindow, win.isVisible else { return }
                 if !win.isKeyWindow {
-                    NSLog("QJFOCUS 画布丢 key，抢回")
+                    NSLog("RUNEFOCUS 画布丢 key，抢回")
                     win.makeKeyAndOrderFront(nil)
                 }
                 // 键盘焦点兜底：first responder 不是画布就重设
                 if !(win.firstResponder is ConfirmCanvasView) {
-                    NSLog("QJFOCUS firstResponder=\(String(describing: win.firstResponder)) 重设画布")
+                    NSLog("RUNEFOCUS firstResponder=\(String(describing: win.firstResponder)) 重设画布")
                     win.makeFirstResponder(self.canvas)
                 }
             }

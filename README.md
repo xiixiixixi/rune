@@ -1,4 +1,4 @@
-# 轻截
+# Rune
 
 一个入口的 Mac 截图工具：按 `⇧⌘A`，截完之后所有功能才出现在你面前。
 
@@ -6,10 +6,10 @@
 
 ## 下载
 
-到 [Releases](https://github.com/xiixiixixi/qingjie/releases/latest) 下载最新 `轻截-x.x.x.dmg`，双击打开，把"轻截"拖进 Applications 文件夹。
+到 [Releases](https://github.com/xiixiixixi/rune/releases/latest) 下载最新 `Rune-x.x.x.dmg`，双击打开，把"Rune"拖进 Applications 文件夹。
 
 第一次使用：
-1. 右键点"轻截" → 打开 → 再点"打开"（本地签名，只需这一次）
+1. 右键点"Rune" → 打开 → 再点"打开"（本地签名，只需这一次）
 2. 首次截图时在系统设置中允许屏幕录制权限
 
 ## 用法：就记"点"还是"拖"
@@ -64,4 +64,4 @@ cd CaptureKit && swift test   # 单元测试
 
 本项目基于 BetterShot 独立改造。原项目使用 BSD 3-Clause 许可证，允许修改和闭源商用，但必须保留原版权声明和许可证。
 
-因此仓库中的 [LICENSE](LICENSE) 保持原样。轻截是独立产品，不使用 BetterShot 作为对外商标。
+因此仓库中的 [LICENSE](LICENSE) 保持原样。Rune 是独立产品，不使用 BetterShot 作为对外商标。

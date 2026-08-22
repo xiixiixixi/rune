@@ -3,7 +3,7 @@ import CaptureKit
 import CaptureKitSCK
 import SwiftUI
 
-/// 滚动截图：用户框选一个滚动区域后，轻截定时抓取该区域；用户向下滚动页面，
+/// 滚动截图：用户框选一个滚动区域后，Rune定时抓取该区域；用户向下滚动页面，
 /// 程序自动找出相邻画面的重叠部分，只把新出现的底部内容接到长图末尾。
 @MainActor
 @Observable
@@ -224,7 +224,7 @@ final class ScrollCaptureController {
         if CGPreflightScreenCaptureAccess() { return true }
         _ = CGRequestScreenCaptureAccess()
         if CGPreflightScreenCaptureAccess() { return true }
-        showError("请在系统设置的「隐私与安全性 > 屏幕与系统音频录制」中允许“轻截”，然后重新打开轻截。")
+        showError("请在系统设置的「隐私与安全性 > 屏幕与系统音频录制」中允许“Rune”，然后重新打开Rune。")
         return false
     }
 

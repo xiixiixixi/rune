@@ -26,7 +26,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             defer: false
         )
         win.contentView = hostingView
-        win.title = "轻截设置"
+        win.title = "Rune设置"
         win.isReleasedWhenClosed = false
         win.delegate = self
         win.collectionBehavior = [.transient, .moveToActiveSpace]

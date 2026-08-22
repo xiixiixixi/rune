@@ -652,7 +652,7 @@ final class ConfirmCanvasView: NSView {
         let ns = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
         // PinnedScreenshotController.pin 吃 URL；写临时文件喂它
         let url = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("轻截_贴图_\(Int(Date().timeIntervalSince1970 * 1000)).png")
+            .appendingPathComponent("Rune_贴图_\(Int(Date().timeIntervalSince1970 * 1000)).png")
         if let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) {
             CGImageDestinationAddImage(dest, cg, nil)
             _ = CGImageDestinationFinalize(dest)

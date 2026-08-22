@@ -48,7 +48,7 @@ final class BurstCaptureController: NSObject {
 
     private var stream: SCStream?
     private var outputDir: URL?
-    private var captureQueue = DispatchQueue(label: "com.tc.qingjie.burst", qos: .userInitiated)
+    private var captureQueue = DispatchQueue(label: "com.tc.rune.burst", qos: .userInitiated)
     /// 延时拍摄循环任务（取代 DispatchSourceTimer——其回调在后台队列执行，
     /// 曾触发 Swift 6 隔离断言崩溃 dispatch_assert_queue；Task 循环天然在 MainActor）
     private var timelapseTask: Task<Void, Never>?
@@ -80,12 +80,12 @@ final class BurstCaptureController: NSObject {
         // 权限处理：用系统 API 请求（触发系统弹框），而不是自己弹自定义框。
         // CGPreflightScreenCaptureAccess 只检查不请求；CGRequestScreenCaptureAccess 会触发系统弹框。
         if !CGPreflightScreenCaptureAccess() {
-            // 主动请求权限——系统会弹出“轻截想要录制屏幕”的系统级对话框
+            // 主动请求权限——系统会弹出“Rune想要录制屏幕”的系统级对话框
             let granted = CGRequestScreenCaptureAccess()
             if !granted {
                 let alert = NSAlert()
                 alert.messageText = "需要屏幕录制权限"
-                alert.informativeText = "请在系统设置的「隐私与安全性 > 屏幕与系统音频录制」中允许“轻截”，然后重新打开轻截。"
+                alert.informativeText = "请在系统设置的「隐私与安全性 > 屏幕与系统音频录制」中允许“Rune”，然后重新打开Rune。"
                 alert.addButton(withTitle: "知道了")
                 alert.runModal()
             }
@@ -101,7 +101,7 @@ final class BurstCaptureController: NSObject {
         selectedRegion = region   // CG 全局点坐标；推流走 sourceRect、延时走 .region
         frameLock.withLock { _frameIndex = 0 }
 
-        // 创建输出文件夹：~/Library/Application Support/轻截/连续截图/<时间戳>/
+        // 创建输出文件夹：~/Library/Application Support/Rune/连续截图/<时间戳>/
         let stamp = Int(Date().timeIntervalSince1970)
         let dir = burstBaseDir.appendingPathComponent("\(stamp)", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -345,7 +345,7 @@ final class BurstCaptureController: NSObject {
 
     private var burstBaseDir: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = appSupport.appendingPathComponent("轻截/连续截图", isDirectory: true)
+        let dir = appSupport.appendingPathComponent("Rune/连续截图", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }

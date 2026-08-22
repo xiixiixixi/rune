@@ -439,7 +439,7 @@ private final class SelectionView: NSView {
             maskPath.fill()
         }
 
-        // 红色圆角描边（轻截点缀红）
+        // 红色圆角描边（Rune点缀红）
         let accent = NSColor(red: 1.0, green: 0.231, blue: 0.189, alpha: 1)
         let border = NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8)
         border.lineWidth = isWindow ? 2.5 : 2

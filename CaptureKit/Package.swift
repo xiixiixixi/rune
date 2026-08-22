@@ -2,7 +2,7 @@
 //
 // CaptureKit — 采集核心（纯逻辑层）
 //
-// 设计依据：docs/superpowers/specs/2026-08-09-bettershot-m1-design.md §3
+// 设计依据：docs/superpowers/specs/2026-08-09-rune-m1-design.md §3
 // 本包只包含不依赖 UI / 屏幕权限的纯逻辑（状态机、坐标换算、数据模型），
 // 可在无 Xcode 环境下用 `swift test` 独立验证；
 // ScreenCaptureKit 的具体采集引擎（ScreenTree/TCCSupport）在 M1 真机阶段并入；

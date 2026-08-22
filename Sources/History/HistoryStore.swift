@@ -14,9 +14,9 @@ final class HistoryStore {
 
     private init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let newStorageDir = appSupport.appendingPathComponent("轻截", isDirectory: true)
+        let newStorageDir = appSupport.appendingPathComponent("Rune", isDirectory: true)
         let oldStorageDir = appSupport.appendingPathComponent("BetterShot", isDirectory: true)
-        // 首次使用“轻截”时复制旧版本历史，旧资料保留不删，避免改名后看不到以前的截图。
+        // 首次使用“Rune”时复制旧版本历史，旧资料保留不删，避免改名后看不到以前的截图。
         if !FileManager.default.fileExists(atPath: newStorageDir.path),
            FileManager.default.fileExists(atPath: oldStorageDir.path) {
             try? FileManager.default.copyItem(at: oldStorageDir, to: newStorageDir)

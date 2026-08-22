@@ -117,7 +117,7 @@ final class VideoEditorModel {
 
         let dir = AppPreferences.saveDirectory
         let stamp = Int(Date().timeIntervalSince1970 * 1000)
-        let outputPath = "\(dir)/bettershot_\(stamp).mp4"
+        let outputPath = "\(dir)/Rune_\(stamp).mp4"
         let outputURL = URL(fileURLWithPath: outputPath)
 
         var exportConfig = config

@@ -54,7 +54,7 @@ enum AppPreferences {
 
     /// 生成截图文件名（不含目录）。
     /// - systemStyle: `截图 2026-08-09 15.20.33.png`（冒号在文件名非法，用点分隔时分秒）
-    /// - legacy: `轻截_<毫秒时间戳>.<ext>`
+    /// - legacy: `Rune_<毫秒时间戳>.<ext>`
     static func generateFileName(date: Date = Date(), ext: String) -> String {
         let safeExt = ext.isEmpty ? "png" : ext
         switch fileNameFormat {
@@ -64,7 +64,7 @@ enum AppPreferences {
             formatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
             return "截图 \(formatter.string(from: date)).\(safeExt)"
         case .legacy:
-            return "轻截_\(Int(date.timeIntervalSince1970 * 1000)).\(safeExt)"
+            return "Rune_\(Int(date.timeIntervalSince1970 * 1000)).\(safeExt)"
         }
     }
 
@@ -230,13 +230,13 @@ enum SelfTimerDelay: Int, CaseIterable {
 enum FileNameFormat: String, CaseIterable {
     /// 中文截图风格：`截图 2026-08-09 15.20.33.png`
     case systemStyle = "system"
-    /// 旧风格：`轻截_<毫秒时间戳>.png`
+    /// 旧风格：`Rune_<毫秒时间戳>.png`
     case legacy = "legacy"
 
     var label: String {
         switch self {
         case .systemStyle: return "中文日期（推荐）"
-        case .legacy: return "轻截_时间戳"
+        case .legacy: return "Rune_时间戳"
         }
     }
 }
