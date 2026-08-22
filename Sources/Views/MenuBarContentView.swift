@@ -68,7 +68,7 @@ struct MenuBarContentView: View {
                     title: "截图",
                     subtitle: "拖选区域或点窗口",
                     icon: "camera.viewfinder",
-                    shortcut: "⇧⌘A",
+                    shortcut: ShortcutService.shared.displayString(for: .main),
                     isAccent: false
                 ) {
                     dismissAndRun(.main)
@@ -78,7 +78,7 @@ struct MenuBarContentView: View {
                     title: "连拍",
                     subtitle: "连续 · 定数 · 延时",
                     icon: "camera.fill",
-                    shortcut: "⇧⌘B",
+                    shortcut: ShortcutService.shared.displayString(for: .burst),
                     isAccent: true
                 ) {
                     dismissAndRunBurst(mode: .burst)
@@ -240,7 +240,16 @@ struct MenuBarContentView: View {
     private func open(_ record: CaptureRecord) {
         let screen = originScreen
         dismissPopover()
-        PreviewOverlay.shared.show(url: HistoryStore.shared.displayURLForRecord(record), on: screen)
+        if record.kind == .recording {
+            PreviewOverlay.shared.show(url: HistoryStore.shared.displayURLForRecord(record), on: screen)
+        } else {
+            // 截图记录：直接贴到屏幕右下角当缩略图，常用操作（复制等）在贴图工具条上
+            PinnedScreenshotController.shared.pin(
+                url: HistoryStore.shared.displayURLForRecord(record),
+                on: screen,
+                placement: .bottomRight
+            )
+        }
     }
 
     private func openSettings(section: SettingsSection? = nil) {
@@ -437,6 +446,8 @@ private struct RecentCaptureSection: View {
     let onShowAll: () -> Void
 
     @State private var thumbnails: [UUID: NSImage] = [:]
+    @State private var hoveredRecordID: UUID?
+    @State private var copiedRecordID: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -475,54 +486,127 @@ private struct RecentCaptureSection: View {
             } else {
                 HStack(spacing: 8) {
                     ForEach(records) { record in
-                        Button {
-                            onOpen(record)
-                        } label: {
-                            ZStack {
-                                Color.primary.opacity(0.045)
+                        recordTile(record)
+                    }
+                }
+            }
+        }
+    }
 
-                                if let thumbnail = thumbnails[record.id] {
-                                    Image(nsImage: thumbnail)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: tileWidth, height: 58)
-                                        .clipped()
-                                } else {
-                                    ProgressView()
-                                        .controlSize(.mini)
-                                }
+    /// 单个历史瓦片：整块点击=贴到屏幕右下角；悬停露出"复制"角标（最常用，一步到位）；
+    /// 右键收着"编辑 / 在访达中显示"这些不常用操作。
+    private func recordTile(_ record: CaptureRecord) -> some View {
+        ZStack(alignment: .topTrailing) {
+            Button {
+                onOpen(record)
+            } label: {
+                ZStack {
+                    Color.primary.opacity(0.045)
 
-                                if record.kind == .recording {
-                                    Image(systemName: "play.circle.fill")
-                                        .font(RuneFont.swiftUI(size: 18))
-                                        .foregroundStyle(.white.opacity(0.92))
-                                        .shadow(color: .black.opacity(0.30), radius: 2, y: 1)
-                                }
-                            }
+                    if let thumbnail = thumbnails[record.id] {
+                        Image(nsImage: thumbnail)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
                             .frame(width: tileWidth, height: 58)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .strokeBorder(Color.primary.opacity(0.09), lineWidth: 0.5)
-                            )
-                            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        }
-                        .buttonStyle(RuneTheme.RunePressStyle())
-                        .help(record.filename)
-                        .accessibilityLabel("打开最近的\(record.kind == .recording ? "录屏" : "截图")，\(record.filename)")
-                        .task(id: record.id) {
-                            let url = HistoryStore.shared.displayURLForRecord(record)
-                            let kind = record.kind
-                            let thumbnail = await Task.detached {
-                                HistoryStore.renderThumbnailCGImage(at: url, kind: kind, maxSize: 180)
-                            }.value
-                            if let thumbnail {
-                                thumbnails[record.id] = NSImage(
-                                    cgImage: thumbnail,
-                                    size: NSSize(width: thumbnail.width, height: thumbnail.height)
-                                )
-                            }
-                        }
+                            .clipped()
+                    } else {
+                        ProgressView()
+                            .controlSize(.mini)
+                    }
+
+                    if record.kind == .recording {
+                        Image(systemName: "play.circle.fill")
+                            .font(RuneFont.swiftUI(size: 18))
+                            .foregroundStyle(.white.opacity(0.92))
+                            .shadow(color: .black.opacity(0.30), radius: 2, y: 1)
+                    }
+                }
+                .frame(width: tileWidth, height: 58)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.09), lineWidth: 0.5)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+            .buttonStyle(RuneTheme.RunePressStyle())
+            .help(record.kind == .recording
+                  ? "点击预览 · \(record.filename)"
+                  : "点击贴到屏幕右下角 · \(record.filename)")
+            .contextMenu {
+                Button("复制") {
+                    copyRecord(record)
+                }
+                if record.kind == .recording {
+                    Button("编辑") {
+                        VideoEditorWindowController.shared.open(url: HistoryStore.shared.displayURLForRecord(record))
+                    }
+                } else {
+                    Button("编辑") {
+                        EditorWindowController.shared.open(url: HistoryStore.shared.displayURLForRecord(record))
+                    }
+                }
+                Button("在访达中显示") {
+                    NSWorkspace.shared.activateFileViewerSelecting([HistoryStore.shared.displayURLForRecord(record)])
+                }
+            }
+            .task(id: record.id) {
+                let url = HistoryStore.shared.displayURLForRecord(record)
+                let kind = record.kind
+                let thumbnail = await Task.detached {
+                    HistoryStore.renderThumbnailCGImage(at: url, kind: kind, maxSize: 180)
+                }.value
+                if let thumbnail {
+                    thumbnails[record.id] = NSImage(
+                        cgImage: thumbnail,
+                        size: NSSize(width: thumbnail.width, height: thumbnail.height)
+                    )
+                }
+            }
+
+            // 悬停露出的复制角标：截图复制图片，录屏复制文件
+            if hoveredRecordID == record.id || copiedRecordID == record.id {
+                Button {
+                    copyRecord(record)
+                } label: {
+                    Image(systemName: copiedRecordID == record.id ? "checkmark" : "doc.on.doc")
+                        .font(RuneFont.swiftUI(size: 10, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 22, height: 22)
+                        .background(Color.black.opacity(0.66), in: Circle())
+                        .overlay(Circle().strokeBorder(Color.white.opacity(0.25), lineWidth: 0.5))
+                }
+                .buttonStyle(.plain)
+                .padding(4)
+                .help("复制到剪贴板")
+                .transition(.opacity.animation(.easeInOut(duration: 0.12)))
+            }
+        }
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.12)) {
+                hoveredRecordID = hovering ? record.id : nil
+            }
+        }
+    }
+
+    private func copyRecord(_ record: CaptureRecord) {
+        let url = HistoryStore.shared.displayURLForRecord(record)
+        let kind = record.kind
+        let recordID = record.id
+        Task.detached(priority: .userInitiated) {
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            if kind == .recording {
+                pasteboard.writeObjects([url as NSURL])
+            } else if let image = NSImage(contentsOf: url) {
+                pasteboard.writeObjects([image])
+            }
+            await MainActor.run {
+                copiedRecordID = recordID
+                Task {
+                    try? await Task.sleep(for: .milliseconds(1200))
+                    if copiedRecordID == recordID {
+                        copiedRecordID = nil
                     }
                 }
             }

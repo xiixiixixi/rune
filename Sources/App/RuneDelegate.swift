@@ -17,7 +17,11 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
         CaptureOrchestrator.shared.prewarm()
 
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--audit-permission-state") {
+        if ProcessInfo.processInfo.arguments.contains("--audit-pin-drag") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                PinnedScreenshotController.shared.runPinDragSelfTest()
+            }
+        } else if ProcessInfo.processInfo.arguments.contains("--audit-permission-state") {
             let state = CGPreflightScreenCaptureAccess() ? "granted" : "denied"
             try? state.write(
                 to: URL(fileURLWithPath: "/tmp/rune-screen-permission-state.txt"),

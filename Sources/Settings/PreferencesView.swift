@@ -994,6 +994,7 @@ private func keyCodeToString(_ code: UInt32) -> String {
 struct HistoryTab: View {
     @State private var thumbnails: [String: NSImage] = [:]
     @State private var confirmsMovingAllToTrash = false
+    @State private var copiedRecordID: UUID?
 
     private var screenshots: [CaptureRecord] {
         HistoryStore.shared.records.filter { $0.kind == .screenshot }
@@ -1064,6 +1065,50 @@ struct HistoryTab: View {
                             .help("预览")
 
                             Button {
+                                copyRecordToPasteboard(record)
+                                markCopied(record)
+                            } label: {
+                                Image(systemName: copiedRecordID == record.id ? "checkmark" : "doc.on.doc")
+                                    .font(RuneFont.caption)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(copiedRecordID == record.id ? Color.accentColor : Color.secondary)
+                            .help("复制到剪贴板")
+
+                            Button {
+                                EditorWindowController.shared.open(url: HistoryStore.shared.displayURLForRecord(record))
+                            } label: {
+                                Image(systemName: "pencil")
+                                    .font(RuneFont.caption)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                            .help("在编辑器中打开")
+
+                            Button {
+                                PinnedScreenshotController.shared.pin(
+                                    url: HistoryStore.shared.displayURLForRecord(record),
+                                    placement: .bottomRight
+                                )
+                            } label: {
+                                Image(systemName: "pin")
+                                    .font(RuneFont.caption)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                            .help("贴到屏幕右下角")
+
+                            Button {
+                                NSWorkspace.shared.activateFileViewerSelecting([HistoryStore.shared.displayURLForRecord(record)])
+                            } label: {
+                                Image(systemName: "folder")
+                                    .font(RuneFont.caption)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                            .help("在访达中显示")
+
+                            Button {
                                 thumbnails.removeValue(forKey: record.id.uuidString)
                                 HistoryStore.shared.deleteRecord(record)
                             } label: {
@@ -1090,6 +1135,16 @@ struct HistoryTab: View {
         }
     }
 
+    private func markCopied(_ record: CaptureRecord) {
+        copiedRecordID = record.id
+        Task {
+            try? await Task.sleep(for: .milliseconds(1200))
+            if copiedRecordID == record.id {
+                copiedRecordID = nil
+            }
+        }
+    }
+
     private func loadThumbnail(for record: CaptureRecord) {
         let url = HistoryStore.shared.displayURLForRecord(record)
         let kind = record.kind
@@ -1108,11 +1163,30 @@ struct HistoryTab: View {
     }
 }
 
+// MARK: - 历史记录共用操作
+
+/// 截图复制图片数据；录屏复制文件（可直接粘贴到聊天窗口发送）。
+@MainActor
+private func copyRecordToPasteboard(_ record: CaptureRecord) {
+    let url = HistoryStore.shared.displayURLForRecord(record)
+    let kind = record.kind
+    Task.detached(priority: .userInitiated) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        if kind == .recording {
+            pasteboard.writeObjects([url as NSURL])
+        } else if let image = NSImage(contentsOf: url) {
+            pasteboard.writeObjects([image])
+        }
+    }
+}
+
 // MARK: - Videos (Recordings only)
 
 struct VideosTab: View {
     @State private var thumbnails: [String: NSImage] = [:]
     @State private var confirmsMovingAllToTrash = false
+    @State private var copiedRecordID: UUID?
 
     private var recordings: [CaptureRecord] {
         HistoryStore.shared.records.filter { $0.kind == .recording }
@@ -1186,6 +1260,33 @@ struct VideosTab: View {
                             .buttonStyle(.plain)
                             .foregroundStyle(.secondary)
                             .help("在编辑器中打开")
+
+                            Button {
+                                copyRecordToPasteboard(record)
+                                copiedRecordID = record.id
+                                Task {
+                                    try? await Task.sleep(for: .milliseconds(1200))
+                                    if copiedRecordID == record.id {
+                                        copiedRecordID = nil
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: copiedRecordID == record.id ? "checkmark" : "doc.on.doc")
+                                    .font(RuneFont.caption)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(copiedRecordID == record.id ? Color.accentColor : Color.secondary)
+                            .help("复制文件到剪贴板")
+
+                            Button {
+                                NSWorkspace.shared.activateFileViewerSelecting([HistoryStore.shared.displayURLForRecord(record)])
+                            } label: {
+                                Image(systemName: "folder")
+                                    .font(RuneFont.caption)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                            .help("在访达中显示")
 
                             Button {
                                 thumbnails.removeValue(forKey: record.id.uuidString)
