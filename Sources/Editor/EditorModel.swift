@@ -133,19 +133,17 @@ final class EditorModel {
         }
 
         // 2. 后台解码全分辨率图（5K 同步解码会卡主线程）
-        Task.detached { [weak self] in
-            let fullImage: CGImage? = {
+        Task { [weak self] in
+            let fullImage = await Task.detached { () -> CGImage? in
                 guard let src = CGImageSourceCreateWithURL(rawURL as CFURL, nil) else { return nil }
                 return CGImageSourceCreateImageAtIndex(src, 0, nil)
-            }()
-            await MainActor.run {
-                guard let self, self.loadGeneration == generation else { return }  // 旧任务失效
-                guard let fullImage else { return }
-                self.sourceImage = fullImage
-                self.imageSize = CGSize(width: fullImage.width, height: fullImage.height)
-                // 全图就绪后，previewImage 升级为全分辨率（缩略图只是过渡）
-                self.previewImage = NSImage(cgImage: fullImage, size: NSSize(width: fullImage.width, height: fullImage.height))
-            }
+            }.value
+            guard let self, self.loadGeneration == generation else { return }  // 旧任务失效
+            guard let fullImage else { return }
+            self.sourceImage = fullImage
+            self.imageSize = CGSize(width: fullImage.width, height: fullImage.height)
+            // 全图就绪后，previewImage 升级为全分辨率（缩略图只是过渡）
+            self.previewImage = NSImage(cgImage: fullImage, size: NSSize(width: fullImage.width, height: fullImage.height))
         }
     }
 

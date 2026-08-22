@@ -1094,15 +1094,15 @@ struct HistoryTab: View {
         let url = HistoryStore.shared.displayURLForRecord(record)
         let kind = record.kind
         let recordID = record.id.uuidString
-        Task.detached {
-            let thumb = HistoryStore.renderThumbnailCGImage(at: url, kind: kind, maxSize: 80)
-            await MainActor.run {
-                if let thumb {
-                    thumbnails[recordID] = NSImage(
-                        cgImage: thumb,
-                        size: NSSize(width: thumb.width, height: thumb.height)
-                    )
-                }
+        Task {
+            let thumb = await Task.detached {
+                HistoryStore.renderThumbnailCGImage(at: url, kind: kind, maxSize: 80)
+            }.value
+            if let thumb {
+                thumbnails[recordID] = NSImage(
+                    cgImage: thumb,
+                    size: NSSize(width: thumb.width, height: thumb.height)
+                )
             }
         }
     }
@@ -1218,15 +1218,15 @@ struct VideosTab: View {
         let url = HistoryStore.shared.displayURLForRecord(record)
         let kind = record.kind
         let recordID = record.id.uuidString
-        Task.detached {
-            let thumb = HistoryStore.renderThumbnailCGImage(at: url, kind: kind, maxSize: 80)
-            await MainActor.run {
-                if let thumb {
-                    thumbnails[recordID] = NSImage(
-                        cgImage: thumb,
-                        size: NSSize(width: thumb.width, height: thumb.height)
-                    )
-                }
+        Task {
+            let thumb = await Task.detached {
+                HistoryStore.renderThumbnailCGImage(at: url, kind: kind, maxSize: 80)
+            }.value
+            if let thumb {
+                thumbnails[recordID] = NSImage(
+                    cgImage: thumb,
+                    size: NSSize(width: thumb.width, height: thumb.height)
+                )
             }
         }
     }
