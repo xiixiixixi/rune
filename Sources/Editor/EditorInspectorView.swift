@@ -27,6 +27,10 @@ struct EditorInspectorView: View {
                         AnnotationInspectorToolGrid(selectedTool: model.selectedTool) { tool in
                             model.selectTool(tool)
                         }
+
+                        Text("画好的标注：直接点击选中，拖动移动，Delete 删除。")
+                            .font(RuneFont.caption2)
+                            .foregroundStyle(.tertiary)
                     }
                     .padding(.horizontal, 14)
                     .padding(.top, 14)
@@ -111,6 +115,16 @@ struct EditorInspectorView: View {
                         .padding(.vertical, 14)
                     }
                     } else {
+                    // MARK: Beautify
+                    VStack(alignment: .leading, spacing: 6) {
+                        InspectorSectionHeader("美化")
+                        Text("把截图包装成适合分享的卡片：裁剪画面、加边距圆角阴影、配纯色或渐变背景。")
+                            .font(RuneFont.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.top, 14)
+
                     // MARK: Crop
                     ImageCropSection(model: model)
 
@@ -150,7 +164,7 @@ private enum InspectorPanel: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .annotation: "标注"
-        case .appearance: "外观"
+        case .appearance: "美化"
         }
     }
 }
@@ -193,30 +207,38 @@ private struct AnnotationInspectorToolGrid: View {
     let selectedTool: AnnotationTool
     let onSelect: (AnnotationTool) -> Void
 
-    private let columns: [GridItem] = Array(
-        repeating: GridItem(.flexible(), spacing: 2), count: 5
-    )
+    /// 常用工具：顺序、名称与截后悬浮工具栏完全一致，学一次两处都会用。
+    /// 注意不放"选择"工具：编辑器里无论当前什么工具，直接点击已画好的标注
+    /// 就能选中、拖动、删除，专门的"选择"按钮是多余的。
+    private let primaryTools: [AnnotationTool] = [
+        .rectangle, .arrow, .text, .blur, .spotlight, .numberedCircle
+    ]
+
+    /// 低频图形工具，收进"更多"一行。
+    private let secondaryTools: [AnnotationTool] = [
+        .ellipse, .line, .filledRectangle, .freehand
+    ]
 
     var body: some View {
-        LazyVGrid(columns: columns, spacing: 2) {
-            ForEach(AnnotationTool.toolbarCases) { tool in
-                Button {
-                    onSelect(tool)
-                } label: {
-                    Image(systemName: tool.systemImage)
-                        .font(RuneFont.swiftUI(size: 14, weight: .medium))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 32)
-                        .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        VStack(alignment: .leading, spacing: 8) {
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 3),
+                spacing: 4
+            ) {
+                ForEach(primaryTools) { tool in
+                    primaryToolButton(tool)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(selectedTool == tool ? Color.accentColor : .primary.opacity(0.7))
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(selectedTool == tool ? Color.accentColor.opacity(0.15) : .clear)
-                )
-                .help(tool.title)
-                .accessibilityLabel(tool.title)
+            }
+
+            HStack(spacing: 4) {
+                Text("更多")
+                    .font(RuneFont.caption2)
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 30, alignment: .leading)
+
+                ForEach(secondaryTools) { tool in
+                    secondaryToolButton(tool)
+                }
             }
         }
         .padding(4)
@@ -224,6 +246,60 @@ private struct AnnotationInspectorToolGrid: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color(nsColor: .controlBackgroundColor).opacity(0.5))
         )
+    }
+
+    private func primaryToolButton(_ tool: AnnotationTool) -> some View {
+        Button {
+            onSelect(tool)
+        } label: {
+            VStack(spacing: 3) {
+                Image(systemName: tool.systemImage)
+                    .font(RuneFont.swiftUI(size: 14, weight: .medium))
+                    .frame(height: 18)
+
+                Text(tool.title)
+                    .font(RuneFont.swiftUI(size: 10, weight: .medium))
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 48)
+            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(selectedTool == tool ? Color.accentColor : .primary.opacity(0.72))
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(selectedTool == tool ? Color.accentColor.opacity(0.15) : .clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .strokeBorder(
+                    selectedTool == tool ? Color.accentColor.opacity(0.35) : .clear,
+                    lineWidth: 0.8
+                )
+        )
+        .help(tool.title)
+        .accessibilityLabel(tool.title)
+    }
+
+    private func secondaryToolButton(_ tool: AnnotationTool) -> some View {
+        Button {
+            onSelect(tool)
+        } label: {
+            Image(systemName: tool.systemImage)
+                .font(RuneFont.swiftUI(size: 12, weight: .medium))
+                .frame(maxWidth: .infinity)
+                .frame(height: 30)
+                .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(selectedTool == tool ? Color.accentColor : .primary.opacity(0.55))
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(selectedTool == tool ? Color.accentColor.opacity(0.15) : .clear)
+        )
+        .help(tool.title)
+        .accessibilityLabel(tool.title)
     }
 }
 

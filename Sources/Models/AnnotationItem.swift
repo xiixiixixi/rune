@@ -620,23 +620,19 @@ enum AnnotationTool: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
-    static var toolbarCases: [AnnotationTool] {
-        allCases.filter { $0 != .pixelate }
-    }
-
     var title: String {
         switch self {
         case .select: "选择"
-        case .rectangle: "矩形"
-        case .filledRectangle: "实心矩形"
+        case .rectangle: "方框"
+        case .filledRectangle: "实心方框"
         case .ellipse: "圆形"
         case .line: "直线"
         case .arrow: "箭头"
-        case .freehand: "自由绘制"
-        case .numberedCircle: "编号圆点"
+        case .freehand: "画笔"
+        case .numberedCircle: "编号"
         case .pixelate: "像素化"
-        case .blur: "模糊"
-        case .spotlight: "聚光灯"
+        case .blur: "打码"
+        case .spotlight: "聚光"
         case .text: "文字"
         }
     }
