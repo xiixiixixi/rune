@@ -13,7 +13,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         if let existing = window, existing.isVisible {
             if let section {
                 existing.contentView = NSHostingView(
-                    rootView: PreferencesView(initialSection: section)
+                    rootView: PreferencesView(initialSection: section).runeTypography()
                 )
             }
             existing.orderFrontRegardless()
@@ -23,7 +23,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         }
 
         let hostingView = NSHostingView(
-            rootView: PreferencesView(initialSection: section ?? .general)
+            rootView: PreferencesView(initialSection: section ?? .general).runeTypography()
         )
 
         let win = NSWindow(

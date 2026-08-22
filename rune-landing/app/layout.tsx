@@ -1,7 +1,6 @@
 import type React from "react"
 import type { Metadata } from "next"
-import { GeistSans } from "geist/font/sans"
-import { GeistMono } from "geist/font/mono"
+import { spaceMono } from "@/lib/fonts"
 import "./globals.css"
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://github.com/xiixiixixi/rune"
@@ -72,7 +71,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+    <html lang="en" className={spaceMono.variable}>
       <head>
         <script
           type="application/ld+json"

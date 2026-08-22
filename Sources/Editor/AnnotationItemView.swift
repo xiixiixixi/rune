@@ -174,7 +174,7 @@ struct AnnotationItemView: View {
                 let midX = (start.x + end.x) / 2
                 let midY = (start.y + end.y) / 2
                 Text("\(px) 像素")
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .font(RuneFont.swiftUI(size: 10, weight: .medium, design: .monospaced))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1)
@@ -289,7 +289,7 @@ private struct NumberedCircleAnnotationView: View {
                 }
 
             Text(item.text)
-                .font(.system(
+                .font(RuneFont.swiftUI(
                     size: AnnotationNumberedCircleMetrics.fontSize(for: diameter, text: item.text),
                     weight: .bold,
                     design: .rounded

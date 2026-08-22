@@ -21,7 +21,7 @@ private struct CountdownView: View {
             Color.clear
 
             Text("\(model.currentNumber)")
-                .font(.system(size: 120, weight: .bold, design: .rounded))
+                .font(RuneFont.swiftUI(size: 120, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .shadow(color: .black.opacity(0.6), radius: 12, x: 0, y: 4)
                 .scaleEffect(model.scale)
@@ -99,7 +99,9 @@ final class CountdownOverlay {
         newPanel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         newPanel.ignoresMouseEvents = true
 
-        let hostingView = NSHostingView(rootView: CountdownView(model: model))
+        let hostingView = NSHostingView(
+            rootView: CountdownView(model: model).runeTypography()
+        )
         newPanel.contentView = hostingView
 
         self.panel = newPanel

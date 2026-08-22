@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0129DE19B1D7B79D0FEF5105 /* RuneTypography.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A563FA4711F8AE1E6829F1B /* RuneTypography.swift */; };
 		0A94CF88DBFEC05ACBFC9DEE /* ColorPickerOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C2C44FBB87ECFB165B9B673 /* ColorPickerOverlay.swift */; };
 		0F5FDF9A93743C3DA0D33DE4 /* EditorWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2733B25C20A07B0E9F07BCB1 /* EditorWindowView.swift */; };
 		175F30B0492B42476C5071DC /* DebugAuditSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA752C566C19DA061089251B /* DebugAuditSnapshot.swift */; };
@@ -46,6 +47,7 @@
 		A897099E9E6CA7AA3AAD63FC /* OCRResultPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9757F754A3A6DE0381CE5D6F /* OCRResultPanelController.swift */; };
 		AAA83DBCCF6F2760A095E54E /* VideoEditorWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E4AED8A98544F178238D20A /* VideoEditorWindowController.swift */; };
 		B08F8140DCD438FFD656D718 /* CaptureKitSCK in Frameworks */ = {isa = PBXBuildFile; productRef = 86E3F00D6915B53F5D5422CA /* CaptureKitSCK */; };
+		B2303C2DBAF1623A82CFF3BD /* Fonts in Resources */ = {isa = PBXBuildFile; fileRef = F163481F48D8AF89F12938CF /* Fonts */; };
 		B897CE871C1A4C4D7C01ABFF /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 841E8B1EC4238DF253B1472C /* PreferencesView.swift */; };
 		B973AF76844FFCFD0ED5126F /* AnnotationRedactionImageProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56522B0EE33188B7E6F3D53E /* AnnotationRedactionImageProcessor.swift */; };
 		BA0382D0D173EECDE4CB1DBA /* EditorCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE957D2FDAE8A89A35B667AE /* EditorCanvasView.swift */; };
@@ -93,6 +95,7 @@
 		4B1CAD9A5A6184536266A3F9 /* RuneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuneDelegate.swift; sourceTree = "<group>"; };
 		54F17EA97B02FB0B141944ED /* AnnotationItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationItem.swift; sourceTree = "<group>"; };
 		56522B0EE33188B7E6F3D53E /* AnnotationRedactionImageProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationRedactionImageProcessor.swift; sourceTree = "<group>"; };
+		5A563FA4711F8AE1E6829F1B /* RuneTypography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuneTypography.swift; sourceTree = "<group>"; };
 		5D5C8B4474CA7EA56FA02695 /* EditorInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorInspectorView.swift; sourceTree = "<group>"; };
 		5F54C480F0EB73AC28421639 /* ScreenRecordingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenRecordingManager.swift; sourceTree = "<group>"; };
 		603247F470EF6B1B122CE4D3 /* ConfirmCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfirmCanvasView.swift; sourceTree = "<group>"; };
@@ -128,6 +131,7 @@
 		E70EA27B623E2349BAA6EC6E /* RecordingSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingSession.swift; sourceTree = "<group>"; };
 		EAD47448BF0CD0FAF15CD99D /* ScrollCaptureController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrollCaptureController.swift; sourceTree = "<group>"; };
 		F085A69B533886706D205058 /* AnnotationEditorInteractionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationEditorInteractionState.swift; sourceTree = "<group>"; };
+		F163481F48D8AF89F12938CF /* Fonts */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Fonts; path = Resources/Fonts; sourceTree = SOURCE_ROOT; };
 		F1B9589FCF1FAFEC9722CE16 /* PIIRedactor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PIIRedactor.swift; sourceTree = "<group>"; };
 		FDA5D34FE298E3CD8519B235 /* BurstFlowUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurstFlowUI.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -169,6 +173,7 @@
 			isa = PBXGroup;
 			children = (
 				3166BE8A0679903041B299D6 /* Backgrounds */,
+				F163481F48D8AF89F12938CF /* Fonts */,
 				CA87E0102C158DB43D1D3ED5 /* LICENSE */,
 				7F246B17DB87B4EE627838D3 /* Packages */,
 				F15B192EFFA46F3C9D9D4B07 /* Resources */,
@@ -321,6 +326,7 @@
 			isa = PBXGroup;
 			children = (
 				112F75E5041E36D972603516 /* RuneTheme.swift */,
+				5A563FA4711F8AE1E6829F1B /* RuneTypography.swift */,
 			);
 			path = Design;
 			sourceTree = "<group>";
@@ -411,6 +417,7 @@
 			files = (
 				A74BAF26AE45F44C7800511B /* Assets.xcassets in Resources */,
 				6F9DB61719BAC8D4621D02B1 /* Backgrounds in Resources */,
+				B2303C2DBAF1623A82CFF3BD /* Fonts in Resources */,
 				6D4C0CC191D02748143AF2A8 /* LICENSE in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -464,6 +471,7 @@
 				86655064AB31C019C0BFED31 /* RuneApp.swift in Sources */,
 				CAE08A3A25471D92F8EC71EB /* RuneDelegate.swift in Sources */,
 				ED43EF380B681CA9DFA3EF71 /* RuneTheme.swift in Sources */,
+				0129DE19B1D7B79D0FEF5105 /* RuneTypography.swift in Sources */,
 				2C9766AEF9CCF301B76F3D44 /* ScreenCapture.swift in Sources */,
 				341D680F216411C3615256CD /* ScreenCapturePermissionController.swift in Sources */,
 				8C985784C9C1757B22AA577D /* ScreenRecordingManager.swift in Sources */,
@@ -493,13 +501,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Resources/Rune.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 16;
 				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 0.5.0;
+				MARKETING_VERSION = 0.5.1;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = com.tc.rune;
 				PRODUCT_NAME = Rune;
@@ -647,13 +655,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Resources/Rune.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 16;
 				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 0.5.0;
+				MARKETING_VERSION = 0.5.1;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = com.tc.rune;
 				PRODUCT_NAME = Rune;

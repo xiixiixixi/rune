@@ -132,6 +132,7 @@ struct ConfirmToolbarView: View {
                     }
             }
         )
+        .runeTypography()
         .onAppear {
             canUndo = canvas?.canUndo ?? false
             appeared = true
@@ -317,12 +318,12 @@ private struct FreezeToolButton: View {
         Button(action: action) {
             VStack(spacing: 3) {
                 Image(systemName: icon)
-                    .font(.system(size: 16, weight: .medium))
+                    .font(RuneFont.swiftUI(size: 16, weight: .medium))
                     .symbolRenderingMode(.monochrome)
                     .frame(height: 19)
 
                 Text(title)
-                    .font(.system(size: 9.5, weight: .medium))
+                    .font(RuneFont.swiftUI(size: 9.5, weight: .medium))
                     .lineLimit(1)
             }
             .foregroundStyle(foreground)
@@ -381,9 +382,9 @@ private struct FreezeEndButton: View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Image(systemName: icon)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(RuneFont.swiftUI(size: 11, weight: .bold))
                 Text(title)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(RuneFont.swiftUI(size: 11, weight: .semibold))
             }
             .foregroundStyle(isPrimary ? Color.white : Color.white.opacity(isHovered ? 1 : 0.82))
             .padding(.horizontal, isPrimary ? 13 : 10)

@@ -1,6 +1,8 @@
-import { Inter } from "next/font/google"
+import { Space_Mono } from "next/font/google"
 
-export const geist = Inter({
+export const spaceMono = Space_Mono({
   subsets: ["latin"],
+  weight: ["400", "700"],
+  variable: "--font-space-mono",
   display: "swap",
 })

@@ -124,7 +124,7 @@ final class ScreenCapturePermissionController: NSObject, NSWindowDelegate {
             onRestart: { [weak self] in self?.restartApplication() },
             onLater: { [weak self] in self?.finish(granted: false) }
         )
-        let hostingView = NSHostingView(rootView: rootView)
+        let hostingView = NSHostingView(rootView: rootView.runeTypography())
         let size = NSSize(width: 460, height: 390)
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: size),
@@ -321,19 +321,19 @@ private struct ScreenCapturePermissionGuideView: View {
                     .fill(RuneTheme.accent.opacity(0.10))
                     .frame(width: 58, height: 58)
                 Image(systemName: "macwindow")
-                    .font(.system(size: 27, weight: .medium))
+                    .font(RuneFont.swiftUI(size: 27, weight: .medium))
                     .foregroundStyle(RuneTheme.accent)
             }
 
             VStack(alignment: .leading, spacing: 5) {
                 Text("先允许 Rune 看见屏幕")
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(RuneFont.swiftUI(size: 20, weight: .semibold))
                     .foregroundStyle(RuneTheme.textPrimary)
                 Text("这是截图、连拍和录屏共同需要的一次设置")
-                    .font(.system(size: 13))
+                    .font(RuneFont.swiftUI(size: 13))
                     .foregroundStyle(RuneTheme.textSecondary)
                 Text(model.purpose.continuationText)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(RuneFont.swiftUI(size: 12, weight: .medium))
                     .foregroundStyle(RuneTheme.accent)
             }
         }
@@ -342,14 +342,14 @@ private struct ScreenCapturePermissionGuideView: View {
     private var privacyCard: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "lock.shield.fill")
-                .font(.system(size: 15, weight: .medium))
+                .font(RuneFont.swiftUI(size: 15, weight: .medium))
                 .foregroundStyle(RuneTheme.accent)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 3) {
                 Text("只在你主动截图、连拍或录屏时读取画面")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(RuneFont.swiftUI(size: 12, weight: .semibold))
                 Text("识别、打码和图片处理都在这台 Mac 上完成。")
-                    .font(.system(size: 11))
+                    .font(RuneFont.swiftUI(size: 11))
                     .foregroundStyle(.secondary)
             }
         }
@@ -377,12 +377,12 @@ private struct ScreenCapturePermissionGuideView: View {
     private func permissionStep(number: String, title: String) -> some View {
         VStack(spacing: 6) {
             Text(number)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .font(RuneFont.swiftUI(size: 11, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .frame(width: 24, height: 24)
                 .background(Circle().fill(RuneTheme.accent))
             Text(title)
-                .font(.system(size: 11, weight: .medium))
+                .font(RuneFont.swiftUI(size: 11, weight: .medium))
                 .foregroundStyle(RuneTheme.textPrimary)
                 .lineLimit(1)
         }
@@ -408,10 +408,10 @@ private struct ScreenCapturePermissionGuideView: View {
                     .frame(width: 8, height: 8)
             }
             Text(model.statusText)
-                .font(.system(size: 12, weight: .semibold))
+                .font(RuneFont.swiftUI(size: 12, weight: .semibold))
             if !model.detailText.isEmpty {
                 Text("· \(model.detailText)")
-                    .font(.system(size: 12))
+                    .font(RuneFont.swiftUI(size: 12))
                     .foregroundStyle(.secondary)
             }
         }

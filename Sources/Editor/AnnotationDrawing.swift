@@ -173,7 +173,7 @@ enum AnnotationDrawing {
         context.restoreGState()
 
         let fontSize = AnnotationNumberedCircleMetrics.fontSize(for: diameter, text: item.text)
-        let font = NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .bold)
+        let font = RuneFont.appKit(size: fontSize, weight: .bold)
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
         paragraphStyle.lineBreakMode = .byClipping

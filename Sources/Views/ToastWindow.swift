@@ -43,10 +43,10 @@ final class ToastWindow {
 
         // 量文本宽（自适应）
         let titleAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 13, weight: .semibold)
+            .font: RuneFont.appKit(size: 13, weight: .semibold)
         ]
         let msgAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 11)
+            .font: RuneFont.appKit(size: 11)
         ]
         let titleW = (title as NSString).size(withAttributes: titleAttrs).width
         let msgW = (message as NSString).size(withAttributes: msgAttrs).width

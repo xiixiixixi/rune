@@ -17,7 +17,7 @@ final class VideoEditorWindowController: NSObject, NSWindowDelegate {
         }
 
         let view = VideoEditorView(url: url)
-        let hostingView = NSHostingView(rootView: view)
+        let hostingView = NSHostingView(rootView: view.runeTypography())
 
         let win = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1060, height: 640),

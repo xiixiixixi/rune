@@ -254,7 +254,7 @@ final class ScrollCaptureStatusBarController {
     func show(on screen: NSScreen? = nil) {
         dismiss()
         let view = ScrollCaptureStatusBarView(controller: .shared)
-        let hosting = NSHostingView(rootView: view)
+        let hosting = NSHostingView(rootView: view.runeTypography())
         // 状态变化时宽度保持不跳动，避免用户滚动过程中按钮来回移动。
         let size = NSSize(width: 540, height: 60)
         let panel = NSPanel(
@@ -303,7 +303,7 @@ private struct ScrollCaptureStatusBarView: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "rectangle.stack.fill")
-                .font(.system(size: 17, weight: .semibold))
+                .font(RuneFont.swiftUI(size: 17, weight: .semibold))
                 .foregroundStyle(RuneTheme.accent)
                 .frame(width: 30, height: 30)
                 .background(RuneTheme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
@@ -311,9 +311,9 @@ private struct ScrollCaptureStatusBarView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("正在拼接长图")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(RuneFont.swiftUI(size: 12, weight: .semibold))
                 Text(controller.statusMessage)
-                    .font(.system(size: 10.5))
+                    .font(RuneFont.swiftUI(size: 10.5))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -321,7 +321,7 @@ private struct ScrollCaptureStatusBarView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Text("\(controller.capturedFrameCount) 屏")
-                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .font(RuneFont.swiftUI(size: 13, weight: .semibold, design: .monospaced))
                 .monospacedDigit()
                 .frame(minWidth: 42, alignment: .trailing)
 
@@ -331,7 +331,7 @@ private struct ScrollCaptureStatusBarView: View {
                 }
             } label: {
                 Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 15))
+                    .font(RuneFont.swiftUI(size: 15))
                     .foregroundStyle(.secondary)
                     .frame(width: 28, height: 28)
             }

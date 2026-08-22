@@ -120,7 +120,7 @@ final class MenuBarPopoverController: NSObject {
         }
 
         let contentView = MenuBarPanelView(dismissPopover: dismiss)
-        let hostingView = NSHostingView(rootView: contentView)
+        let hostingView = NSHostingView(rootView: contentView.runeTypography())
         hostingView.setFrameSize(hostingView.fittingSize)
 
         let panel = NSPanel(

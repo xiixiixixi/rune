@@ -142,7 +142,7 @@ private final class PickerView: NSView {
         if let title = hovered.title, !title.isEmpty {
             let label = title as NSString
             let attrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 12, weight: .medium),
+                .font: RuneFont.appKit(size: 12, weight: .medium),
                 .foregroundColor: NSColor.white,
             ]
             let size = label.size(withAttributes: attrs)

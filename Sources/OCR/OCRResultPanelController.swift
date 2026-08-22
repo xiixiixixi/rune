@@ -18,7 +18,7 @@ final class OCRResultPanelController: NSObject, NSWindowDelegate {
             barcodeCount: result.barcodes.count,
             onClose: { [weak self] in self?.dismiss() }
         )
-        let hostingView = NSHostingView(rootView: content)
+        let hostingView = NSHostingView(rootView: content.runeTypography())
 
         let size = NSSize(width: 500, height: 350)
         let panel = OCRResultPanel(
@@ -100,7 +100,7 @@ private struct OCRResultCardView: View {
             Divider()
 
             TextEditor(text: $text)
-                .font(.system(size: 13, design: .monospaced))
+                .font(RuneFont.swiftUI(size: 13, design: .monospaced))
                 .scrollContentBackground(.hidden)
                 .padding(10)
                 .background(Color.primary.opacity(0.035))
@@ -128,23 +128,23 @@ private struct OCRResultCardView: View {
     private var header: some View {
         HStack(spacing: 10) {
             Image(systemName: "text.viewfinder")
-                .font(.system(size: 17, weight: .semibold))
+                .font(RuneFont.swiftUI(size: 17, weight: .semibold))
                 .foregroundStyle(RuneTheme.accent)
                 .frame(width: 32, height: 32)
                 .background(RuneTheme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("识别结果")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(RuneFont.swiftUI(size: 15, weight: .semibold))
                 Text(barcodeCount > 0 ? "包含 \(barcodeCount) 个二维码或条码" : "可以先修正，再复制")
-                    .font(.system(size: 11))
+                    .font(RuneFont.swiftUI(size: 11))
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
 
             Label("完全在本机处理", systemImage: "lock.fill")
-                .font(.system(size: 10, weight: .medium))
+                .font(RuneFont.swiftUI(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
@@ -152,7 +152,7 @@ private struct OCRResultCardView: View {
 
             Button(action: onClose) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(RuneFont.swiftUI(size: 11, weight: .semibold))
                     .frame(width: 26, height: 26)
                     .background(Color.primary.opacity(0.055), in: Circle())
             }
@@ -167,12 +167,12 @@ private struct OCRResultCardView: View {
     private var footer: some View {
         HStack(spacing: 10) {
             Text("\(text.count) 个字符")
-                .font(.system(size: 11, design: .monospaced))
+                .font(RuneFont.swiftUI(size: 11, design: .monospaced))
                 .foregroundStyle(.secondary)
 
             if didCopy {
                 Label("已复制", systemImage: "checkmark")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(RuneFont.swiftUI(size: 11, weight: .medium))
                     .foregroundStyle(.green)
             }
 

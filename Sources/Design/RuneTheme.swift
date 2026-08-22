@@ -51,7 +51,7 @@ enum RuneTheme {
                 Text(text)
             }
         }
-        .font(.system(size: 13, weight: .semibold))
+        .font(RuneFont.swiftUI(size: 13, weight: .semibold))
             .foregroundStyle(.white)
             .padding(.horizontal, 16)
             .frame(height: 34)
@@ -71,7 +71,7 @@ enum RuneTheme {
                 Text(text)
             }
         }
-        .font(.system(size: 13, weight: .medium))
+        .font(RuneFont.swiftUI(size: 13, weight: .medium))
         .foregroundStyle(textPrimary)
         .padding(.horizontal, 12)
         .frame(height: 34)
@@ -85,7 +85,7 @@ enum RuneTheme {
     /// 工具图标：18pt medium；默认石墨灰，激活=红图标+红 10% 圆角底
     static func toolIcon(_ systemImage: String, active: Bool) -> some View {
         Image(systemName: systemImage)
-            .font(.system(size: 18, weight: .medium))
+            .font(RuneFont.swiftUI(size: 18, weight: .medium))
             .foregroundStyle(active ? accent : Color(red: 0.35, green: 0.35, blue: 0.37))
             .frame(width: iconButtonSize, height: iconButtonSize)
             .background(
@@ -120,7 +120,7 @@ enum RuneTheme {
     /// 快捷键徽章：灰字白底小胶囊
     static func shortcutBadge(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 11, weight: .medium))
+            .font(RuneFont.swiftUI(size: 11, weight: .medium))
             .foregroundStyle(textSecondary)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)

@@ -88,7 +88,7 @@ struct VideoEditorView: View {
         .overlay(alignment: .bottom) {
             if let message = model.toastMessage {
                 Text(message)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(RuneFont.swiftUI(size: 13, weight: .medium))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
@@ -244,7 +244,7 @@ struct VideoEditorView: View {
     private var controlsBar: some View {
         HStack {
             Text(model.formattedCurrentTime)
-                .font(.system(size: 12, design: .monospaced))
+                .font(RuneFont.swiftUI(size: 12, design: .monospaced))
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
                 .frame(width: 50)
@@ -254,7 +254,7 @@ struct VideoEditorView: View {
             HStack(spacing: 16) {
                 Button { model.stepBackward() } label: {
                     Image(systemName: "backward.fill")
-                        .font(.system(size: 14))
+                        .font(RuneFont.swiftUI(size: 14))
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.leftArrow, modifiers: [])
@@ -262,7 +262,7 @@ struct VideoEditorView: View {
 
                 Button { model.togglePlayback() } label: {
                     Image(systemName: model.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 28))
+                        .font(RuneFont.swiftUI(size: 28))
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.space, modifiers: [])
@@ -270,7 +270,7 @@ struct VideoEditorView: View {
 
                 Button { model.stepForward() } label: {
                     Image(systemName: "forward.fill")
-                        .font(.system(size: 14))
+                        .font(RuneFont.swiftUI(size: 14))
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.rightArrow, modifiers: [])
@@ -281,13 +281,13 @@ struct VideoEditorView: View {
 
             if model.hasTrim {
                 Text(model.formattedDuration)
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(RuneFont.swiftUI(size: 12, design: .monospaced))
                     .monospacedDigit()
                     .foregroundStyle(RuneTheme.accent)
                     .frame(width: 50)
             } else {
                 Text(model.formattedDuration)
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(RuneFont.swiftUI(size: 12, design: .monospaced))
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
                     .frame(width: 50)
@@ -343,7 +343,7 @@ private struct VideoInspectorSectionHeader: View {
 
     var body: some View {
         Text(title)
-            .font(.system(size: 11, weight: .semibold))
+            .font(RuneFont.swiftUI(size: 11, weight: .semibold))
             .foregroundStyle(.tertiary)
             .tracking(0.5)
     }
@@ -378,9 +378,9 @@ private struct VideoTrimSection: View {
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.counterclockwise")
-                                .font(.caption)
+                                .font(RuneFont.caption)
                             Text("重置")
-                                .font(.caption2)
+                                .font(RuneFont.caption2)
                         }
                         .padding(.vertical, 4)
                         .padding(.horizontal, 8)
@@ -393,11 +393,11 @@ private struct VideoTrimSection: View {
             VStack(spacing: 4) {
                 HStack {
                     Text("开始")
-                        .font(.caption2)
+                        .font(RuneFont.caption2)
                         .foregroundStyle(.tertiary)
                     Spacer()
                     Text(formatTime(model.trimStart))
-                        .font(.system(.caption2, design: .monospaced))
+                        .font(RuneFont.caption2)
                         .foregroundStyle(model.hasTrim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.quaternary))
                 }
                 .accessibilityElement(children: .ignore)
@@ -411,11 +411,11 @@ private struct VideoTrimSection: View {
                 }
                 HStack {
                     Text("结束")
-                        .font(.caption2)
+                        .font(RuneFont.caption2)
                         .foregroundStyle(.tertiary)
                     Spacer()
                     Text(formatTime(model.trimEnd))
-                        .font(.system(.caption2, design: .monospaced))
+                        .font(RuneFont.caption2)
                         .foregroundStyle(model.hasTrim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.quaternary))
                 }
                 .accessibilityElement(children: .ignore)
@@ -429,17 +429,17 @@ private struct VideoTrimSection: View {
                 }
                 HStack {
                     Text("时长")
-                        .font(.caption2)
+                        .font(RuneFont.caption2)
                         .foregroundStyle(.tertiary)
                     Spacer()
                     Text(formatTime(model.trimmedDuration))
-                        .font(.system(.caption2, design: .monospaced))
+                        .font(RuneFont.caption2)
                         .foregroundStyle(model.hasTrim ? AnyShapeStyle(RuneTheme.accent) : AnyShapeStyle(.quaternary))
                 }
             }
 
             Text("拖动时间轴上的黄色把手来裁剪视频。")
-                .font(.caption2)
+                .font(RuneFont.caption2)
                 .foregroundStyle(.quaternary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -458,11 +458,11 @@ private struct VideoEffectsSection: View {
             VStack(spacing: 4) {
                 HStack {
                     Text("边距")
-                        .font(.caption2)
+                        .font(RuneFont.caption2)
                         .foregroundStyle(.tertiary)
                     Spacer()
                     Text("\(Int(model.config.padding * 100))%")
-                        .font(.system(.caption2, design: .monospaced))
+                        .font(RuneFont.caption2)
                         .foregroundStyle(.tertiary)
                 }
                 Slider(value: $model.config.padding, in: 0.0...0.45)
@@ -472,11 +472,11 @@ private struct VideoEffectsSection: View {
             VStack(spacing: 4) {
                 HStack {
                     Text("圆角")
-                        .font(.caption2)
+                        .font(RuneFont.caption2)
                         .foregroundStyle(.tertiary)
                     Spacer()
                     Text("\(Int(model.config.cornerRadius * 1000))")
-                        .font(.system(.caption2, design: .monospaced))
+                        .font(RuneFont.caption2)
                         .foregroundStyle(.tertiary)
                 }
                 Slider(value: $model.config.cornerRadius, in: 0.0...0.12)
@@ -486,11 +486,11 @@ private struct VideoEffectsSection: View {
             VStack(spacing: 4) {
                 HStack {
                     Text("阴影")
-                        .font(.caption2)
+                        .font(RuneFont.caption2)
                         .foregroundStyle(.tertiary)
                     Spacer()
                     Text("\(Int(model.config.shadowStrength * 100))%")
-                        .font(.system(.caption2, design: .monospaced))
+                        .font(RuneFont.caption2)
                         .foregroundStyle(.tertiary)
                 }
                 Slider(value: $model.config.shadowStrength, in: 0.0...1.0)
@@ -514,7 +514,7 @@ private struct VideoBackgroundSection: View {
             VideoInspectorSectionHeader("背景")
 
             Text("纯色")
-                .font(.caption2)
+                .font(RuneFont.caption2)
                 .foregroundStyle(.tertiary)
 
             LazyVGrid(columns: swatchColumns, spacing: 6) {
@@ -526,7 +526,7 @@ private struct VideoBackgroundSection: View {
             }
 
             Text("渐变")
-                .font(.caption2)
+                .font(RuneFont.caption2)
                 .foregroundStyle(.tertiary)
 
             LazyVGrid(columns: swatchColumns, spacing: 6) {
@@ -536,7 +536,7 @@ private struct VideoBackgroundSection: View {
             }
 
             Text("macOS")
-                .font(.caption2)
+                .font(RuneFont.caption2)
                 .foregroundStyle(.tertiary)
 
             LazyVGrid(columns: Array(repeating: GridItem(.fixed(48), spacing: 6), count: 4), spacing: 6) {
@@ -668,7 +668,7 @@ private struct VideoBackgroundSection: View {
                 }
 
                 Text(URL(fileURLWithPath: source.path).lastPathComponent)
-                    .font(.caption2)
+                    .font(RuneFont.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -676,7 +676,7 @@ private struct VideoBackgroundSection: View {
                 Spacer()
 
                 Button { pickCustomWallpaper() } label: {
-                    Text("更换").font(.caption2)
+                    Text("更换").font(RuneFont.caption2)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.mini)
@@ -684,8 +684,8 @@ private struct VideoBackgroundSection: View {
         } else {
             Button { pickCustomWallpaper() } label: {
                 HStack(spacing: 4) {
-                    Image(systemName: "plus").font(.caption2)
-                    Text("自定义图片…").font(.caption2)
+                    Image(systemName: "plus").font(RuneFont.caption2)
+                    Text("自定义图片…").font(RuneFont.caption2)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 6)
@@ -727,9 +727,9 @@ private struct VideoCropSection: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "crop")
-                            .font(.caption)
+                            .font(RuneFont.caption)
                         Text(model.isCropping ? "完成" : "裁剪")
-                            .font(.caption2)
+                            .font(RuneFont.caption2)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 6)
@@ -748,9 +748,9 @@ private struct VideoCropSection: View {
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.counterclockwise")
-                                .font(.caption)
+                                .font(RuneFont.caption)
                             Text("重置")
-                                .font(.caption2)
+                                .font(RuneFont.caption2)
                         }
                         .padding(.vertical, 6)
                         .padding(.horizontal, 10)
@@ -764,7 +764,7 @@ private struct VideoCropSection: View {
                 let w = Int(CGFloat(model.videoWidth) * model.cropRect.width)
                 let h = Int(CGFloat(model.videoHeight) * model.cropRect.height)
                 Text("\(w) × \(h)")
-                    .font(.system(.caption2, design: .monospaced))
+                    .font(RuneFont.caption2)
                     .foregroundStyle(.tertiary)
             }
         }

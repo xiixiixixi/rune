@@ -73,7 +73,7 @@ final class PinnedScreenshotController {
                 self.sessions.removeAll { $0.panel === panel }
             }
         )
-        panel.contentView = NSHostingView(rootView: contentView)
+        panel.contentView = NSHostingView(rootView: contentView.runeTypography())
 
         if let screen = preferredScreen ?? NSScreen.main {
             let sf = screen.visibleFrame
@@ -159,7 +159,7 @@ private struct PinnedScreenshotView: View {
 
             if interaction.clickThrough {
                 Text("鼠标穿透中 · 从 Rune 菜单恢复")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(RuneFont.swiftUI(size: 10, weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 9)
                     .frame(height: 26)
@@ -207,7 +207,7 @@ private struct PinnedScreenshotView: View {
                 .frame(height: 18)
 
             Image(systemName: "circle.lefthalf.filled")
-                .font(.system(size: 10))
+                .font(RuneFont.swiftUI(size: 10))
                 .foregroundStyle(.secondary)
 
             Slider(value: $interaction.opacity, in: 0.2...1.0, step: 0.1)
@@ -223,7 +223,7 @@ private struct PinnedScreenshotView: View {
                 }
             } label: {
                 Text("\(Int(scaleFactor * 100))%")
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .font(RuneFont.swiftUI(size: 10, weight: .medium, design: .monospaced))
                     .frame(minWidth: 34)
             }
             .menuStyle(.borderlessButton)
@@ -246,7 +246,7 @@ private struct PinnedScreenshotView: View {
             }
             .help("开启鼠标穿透；从 Rune 菜单恢复")
         }
-        .font(.system(size: 11, weight: .semibold))
+        .font(RuneFont.swiftUI(size: 11, weight: .semibold))
         .buttonStyle(.plain)
         .foregroundStyle(.primary.opacity(0.78))
         .padding(.horizontal, 7)

@@ -538,7 +538,7 @@ private func makePanelButton(
     button.attributedTitle = NSAttributedString(
         string: title,
         attributes: [
-            .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
+            .font: RuneFont.appKit(size: 12, weight: .semibold),
             .foregroundColor: accent ? NSColor.white : NSColor.labelColor,
         ]
     )
@@ -553,7 +553,7 @@ private func setPanelButtonTitle(_ button: NSButton, title: String, accent: Bool
     button.attributedTitle = NSAttributedString(
         string: title,
         attributes: [
-            .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
+            .font: RuneFont.appKit(size: 12, weight: .semibold),
             .foregroundColor: accent ? NSColor.white : NSColor.white.withAlphaComponent(0.92),
         ]
     )

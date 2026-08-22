@@ -16,6 +16,7 @@ final class EditorWindowController {
 
         let hostingView = NSHostingView(rootView:
             EditorWindowView(urlHolder: urlHolder)
+                .runeTypography()
                 .frame(minWidth: 800, minHeight: 550)
         )
 

@@ -25,7 +25,7 @@ struct EditorWindowView: View {
         .overlay(alignment: .bottom) {
             if let message = model.toastMessage {
                 Text(message)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(RuneFont.swiftUI(size: 13, weight: .medium))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)

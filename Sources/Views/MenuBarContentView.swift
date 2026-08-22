@@ -148,7 +148,7 @@ struct MenuBarContentView: View {
                     openSettings()
                 } label: {
                     Label("设置", systemImage: "gearshape")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(RuneFont.swiftUI(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
@@ -157,14 +157,14 @@ struct MenuBarContentView: View {
                 Spacer()
 
                 Text("Rune")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(RuneFont.swiftUI(size: 10, weight: .medium))
                     .foregroundStyle(.quaternary)
 
                 Button {
                     NSApplication.shared.terminate(nil)
                 } label: {
                     Image(systemName: "power")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(RuneFont.swiftUI(size: 12, weight: .medium))
                         .foregroundStyle(.tertiary)
                         .frame(width: 24, height: 24)
                 }
@@ -185,12 +185,12 @@ struct MenuBarContentView: View {
                 .frame(width: 8, height: 8)
 
             Text("Rune")
-                .font(.system(size: 15, weight: .semibold))
+                .font(RuneFont.swiftUI(size: 15, weight: .semibold))
 
             Spacer()
 
             Text("截图与连拍")
-                .font(.system(size: 11))
+                .font(RuneFont.swiftUI(size: 11))
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 14)
@@ -294,21 +294,21 @@ private struct TrayFeatureButton: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Image(systemName: icon)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(RuneFont.swiftUI(size: 18, weight: .semibold))
                         .foregroundStyle(isAccent ? RuneTheme.accent : .primary)
 
                     Spacer()
 
                     Text(shortcut)
-                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .font(RuneFont.swiftUI(size: 9, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(RuneFont.swiftUI(size: 14, weight: .semibold))
                     Text(subtitle)
-                        .font(.system(size: 10))
+                        .font(RuneFont.swiftUI(size: 10))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -358,19 +358,19 @@ private struct TrayActionLabel: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 13, weight: .medium))
+                .font(RuneFont.swiftUI(size: 13, weight: .medium))
                 .foregroundStyle(.secondary)
                 .frame(width: 17)
 
             Text(title)
-                .font(.system(size: 12, weight: .medium))
+                .font(RuneFont.swiftUI(size: 12, weight: .medium))
                 .foregroundStyle(.primary)
 
             Spacer(minLength: 2)
 
             if showsChevron {
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(RuneFont.swiftUI(size: 8, weight: .bold))
                     .foregroundStyle(.tertiary)
             }
         }
@@ -442,7 +442,7 @@ private struct RecentCaptureSection: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Label("最近记录", systemImage: "clock.arrow.circlepath")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(RuneFont.swiftUI(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
 
                 Spacer()
@@ -451,9 +451,9 @@ private struct RecentCaptureSection: View {
                     HStack(spacing: 3) {
                         Text("全部")
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 8, weight: .bold))
+                            .font(RuneFont.swiftUI(size: 8, weight: .bold))
                     }
-                    .font(.system(size: 10, weight: .medium))
+                    .font(RuneFont.swiftUI(size: 10, weight: .medium))
                     .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
@@ -465,7 +465,7 @@ private struct RecentCaptureSection: View {
                     Image(systemName: "photo.stack")
                         .foregroundStyle(.tertiary)
                     Text("截图和录屏会出现在这里")
-                        .font(.system(size: 11))
+                        .font(RuneFont.swiftUI(size: 11))
                         .foregroundStyle(.secondary)
                     Spacer()
                 }
@@ -494,7 +494,7 @@ private struct RecentCaptureSection: View {
 
                                 if record.kind == .recording {
                                     Image(systemName: "play.circle.fill")
-                                        .font(.system(size: 18))
+                                        .font(RuneFont.swiftUI(size: 18))
                                         .foregroundStyle(.white.opacity(0.92))
                                         .shadow(color: .black.opacity(0.30), radius: 2, y: 1)
                                 }

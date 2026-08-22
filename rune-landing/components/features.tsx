@@ -2,7 +2,6 @@
 
 import { motion, useInView } from "framer-motion"
 import { useRef } from "react"
-import { geist } from "@/lib/fonts"
 import { cn } from "@/lib/utils"
 
 const features = [

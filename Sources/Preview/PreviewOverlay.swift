@@ -95,7 +95,9 @@ final class PreviewOverlay {
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isMovableByWindowBackground = false
-        panel.contentView = NSHostingView(rootView: PreviewCardView(overlay: self))
+        panel.contentView = NSHostingView(
+            rootView: PreviewCardView(overlay: self).runeTypography()
+        )
         self.panel = panel
     }
 
@@ -183,11 +185,11 @@ struct PreviewCardView: View {
     private var header: some View {
         HStack(spacing: 7) {
             Image(systemName: isVideo ? "record.circle.fill" : "checkmark.circle.fill")
-                .font(.system(size: 13, weight: .semibold))
+                .font(RuneFont.swiftUI(size: 13, weight: .semibold))
                 .foregroundStyle(RuneTheme.accent)
 
             Text(isVideo ? "录屏已保存" : "截图已保存")
-                .font(.system(size: 12, weight: .semibold))
+                .font(RuneFont.swiftUI(size: 12, weight: .semibold))
 
             Spacer()
 
@@ -195,7 +197,7 @@ struct PreviewCardView: View {
                 overlay.dismiss()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(RuneFont.swiftUI(size: 10, weight: .semibold))
                     .frame(width: 24, height: 24)
                     .background(Color.primary.opacity(0.055), in: Circle())
             }
@@ -224,7 +226,7 @@ struct PreviewCardView: View {
 
             if isVideo {
                 Image(systemName: "play.circle.fill")
-                    .font(.system(size: 30))
+                    .font(RuneFont.swiftUI(size: 30))
                     .foregroundStyle(.white.opacity(0.94))
                     .shadow(color: .black.opacity(0.34), radius: 4, y: 2)
             }
@@ -290,7 +292,7 @@ struct PreviewCardView: View {
     private func actionButton(_ systemName: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 12, weight: .semibold))
+                .font(RuneFont.swiftUI(size: 12, weight: .semibold))
                 .foregroundStyle(.primary.opacity(0.76))
                 .frame(width: 32, height: 32)
                 .background(Color.primary.opacity(0.055), in: Circle())

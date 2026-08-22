@@ -95,7 +95,7 @@ private struct SettingsSidebarRow: View {
                     .frame(width: 18)
 
                 Text(section.rawValue)
-                    .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                    .font(RuneFont.swiftUI(size: 13, weight: isSelected ? .semibold : .regular))
 
                 Spacer(minLength: 0)
             }
@@ -224,7 +224,7 @@ struct GeneralSettingsTab: View {
                     Text("默认背景")
                     Spacer()
                     Text(backgroundLabel(for: defaultConfig.style))
-                        .font(.caption)
+                        .font(RuneFont.caption)
                         .foregroundStyle(.secondary)
                         .textCase(.none)
                 }
@@ -279,10 +279,10 @@ struct GeneralSettingsTab: View {
         VStack(spacing: 4) {
             HStack {
                 Text(label)
-                    .font(.caption)
+                    .font(RuneFont.caption)
                 Spacer()
                 Text(format(value.wrappedValue))
-                    .font(.system(.caption, design: .monospaced))
+                    .font(RuneFont.caption)
                     .foregroundStyle(.secondary)
             }
             Slider(value: value, in: range)
@@ -443,7 +443,7 @@ private struct DefaultBackgroundPicker: View {
                         )
                 }
                 Text(URL(fileURLWithPath: source.path).lastPathComponent)
-                    .font(.caption2)
+                    .font(RuneFont.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -454,8 +454,8 @@ private struct DefaultBackgroundPicker: View {
         } else {
             Button { pickCustomImage() } label: {
                 HStack(spacing: 4) {
-                    Image(systemName: "plus").font(.caption2)
-                    Text("自定义图片…").font(.caption2)
+                    Image(systemName: "plus").font(RuneFont.caption2)
+                    Text("自定义图片…").font(RuneFont.caption2)
                 }
             }
             .buttonStyle(.bordered)
@@ -664,7 +664,7 @@ struct CaptureSettingsTab: View {
                     Text("自动关闭时间")
                     Spacer()
                     Text("\(Int(overlayDismissDelay)) 秒")
-                        .font(.system(.caption, design: .monospaced))
+                        .font(RuneFont.caption)
                         .foregroundStyle(.secondary)
                 }
                 Slider(value: $overlayDismissDelay, in: 2...15, step: 1)
@@ -751,7 +751,7 @@ struct RecordingSettingsTab: View {
                 .pickerStyle(.segmented)
 
                 Text("帧率越高，视频越流畅，但文件也会更大。")
-                    .font(.caption)
+                    .font(RuneFont.caption)
                     .foregroundStyle(.secondary)
             }
 
@@ -764,7 +764,7 @@ struct RecordingSettingsTab: View {
                 Label("先显示轻量结果卡", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(RuneTheme.accent)
                 Text("你可以从结果卡直接剪辑，也可以拖到其他应用或在访达中查看。")
-                    .font(.caption)
+                    .font(RuneFont.caption)
                     .foregroundStyle(.secondary)
             }
 
@@ -830,7 +830,7 @@ struct ShortcutRow: View {
                     isRecording = true
                 } label: {
                     Text(shortcutDisplayString)
-                        .font(.system(.caption, design: .monospaced))
+                        .font(RuneFont.caption)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .frame(minWidth: 60)
@@ -958,7 +958,7 @@ final class ShortcutRecorderNSView: NSView {
 
         let text = "请按下快捷键…" as NSString
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+            .font: RuneFont.appKit(size: 11, weight: .medium),
             .foregroundColor: NSColor.controlAccentColor,
         ]
         let size = text.size(withAttributes: attrs)
@@ -1011,7 +1011,7 @@ struct HistoryTab: View {
                         confirmsMovingAllToTrash = true
                     } label: {
                         Label("全部移到废纸篓", systemImage: "trash")
-                            .font(.caption)
+                            .font(RuneFont.caption)
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.red)
@@ -1040,13 +1040,13 @@ struct HistoryTab: View {
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(record.filename)
-                                    .font(.caption.weight(.medium))
+                                    .font(RuneFont.caption.weight(.medium))
                                     .lineLimit(1)
                                 Text("\(record.pixelWidth) × \(record.pixelHeight)")
-                                    .font(.caption2)
+                                    .font(RuneFont.caption2)
                                     .foregroundStyle(.secondary)
                                 Text(record.createdAt, style: .relative)
-                                    .font(.caption2)
+                                    .font(RuneFont.caption2)
                                     .foregroundStyle(.tertiary)
                             }
 
@@ -1057,7 +1057,7 @@ struct HistoryTab: View {
                                 PreviewOverlay.shared.show(url: url)
                             } label: {
                                 Image(systemName: "eye")
-                                    .font(.caption)
+                                    .font(RuneFont.caption)
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(.secondary)
@@ -1068,7 +1068,7 @@ struct HistoryTab: View {
                                 HistoryStore.shared.deleteRecord(record)
                             } label: {
                                 Image(systemName: "trash")
-                                    .font(.caption)
+                                    .font(RuneFont.caption)
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(.secondary)
@@ -1130,7 +1130,7 @@ struct VideosTab: View {
                         confirmsMovingAllToTrash = true
                     } label: {
                         Label("全部移到废纸篓", systemImage: "trash")
-                            .font(.caption)
+                            .font(RuneFont.caption)
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.red)
@@ -1160,17 +1160,17 @@ struct VideosTab: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 HStack(spacing: 4) {
                                     Text(record.filename)
-                                        .font(.caption.weight(.medium))
+                                        .font(RuneFont.caption.weight(.medium))
                                         .lineLimit(1)
                                     Image(systemName: "video.fill")
-                                        .font(.system(size: 8))
+                                        .font(RuneFont.swiftUI(size: 8))
                                         .foregroundStyle(.secondary)
                                 }
                                 Text("\(record.pixelWidth) × \(record.pixelHeight)")
-                                    .font(.caption2)
+                                    .font(RuneFont.caption2)
                                     .foregroundStyle(.secondary)
                                 Text(record.createdAt, style: .relative)
-                                    .font(.caption2)
+                                    .font(RuneFont.caption2)
                                     .foregroundStyle(.tertiary)
                             }
 
@@ -1181,7 +1181,7 @@ struct VideosTab: View {
                                 VideoEditorWindowController.shared.open(url: url)
                             } label: {
                                 Image(systemName: "slider.horizontal.3")
-                                    .font(.caption)
+                                    .font(RuneFont.caption)
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(.secondary)
@@ -1192,7 +1192,7 @@ struct VideosTab: View {
                                 HistoryStore.shared.deleteRecord(record)
                             } label: {
                                 Image(systemName: "trash")
-                                    .font(.caption)
+                                    .font(RuneFont.caption)
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(.secondary)
@@ -1269,14 +1269,14 @@ struct AboutTab: View {
 
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Rune")
-                            .font(.system(size: 20, weight: .bold))
+                            .font(RuneFont.swiftUI(size: 20, weight: .bold))
 
                         Text("版本 \(version)（构建 \(build)）")
-                            .font(.system(size: 12))
+                            .font(RuneFont.swiftUI(size: 12))
                             .foregroundStyle(.secondary)
 
                         Text("轻量、原生、中文的 macOS 截图工具。")
-                            .font(.system(size: 12))
+                            .font(RuneFont.swiftUI(size: 12))
                             .foregroundStyle(.tertiary)
                     }
                 }
@@ -1285,12 +1285,12 @@ struct AboutTab: View {
                 aboutSection("软件更新") {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("只连接 Rune 自己的 GitHub Release，不使用 BetterShot 的更新服务。检查时只查询版本号，不会上传截图或使用数据。")
-                            .font(.system(size: 12))
+                            .font(RuneFont.swiftUI(size: 12))
                             .foregroundStyle(.secondary)
                             .lineSpacing(2)
 
                         Toggle("启动后自动检查更新（每天最多一次）", isOn: $automaticallyChecksForUpdates)
-                            .font(.system(size: 12))
+                            .font(RuneFont.swiftUI(size: 12))
 
                         HStack(spacing: 10) {
                             Button(updateState.isChecking ? "正在检查…" : "检查更新") {
@@ -1306,7 +1306,7 @@ struct AboutTab: View {
                 aboutSection("开源致谢") {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("本软件基于 BetterShot 开源项目独立改造，原项目采用 BSD-3-Clause 许可证。版权说明保留在软件包的 LICENSE 文件中。")
-                            .font(.system(size: 12))
+                            .font(RuneFont.swiftUI(size: 12))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -1324,16 +1324,16 @@ struct AboutTab: View {
         case let .upToDate(latestVersion):
             Label("已是最新版 \(latestVersion)", systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green)
-                .font(.system(size: 12))
+                .font(RuneFont.swiftUI(size: 12))
         case let .available(update):
             Button("下载 Rune \(update.version)") {
                 NSWorkspace.shared.open(update.preferredURL)
             }
-            .font(.system(size: 12, weight: .semibold))
+            .font(RuneFont.swiftUI(size: 12, weight: .semibold))
         case let .failed(message):
             Label(message, systemImage: "exclamationmark.triangle")
                 .foregroundStyle(.secondary)
-                .font(.system(size: 12))
+                .font(RuneFont.swiftUI(size: 12))
         }
     }
 
@@ -1358,7 +1358,7 @@ struct AboutTab: View {
     private func aboutSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(title)
-                .font(.system(size: 13, weight: .bold))
+                .font(RuneFont.swiftUI(size: 13, weight: .bold))
                 .padding(.bottom, 10)
 
             content()

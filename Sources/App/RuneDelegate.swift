@@ -4,6 +4,7 @@ import AppKit
 final class RuneDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         ExceptionLogger.install()
+        RuneFont.registerBundledFonts()
         AppPreferences.applyAppearance()
         NSApp.setActivationPolicy(.accessory)
 

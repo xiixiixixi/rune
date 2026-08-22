@@ -460,7 +460,7 @@ private final class SelectionView: NSView {
         let action = isWindow ? "单击截取窗口" : "单击截取全屏"
         let label = "\(prefix) · \(w) × \(h) · \(action)" as NSString
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
+            .font: RuneFont.appKit(size: 11, weight: .medium),
             .foregroundColor: NSColor.white,
         ]
         let labelSize = label.size(withAttributes: attrs)
@@ -483,7 +483,7 @@ private final class SelectionView: NSView {
     private func drawHint() {
         let hint = "单击窗口＝截整窗　·　点桌面空白＝截全屏　·　拖拽＝自定义区域　·　Esc/右键＝取消" as NSString
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 12, weight: .medium),
+            .font: RuneFont.appKit(size: 12, weight: .medium),
             .foregroundColor: NSColor.white,
         ]
         let size = hint.size(withAttributes: attrs)
@@ -546,7 +546,7 @@ private final class SelectionView: NSView {
         }()
         let label = "\(w) × \(h)\(ratioText)" as NSString
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .medium),
+            .font: RuneFont.appKit(size: 11, weight: .medium),
             .foregroundColor: NSColor.white,
         ]
         let labelSize = label.size(withAttributes: attrs)

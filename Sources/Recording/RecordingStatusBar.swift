@@ -29,11 +29,11 @@ struct RecordingStatusBarView: View {
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(isPaused ? "录屏已暂停" : "正在录屏")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(RuneFont.swiftUI(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
 
                 Text(formatTime(elapsedSeconds))
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .font(RuneFont.swiftUI(size: 12, weight: .medium, design: .monospaced))
                     .monospacedDigit()
                     .foregroundStyle(.white.opacity(0.72))
                     .contentTransition(.numericText())
@@ -48,7 +48,7 @@ struct RecordingStatusBarView: View {
                 recorder.togglePause()
             } label: {
                 Label(isPaused ? "继续" : "暂停", systemImage: isPaused ? "play.fill" : "pause.fill")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(RuneFont.swiftUI(size: 11, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.88))
                     .padding(.horizontal, 9)
                     .frame(height: 30)
@@ -63,7 +63,7 @@ struct RecordingStatusBarView: View {
                 }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(RuneFont.swiftUI(size: 12, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.82))
                     .frame(width: 30, height: 30)
                     .background(Color.white.opacity(0.09), in: Circle())
@@ -77,7 +77,7 @@ struct RecordingStatusBarView: View {
                 RecordingStatusBarController.shared.finishRecording()
             } label: {
                 Label("结束", systemImage: "stop.fill")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(RuneFont.swiftUI(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12)
                     .frame(height: 30)
@@ -146,6 +146,7 @@ final class RecordingStatusBarController {
             auditPaused: auditPaused
         )
         .environment(\.colorScheme, .dark)
+        .runeTypography()
 
         let hostingView = NSHostingView(rootView: rootView)
         hostingView.setFrameSize(hostingView.fittingSize)

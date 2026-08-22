@@ -32,7 +32,7 @@ final class BurstReviewWindowController: NSObject, NSWindowDelegate {
             onOpenFolder: { NSWorkspace.shared.activateFileViewerSelecting(urls.isEmpty ? [directory] : [urls[0]]) },
             onClose: { [weak self] in self?.dismiss() }
         )
-        let hosting = NSHostingView(rootView: content)
+        let hosting = NSHostingView(rootView: content.runeTypography())
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 760, height: 520),
@@ -160,16 +160,16 @@ private struct BurstReviewView: View {
     private var header: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "camera.fill")
-                .font(.system(size: 22, weight: .semibold))
+                .font(RuneFont.swiftUI(size: 22, weight: .semibold))
                 .foregroundStyle(RuneTheme.accent)
                 .frame(width: 34, height: 34)
                 .background(RuneTheme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 9))
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("连拍结果")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(RuneFont.swiftUI(size: 18, weight: .semibold))
                 Text("点一下选择画面；右键可以编辑或在访达中查看")
-                    .font(.system(size: 11))
+                    .font(RuneFont.swiftUI(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -178,9 +178,9 @@ private struct BurstReviewView: View {
 
             VStack(alignment: .trailing, spacing: 3) {
                 Text("\(items.count) 张")
-                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                    .font(RuneFont.swiftUI(size: 15, weight: .semibold, design: .monospaced))
                 Text("已选 \(selected.count) 张")
-                    .font(.system(size: 11))
+                    .font(RuneFont.swiftUI(size: 11))
                     .foregroundStyle(.secondary)
             }
         }
@@ -194,12 +194,12 @@ private struct BurstReviewView: View {
         if items.isEmpty {
             VStack(spacing: 10) {
                 Image(systemName: "photo.on.rectangle.angled")
-                    .font(.system(size: 34, weight: .light))
+                    .font(RuneFont.swiftUI(size: 34, weight: .light))
                     .foregroundStyle(.tertiary)
                 Text("这一组已经清空")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(RuneFont.swiftUI(size: 14, weight: .medium))
                 Text("移到废纸篓的图片仍可以恢复")
-                    .font(.system(size: 11))
+                    .font(RuneFont.swiftUI(size: 11))
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -235,7 +235,7 @@ private struct BurstReviewView: View {
                     .background(Color.black.opacity(0.035))
 
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(RuneFont.swiftUI(size: 18, weight: .semibold))
                     .foregroundStyle(isSelected ? RuneTheme.accent : .white.opacity(0.92))
                     .shadow(color: .black.opacity(0.28), radius: 2, y: 1)
                     .padding(7)
@@ -247,7 +247,7 @@ private struct BurstReviewView: View {
             )
             .overlay(alignment: .bottomLeading) {
                 Text(String(format: "%02d", index + 1))
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .font(RuneFont.swiftUI(size: 9, weight: .semibold, design: .monospaced))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)
