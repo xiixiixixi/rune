@@ -4,7 +4,7 @@ import CaptureKitSCK
 import CoreGraphics
 import CoreImage
 import CoreVideo
-import ScreenCaptureKit
+@preconcurrency import ScreenCaptureKit
 
 /// 连拍模式。
 enum BurstMode {

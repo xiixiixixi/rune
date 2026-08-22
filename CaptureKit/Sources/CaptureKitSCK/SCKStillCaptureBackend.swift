@@ -1,7 +1,7 @@
 import AppKit
 import CaptureKit
 import CoreGraphics
-import ScreenCaptureKit
+@preconcurrency import ScreenCaptureKit
 
 /// 基于 ScreenCaptureKit 的静态截图引擎（单帧，非持续推流）。
 ///

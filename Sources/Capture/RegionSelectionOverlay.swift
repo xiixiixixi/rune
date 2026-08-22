@@ -1,7 +1,7 @@
 import AppKit
 import CaptureKit
 import CaptureKitSCK
-import ScreenCaptureKit
+@preconcurrency import ScreenCaptureKit
 
 struct RegionSelection {
     let pointsRect: CGRect  // In global display points (top-left origin, matching SCK coordinates)
