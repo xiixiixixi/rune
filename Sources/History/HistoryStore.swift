@@ -1,6 +1,6 @@
 import Foundation
 import AppKit
-import AVFoundation
+@preconcurrency import AVFoundation
 
 /// Persists capture history as a JSON file in Application Support.
 @MainActor

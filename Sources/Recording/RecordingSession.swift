@@ -1,5 +1,5 @@
-import AVFoundation
-import CoreMedia
+@preconcurrency import AVFoundation
+@preconcurrency import CoreMedia
 
 final class RecordingSession: @unchecked Sendable {
     private let writer: AVAssetWriter

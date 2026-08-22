@@ -1,6 +1,6 @@
 import SwiftUI
 import AVKit
-import AVFoundation
+@preconcurrency import AVFoundation
 
 struct AVPlayerRepresentable: NSViewRepresentable {
     let player: AVPlayer

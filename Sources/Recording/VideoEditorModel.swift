@@ -1,7 +1,7 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import AppKit
 import SwiftUI
-import CoreImage
+@preconcurrency import CoreImage
 
 @MainActor
 @Observable

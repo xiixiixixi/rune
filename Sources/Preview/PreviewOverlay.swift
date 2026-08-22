@@ -1,5 +1,5 @@
 import AppKit
-import AVFoundation
+@preconcurrency import AVFoundation
 import SwiftUI
 
 /// 截图或录屏完成后的轻量结果卡。文件已经保存，卡片只承接下一步动作。

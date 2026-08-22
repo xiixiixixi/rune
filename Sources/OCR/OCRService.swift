@@ -1,5 +1,5 @@
 import AppKit
-import Vision
+@preconcurrency import Vision
 
 /// OCR 识别结果（M3：文字与条码结构化分开）。
 struct OCRResult {

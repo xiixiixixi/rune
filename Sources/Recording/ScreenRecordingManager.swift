@@ -1,5 +1,5 @@
 @preconcurrency import ScreenCaptureKit
-import AVFoundation
+@preconcurrency import AVFoundation
 import AppKit
 
 /// SCStream 在后台线程回调，主界面在主线程启停录制。

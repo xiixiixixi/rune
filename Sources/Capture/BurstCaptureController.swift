@@ -2,8 +2,8 @@ import AppKit
 import CaptureKit
 import CaptureKitSCK
 import CoreGraphics
-import CoreImage
-import CoreVideo
+@preconcurrency import CoreImage
+@preconcurrency import CoreVideo
 @preconcurrency import ScreenCaptureKit
 
 /// 连拍模式。
