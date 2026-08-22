@@ -11,6 +11,7 @@ final class ScrollCaptureController {
     static let shared = ScrollCaptureController()
 
     private(set) var isActive = false
+    private var isPreparing = false
     private(set) var capturedFrameCount = 0
     private(set) var stitchedHeight = 0
     private(set) var statusMessage = "请选择要滚动的区域"
@@ -31,7 +32,9 @@ final class ScrollCaptureController {
     private init() {}
 
     func start(on screen: NSScreen? = nil, presetRegion: CGRect? = nil) async {
-        guard !isActive else { return }
+        guard !isActive, !isPreparing else { return }
+        isPreparing = true
+        defer { isPreparing = false }
         guard await ScreenCapturePermissionController.shared.ensurePermission(
             for: .scrollCapture,
             on: screen

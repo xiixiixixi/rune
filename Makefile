@@ -23,9 +23,12 @@ APP_RELEASE  = $(DERIVED_DIR)/Build/Products/$(CONFIG_REL)/$(PRODUCT_NAME).app
 VERSION     := $(shell python3 -c "import json; print(json.load(open('version.json'))['version'])")
 DMG_NAME     = Rune-$(VERSION).dmg
 DMG_DIR      = release
-# 默认使用 macOS 的临时本地签名，避免依赖旧项目留下的开发证书。
-# 有正式 Apple 开发者证书后，可通过 LOCAL_SIGN_IDENTITY 覆盖。
+# 正式 Apple 证书可通过 LOCAL_SIGN_IDENTITY 覆盖。本地默认使用 ad-hoc 签名，
+# 但显式固定 designated requirement，避免每次编译都因 cdhash 变化而丢失屏幕录制权限。
 LOCAL_SIGN_IDENTITY ?= -
+ifeq ($(strip $(LOCAL_SIGN_IDENTITY)),-)
+LOCAL_SIGN_REQUIREMENTS = --requirements '=designated => identifier "com.tc.rune"'
+endif
 
 .PHONY: build release run dmg clean lint test-build version ship help
 
@@ -54,6 +57,7 @@ build: ## 编译调试版并固定签名
 	fi
 	@codesign --force --options runtime --timestamp=none --identifier com.tc.rune \
 		--entitlements Resources/Rune.entitlements \
+		$(LOCAL_SIGN_REQUIREMENTS) \
 		--sign "$(LOCAL_SIGN_IDENTITY)" "$(APP_DEBUG)"
 	@codesign --verify --deep --strict "$(APP_DEBUG)"
 	@echo "==> $(APP_DEBUG)"
@@ -74,6 +78,7 @@ release: ## 编译双架构正式版并完成本地签名
 		build
 	@codesign --force --options runtime --timestamp=none --identifier com.tc.rune \
 		--entitlements Resources/Rune.entitlements \
+		$(LOCAL_SIGN_REQUIREMENTS) \
 		--sign "$(LOCAL_SIGN_IDENTITY)" "$(APP_RELEASE)"
 	@codesign --verify --deep --strict "$(APP_RELEASE)"
 	@echo "==> $(APP_RELEASE)"

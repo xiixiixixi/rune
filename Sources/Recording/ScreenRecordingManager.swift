@@ -66,14 +66,14 @@ final class ScreenRecordingManager: NSObject {
 
     func startFullScreenRecording(on screen: NSScreen? = nil) async throws -> Bool {
         guard state == .idle else { return false }
-        guard await ScreenCapturePermissionController.shared.ensurePermission(
-            for: .recording,
-            on: screen
-        ) else { return false }
         state = .preparing
         defer {
             if state == .preparing { resetAfterFailedStart() }
         }
+        guard await ScreenCapturePermissionController.shared.ensurePermission(
+            for: .recording,
+            on: screen
+        ) else { return false }
 
         let captureAudio = AppPreferences.recordingCaptureAudio
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
@@ -113,6 +113,10 @@ final class ScreenRecordingManager: NSObject {
 
     func startAreaRecording(on screen: NSScreen? = nil) async throws -> Bool {
         guard state == .idle else { return false }
+        state = .preparing
+        defer {
+            if state == .preparing { resetAfterFailedStart() }
+        }
         guard await ScreenCapturePermissionController.shared.ensurePermission(
             for: .recording,
             on: screen
@@ -121,10 +125,6 @@ final class ScreenRecordingManager: NSObject {
         let overlay = RegionSelectionOverlay()
         guard let selection = await overlay.selectRegion() else { return false }
 
-        state = .preparing
-        defer {
-            if state == .preparing { resetAfterFailedStart() }
-        }
         let captureAudio = AppPreferences.recordingCaptureAudio
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         let center = CGPoint(x: selection.pointsRect.midX, y: selection.pointsRect.midY)

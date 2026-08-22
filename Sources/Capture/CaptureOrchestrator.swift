@@ -11,7 +11,6 @@ final class CaptureOrchestrator {
 
     private(set) var lastCaptureURL: URL?
     private var captureInProgress = false
-    private var pendingCaptures: [(ShortcutService.Action, NSScreen?)] = []
     private var captureScreen: NSScreen?
 
     /// 基于 ScreenCaptureKit 的单帧截图引擎，供全屏、区域、窗口和 OCR 使用。
@@ -20,20 +19,15 @@ final class CaptureOrchestrator {
     private init() {}
 
     func performCapture(_ action: ShortcutService.Action, on screen: NSScreen? = nil) async {
-        if captureInProgress {
-            pendingCaptures.append((action, screen))
-            return
-        }
+        // 截图和权限引导都是交互流程；重复热键直接忽略，不能排队后连续弹窗。
+        guard !captureInProgress else { return }
         captureInProgress = true
         captureScreen = screen
-        await executeCapture(action)
-        while let (next, nextScreen) = pendingCaptures.first {
-            pendingCaptures.removeFirst()
-            captureScreen = nextScreen
-            await executeCapture(next)
+        defer {
+            captureScreen = nil
+            captureInProgress = false
         }
-        captureScreen = nil
-        captureInProgress = false
+        await executeCapture(action)
     }
 
     private func executeCapture(_ action: ShortcutService.Action) async {

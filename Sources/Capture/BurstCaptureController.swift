@@ -26,6 +26,7 @@ final class BurstCaptureController: NSObject {
 
     private(set) var isActive = false
     private(set) var isPaused = false
+    private var isPreparing = false
     private(set) var capturedCount = 0
     private(set) var currentMode: BurstMode = .burst
 
@@ -164,12 +165,16 @@ final class BurstCaptureController: NSObject {
     /// 新流程入口：先框选区域（三合一：拖=区域/点窗=整窗/点桌面=全屏），
     /// 弹"开始控制台"（选模式），点开始才真正拍。region 随后喂给引擎。
     func prepareAndBegin(presetMode: BurstMode, on screen: NSScreen? = nil) async {
+        guard !isPreparing else { return }
         guard !isActive else {
             // 已在拍：再次触发=停止
             stop()
             BurstLiveBarController.shared.dismiss()
             return
         }
+
+        isPreparing = true
+        defer { isPreparing = false }
 
         guard await ScreenCapturePermissionController.shared.ensurePermission(
             for: .burst,

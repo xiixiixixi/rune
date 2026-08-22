@@ -20,6 +20,7 @@ private final class ScreenCapturePermissionGuideModel {
     let purpose: ScreenCapturePermissionPurpose
     var isGranted = false
     var isChecking = false
+    var needsRestart = false
     var statusText = "尚未允许 Rune"
     var detailText = "只需设置一次"
 
@@ -36,9 +37,12 @@ final class ScreenCapturePermissionController: NSObject, NSWindowDelegate {
 
     private var window: NSWindow?
     private var model: ScreenCapturePermissionGuideModel?
-    private var continuation: CheckedContinuation<Bool, Never>?
+    private var continuations: [CheckedContinuation<Bool, Never>] = []
     private var activationObserver: NSObjectProtocol?
     private var requestedSystemPromptThisLaunch = false
+    private var systemRequestReportedGranted = false
+    private var openedSystemSettings = false
+    private var suppressGuideThisLaunch = false
     private var auditForcesDenied = false
 
     private override init() {}
@@ -47,21 +51,40 @@ final class ScreenCapturePermissionController: NSObject, NSWindowDelegate {
         for purpose: ScreenCapturePermissionPurpose,
         on screen: NSScreen? = nil
     ) async -> Bool {
-        if CGPreflightScreenCaptureAccess() { return true }
+        if CGPreflightScreenCaptureAccess() {
+            if !continuations.isEmpty {
+                finish(granted: true)
+            }
+            return true
+        }
+
+        // 已有权限窗口时只加入同一次等待，不重建窗口、更不连续弹多个。
+        if window?.isVisible == true {
+            window?.makeKeyAndOrderFront(nil)
+            return await waitForCurrentGuide()
+        }
+
+        // 用户已经关掉过本轮引导后，本次启动不再打扰；重启后仍会重新检测。
+        if suppressGuideThisLaunch { return false }
 
         // 先走系统原生授权提示：这样 Rune 会出现在系统设置的权限列表中。
         if !requestedSystemPromptThisLaunch {
             requestedSystemPromptThisLaunch = true
-            if CGRequestScreenCaptureAccess(), CGPreflightScreenCaptureAccess() {
+            systemRequestReportedGranted = CGRequestScreenCaptureAccess()
+            if systemRequestReportedGranted, CGPreflightScreenCaptureAccess() {
                 return true
             }
         }
 
-        continuation?.resume(returning: false)
-        continuation = nil
         return await withCheckedContinuation { continuation in
-            self.continuation = continuation
+            continuations.append(continuation)
             presentGuide(for: purpose, on: screen)
+        }
+    }
+
+    private func waitForCurrentGuide() async -> Bool {
+        await withCheckedContinuation { continuation in
+            continuations.append(continuation)
         }
     }
 
@@ -70,9 +93,8 @@ final class ScreenCapturePermissionController: NSObject, NSWindowDelegate {
         purpose: ScreenCapturePermissionPurpose,
         on screen: NSScreen? = nil
     ) {
-        continuation?.resume(returning: false)
-        continuation = nil
         auditForcesDenied = true
+        suppressGuideThisLaunch = false
         presentGuide(for: purpose, on: screen)
     }
     #endif
@@ -81,15 +103,25 @@ final class ScreenCapturePermissionController: NSObject, NSWindowDelegate {
         for purpose: ScreenCapturePermissionPurpose,
         on screen: NSScreen?
     ) {
+        if window?.isVisible == true {
+            window?.makeKeyAndOrderFront(nil)
+            return
+        }
         dismissWindowOnly()
 
         let model = ScreenCapturePermissionGuideModel(purpose: purpose)
+        if systemRequestReportedGranted {
+            model.needsRestart = true
+            model.statusText = "权限尚未在当前进程生效"
+            model.detailText = "重新启动 Rune 后即可继续"
+        }
         self.model = model
 
         let rootView = ScreenCapturePermissionGuideView(
             model: model,
             onOpenSettings: { [weak self] in self?.openSystemSettings() },
             onRecheck: { [weak self] in self?.recheckPermission() },
+            onRestart: { [weak self] in self?.restartApplication() },
             onLater: { [weak self] in self?.finish(granted: false) }
         )
         let hostingView = NSHostingView(rootView: rootView)
@@ -126,6 +158,7 @@ final class ScreenCapturePermissionController: NSObject, NSWindowDelegate {
     }
 
     private func openSystemSettings() {
+        openedSystemSettings = true
         guard let url = URL(
             string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
         ), NSWorkspace.shared.open(url) else {
@@ -167,22 +200,47 @@ final class ScreenCapturePermissionController: NSObject, NSWindowDelegate {
             model.isGranted = granted
             if granted {
                 model.statusText = "已经允许 Rune"
-                model.detailText = "正在继续(model.purpose.rawValue)…"
+                model.detailText = "正在继续\(model.purpose.rawValue)…"
                 try? await Task.sleep(for: .milliseconds(350))
                 self.finish(granted: true)
             } else {
-                model.statusText = "还没有允许 Rune"
-                model.detailText = "如果系统要求重新打开，请重新启动 Rune"
+                model.needsRestart = self.openedSystemSettings
+                    || self.systemRequestReportedGranted
+                if model.needsRestart {
+                    model.statusText = "权限尚未在当前进程生效"
+                    model.detailText = "重新启动 Rune 后即可继续"
+                } else {
+                    model.statusText = "还没有允许 Rune"
+                    model.detailText = "请在系统设置中打开 Rune"
+                }
             }
         }
     }
 
+    private func restartApplication() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = ["-n", Bundle.main.bundlePath]
+
+        do {
+            try process.run()
+            finish(granted: false)
+            NSApp.terminate(nil)
+        } catch {
+            model?.statusText = "没有成功重新启动"
+            model?.detailText = "请手动退出并重新打开 Rune"
+        }
+    }
+
     private func finish(granted: Bool) {
-        let continuation = self.continuation
-        self.continuation = nil
+        let continuations = self.continuations
+        self.continuations.removeAll()
+        if !granted {
+            suppressGuideThisLaunch = true
+        }
         dismissWindowOnly()
         auditForcesDenied = false
-        continuation?.resume(returning: granted)
+        continuations.forEach { $0.resume(returning: granted) }
     }
 
     private func dismissWindowOnly() {
@@ -193,6 +251,7 @@ final class ScreenCapturePermissionController: NSObject, NSWindowDelegate {
         window?.orderOut(nil)
         window = nil
         model = nil
+        openedSystemSettings = false
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -204,6 +263,7 @@ private struct ScreenCapturePermissionGuideView: View {
     @Bindable var model: ScreenCapturePermissionGuideModel
     let onOpenSettings: () -> Void
     let onRecheck: () -> Void
+    let onRestart: () -> Void
     let onLater: () -> Void
 
     var body: some View {
@@ -231,13 +291,19 @@ private struct ScreenCapturePermissionGuideView: View {
 
                 Spacer()
 
-                Button("重新检查") { onRecheck() }
-                    .buttonStyle(.bordered)
-                    .disabled(model.isChecking)
+                if model.needsRestart {
+                    Button("重新启动 Rune") { onRestart() }
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut(.defaultAction)
+                } else {
+                    Button("重新检查") { onRecheck() }
+                        .buttonStyle(.bordered)
+                        .disabled(model.isChecking)
 
-                Button("打开系统设置") { onOpenSettings() }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
+                    Button("打开系统设置") { onOpenSettings() }
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut(.defaultAction)
+                }
             }
             .padding(.top, 16)
         }
