@@ -528,9 +528,14 @@ private struct RecentCaptureSection: View {
                             let url = HistoryStore.shared.displayURLForRecord(record)
                             let kind = record.kind
                             let thumbnail = await Task.detached {
-                                HistoryStore.renderThumbnail(at: url, kind: kind, maxSize: 180)
+                                HistoryStore.renderThumbnailCGImage(at: url, kind: kind, maxSize: 180)
                             }.value
-                            thumbnails[record.id] = thumbnail
+                            if let thumbnail {
+                                thumbnails[record.id] = NSImage(
+                                    cgImage: thumbnail,
+                                    size: NSSize(width: thumbnail.width, height: thumbnail.height)
+                                )
+                            }
                         }
                     }
                 }

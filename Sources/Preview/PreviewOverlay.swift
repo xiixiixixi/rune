@@ -307,7 +307,7 @@ struct PreviewCardView: View {
         }
 
         if isVideo, ["mov", "mp4"].contains(url.pathExtension.lowercased()) {
-            Task.detached {
+            Task {
                 let asset = AVURLAsset(url: url)
                 let generator = AVAssetImageGenerator(asset: asset)
                 generator.appliesPreferredTrackTransform = true
@@ -318,7 +318,7 @@ struct PreviewCardView: View {
                         cgImage: cgImage,
                         size: NSSize(width: cgImage.width, height: cgImage.height)
                     )
-                    await MainActor.run { thumbnail = image }
+                    thumbnail = image
                 }
             }
         } else {

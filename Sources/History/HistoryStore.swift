@@ -136,13 +136,27 @@ final class HistoryStore {
         kind: CaptureKind,
         maxSize: CGFloat = 120
     ) -> NSImage? {
+        guard let image = renderThumbnailCGImage(at: url, kind: kind, maxSize: maxSize) else {
+            return nil
+        }
+        return NSImage(
+            cgImage: image,
+            size: NSSize(width: image.width, height: image.height)
+        )
+    }
+
+    /// 后台任务只传递不可变的 CGImage；到主线程后再包装成 NSImage。
+    nonisolated static func renderThumbnailCGImage(
+        at url: URL,
+        kind: CaptureKind,
+        maxSize: CGFloat = 120
+    ) -> CGImage? {
         if kind == .recording {
             let asset = AVURLAsset(url: url)
             let generator = AVAssetImageGenerator(asset: asset)
             generator.appliesPreferredTrackTransform = true
             generator.maximumSize = CGSize(width: maxSize, height: maxSize)
-            guard let cgImage = try? generator.copyCGImage(at: .zero, actualTime: nil) else { return nil }
-            return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+            return try? generator.copyCGImage(at: .zero, actualTime: nil)
         }
 
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
@@ -153,8 +167,7 @@ final class HistoryStore {
             kCGImageSourceCreateThumbnailWithTransform: true,
         ]
 
-        guard let thumb = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
-        return NSImage(cgImage: thumb, size: NSSize(width: thumb.width, height: thumb.height))
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 
     // MARK: - Delete

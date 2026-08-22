@@ -1095,10 +1095,13 @@ struct HistoryTab: View {
         let kind = record.kind
         let recordID = record.id.uuidString
         Task.detached {
-            let thumb = HistoryStore.renderThumbnail(at: url, kind: kind, maxSize: 80)
+            let thumb = HistoryStore.renderThumbnailCGImage(at: url, kind: kind, maxSize: 80)
             await MainActor.run {
                 if let thumb {
-                    thumbnails[recordID] = thumb
+                    thumbnails[recordID] = NSImage(
+                        cgImage: thumb,
+                        size: NSSize(width: thumb.width, height: thumb.height)
+                    )
                 }
             }
         }
@@ -1216,10 +1219,13 @@ struct VideosTab: View {
         let kind = record.kind
         let recordID = record.id.uuidString
         Task.detached {
-            let thumb = HistoryStore.renderThumbnail(at: url, kind: kind, maxSize: 80)
+            let thumb = HistoryStore.renderThumbnailCGImage(at: url, kind: kind, maxSize: 80)
             await MainActor.run {
                 if let thumb {
-                    thumbnails[recordID] = thumb
+                    thumbnails[recordID] = NSImage(
+                        cgImage: thumb,
+                        size: NSSize(width: thumb.width, height: thumb.height)
+                    )
                 }
             }
         }
