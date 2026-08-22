@@ -1,0 +1,355 @@
+import AppKit
+import CoreGraphics
+import SwiftUI
+
+enum ScreenCapturePermissionPurpose: String {
+    case screenshot = "截图"
+    case burst = "连拍"
+    case recording = "录屏"
+    case scrollCapture = "滚动长图"
+    case ocr = "文字识别"
+
+    var continuationText: String {
+        "允许后会继续\(rawValue)"
+    }
+}
+
+@MainActor
+@Observable
+private final class ScreenCapturePermissionGuideModel {
+    let purpose: ScreenCapturePermissionPurpose
+    var isGranted = false
+    var isChecking = false
+    var statusText = "尚未允许 Rune"
+    var detailText = "只需设置一次"
+
+    init(purpose: ScreenCapturePermissionPurpose) {
+        self.purpose = purpose
+    }
+}
+
+/// 截图、连拍、录屏、长图和 OCR 共用的一次性权限引导。
+/// 系统原生提示负责真正授权；这个窗口负责把原因、隐私边界和恢复路径说清楚。
+@MainActor
+final class ScreenCapturePermissionController: NSObject, NSWindowDelegate {
+    static let shared = ScreenCapturePermissionController()
+
+    private var window: NSWindow?
+    private var model: ScreenCapturePermissionGuideModel?
+    private var continuation: CheckedContinuation<Bool, Never>?
+    private var activationObserver: NSObjectProtocol?
+    private var requestedSystemPromptThisLaunch = false
+    private var auditForcesDenied = false
+
+    private override init() {}
+
+    func ensurePermission(
+        for purpose: ScreenCapturePermissionPurpose,
+        on screen: NSScreen? = nil
+    ) async -> Bool {
+        if CGPreflightScreenCaptureAccess() { return true }
+
+        // 先走系统原生授权提示：这样 Rune 会出现在系统设置的权限列表中。
+        if !requestedSystemPromptThisLaunch {
+            requestedSystemPromptThisLaunch = true
+            if CGRequestScreenCaptureAccess(), CGPreflightScreenCaptureAccess() {
+                return true
+            }
+        }
+
+        continuation?.resume(returning: false)
+        continuation = nil
+        return await withCheckedContinuation { continuation in
+            self.continuation = continuation
+            presentGuide(for: purpose, on: screen)
+        }
+    }
+
+    #if DEBUG
+    func showForAudit(
+        purpose: ScreenCapturePermissionPurpose,
+        on screen: NSScreen? = nil
+    ) {
+        continuation?.resume(returning: false)
+        continuation = nil
+        auditForcesDenied = true
+        presentGuide(for: purpose, on: screen)
+    }
+    #endif
+
+    private func presentGuide(
+        for purpose: ScreenCapturePermissionPurpose,
+        on screen: NSScreen?
+    ) {
+        dismissWindowOnly()
+
+        let model = ScreenCapturePermissionGuideModel(purpose: purpose)
+        self.model = model
+
+        let rootView = ScreenCapturePermissionGuideView(
+            model: model,
+            onOpenSettings: { [weak self] in self?.openSystemSettings() },
+            onRecheck: { [weak self] in self?.recheckPermission() },
+            onLater: { [weak self] in self?.finish(granted: false) }
+        )
+        let hostingView = NSHostingView(rootView: rootView)
+        let size = NSSize(width: 460, height: 390)
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.titled, .closable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Rune 屏幕权限"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
+        window.isReleasedWhenClosed = false
+        window.backgroundColor = .windowBackgroundColor
+        window.contentView = hostingView
+        window.delegate = self
+        window.collectionBehavior = [.moveToActiveSpace]
+
+        if let visibleFrame = (screen ?? NSScreen.main)?.visibleFrame {
+            window.setFrameOrigin(NSPoint(
+                x: visibleFrame.midX - size.width / 2,
+                y: visibleFrame.midY - size.height / 2
+            ))
+        } else {
+            window.center()
+        }
+
+        self.window = window
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        installActivationObserver()
+    }
+
+    private func openSystemSettings() {
+        guard let url = URL(
+            string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+        ), NSWorkspace.shared.open(url) else {
+            model?.statusText = "没有打开系统设置"
+            model?.detailText = "请手动打开“隐私与安全性”"
+            return
+        }
+        model?.statusText = "等待你在系统设置中打开 Rune"
+        model?.detailText = "返回 Rune 后会自动检查"
+    }
+
+    private func installActivationObserver() {
+        if let activationObserver {
+            NotificationCenter.default.removeObserver(activationObserver)
+        }
+        activationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: NSApp,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard self?.window?.isVisible == true else { return }
+                self?.recheckPermission(autoTriggered: true)
+            }
+        }
+    }
+
+    private func recheckPermission(autoTriggered: Bool = false) {
+        guard let model, !model.isChecking else { return }
+        model.isChecking = true
+        model.statusText = "正在检查…"
+        model.detailText = ""
+
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(autoTriggered ? 180 : 320))
+            guard let self, let model = self.model else { return }
+            let granted = !self.auditForcesDenied && CGPreflightScreenCaptureAccess()
+            model.isChecking = false
+            model.isGranted = granted
+            if granted {
+                model.statusText = "已经允许 Rune"
+                model.detailText = "正在继续(model.purpose.rawValue)…"
+                try? await Task.sleep(for: .milliseconds(350))
+                self.finish(granted: true)
+            } else {
+                model.statusText = "还没有允许 Rune"
+                model.detailText = "如果系统要求重新打开，请重新启动 Rune"
+            }
+        }
+    }
+
+    private func finish(granted: Bool) {
+        let continuation = self.continuation
+        self.continuation = nil
+        dismissWindowOnly()
+        auditForcesDenied = false
+        continuation?.resume(returning: granted)
+    }
+
+    private func dismissWindowOnly() {
+        if let activationObserver {
+            NotificationCenter.default.removeObserver(activationObserver)
+        }
+        activationObserver = nil
+        window?.orderOut(nil)
+        window = nil
+        model = nil
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        finish(granted: false)
+    }
+}
+
+private struct ScreenCapturePermissionGuideView: View {
+    @Bindable var model: ScreenCapturePermissionGuideModel
+    let onOpenSettings: () -> Void
+    let onRecheck: () -> Void
+    let onLater: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+                .padding(.top, 34)
+
+            privacyCard
+                .padding(.top, 22)
+
+            steps
+                .padding(.top, 18)
+
+            status
+                .padding(.top, 18)
+
+            Spacer(minLength: 18)
+            Divider()
+
+            HStack(spacing: 10) {
+                Button("稍后") { onLater() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .keyboardShortcut(.cancelAction)
+
+                Spacer()
+
+                Button("重新检查") { onRecheck() }
+                    .buttonStyle(.bordered)
+                    .disabled(model.isChecking)
+
+                Button("打开系统设置") { onOpenSettings() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(.top, 16)
+        }
+        .padding(.horizontal, 28)
+        .padding(.bottom, 22)
+        .frame(width: 460, height: 390)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .tint(RuneTheme.accent)
+    }
+
+    private var header: some View {
+        HStack(alignment: .top, spacing: 16) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(RuneTheme.accent.opacity(0.10))
+                    .frame(width: 58, height: 58)
+                Image(systemName: "macwindow")
+                    .font(.system(size: 27, weight: .medium))
+                    .foregroundStyle(RuneTheme.accent)
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("先允许 Rune 看见屏幕")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(RuneTheme.textPrimary)
+                Text("这是截图、连拍和录屏共同需要的一次设置")
+                    .font(.system(size: 13))
+                    .foregroundStyle(RuneTheme.textSecondary)
+                Text(model.purpose.continuationText)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(RuneTheme.accent)
+            }
+        }
+    }
+
+    private var privacyCard: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "lock.shield.fill")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(RuneTheme.accent)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("只在你主动截图、连拍或录屏时读取画面")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("识别、打码和图片处理都在这台 Mac 上完成。")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(RuneTheme.accent.opacity(0.055))
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private var steps: some View {
+        HStack(spacing: 0) {
+            permissionStep(number: "1", title: "打开系统设置")
+            stepConnector
+            permissionStep(number: "2", title: "打开 Rune")
+            stepConnector
+            permissionStep(number: "3", title: "返回 Rune")
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("授权步骤：打开系统设置，打开 Rune，返回 Rune")
+    }
+
+    private func permissionStep(number: String, title: String) -> some View {
+        VStack(spacing: 6) {
+            Text(number)
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .frame(width: 24, height: 24)
+                .background(Circle().fill(RuneTheme.accent))
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(RuneTheme.textPrimary)
+                .lineLimit(1)
+        }
+        .frame(width: 106)
+    }
+
+    private var stepConnector: some View {
+        Rectangle()
+            .fill(RuneTheme.separator)
+            .frame(height: 1)
+            .frame(maxWidth: .infinity)
+            .offset(y: -10)
+    }
+
+    private var status: some View {
+        HStack(spacing: 8) {
+            if model.isChecking {
+                ProgressView()
+                    .controlSize(.small)
+            } else {
+                Circle()
+                    .fill(model.isGranted ? Color.green : RuneTheme.accent)
+                    .frame(width: 8, height: 8)
+            }
+            Text(model.statusText)
+                .font(.system(size: 12, weight: .semibold))
+            if !model.detailText.isEmpty {
+                Text("· \(model.detailText)")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("权限状态：\(model.statusText)，\(model.detailText)")
+    }
+}

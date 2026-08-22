@@ -27,6 +27,14 @@ final class MenuBarPopoverController: NSObject {
         }
 
         statusItem = item
+
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--audit-menu") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                self?.openAuditPopover()
+            }
+        }
+        #endif
     }
 
     @objc private func togglePopover(_ sender: NSStatusBarButton) {
@@ -67,6 +75,24 @@ final class MenuBarPopoverController: NSObject {
 
         startEventMonitor()
     }
+
+    #if DEBUG
+    private func openAuditPopover() {
+        if panel == nil {
+            createPanel()
+        }
+        guard let panel, let screen = NSScreen.main else { return }
+
+        let visibleFrame = screen.visibleFrame
+        let panelX = visibleFrame.midX - panel.frame.width / 2
+        let panelY = visibleFrame.maxY - panel.frame.height - 24
+        panel.setFrameOrigin(NSPoint(x: panelX, y: panelY))
+        panel.alphaValue = 1
+        panel.orderFrontRegardless()
+        isOpen = true
+        DebugAuditSnapshot.captureAfter("20-menu-complete-redesign.png")
+    }
+    #endif
 
     func closePopover() {
         guard let panel, isOpen else { return }

@@ -57,7 +57,7 @@ final class CaptureOrchestrator {
         case .recording:
             break
         case .burst:
-            // 金手指在 ShortcutService 热键回调里直接处理（开始/停止），不走 orchestrator。
+            // 连拍在 ShortcutService 热键回调里直接处理（开始/停止），不走 orchestrator。
             break
         }
     }
@@ -66,28 +66,19 @@ final class CaptureOrchestrator {
 
     /// M1 TCC 引导：截图前检查屏幕录制权限，未授权时弹引导框并打开系统设置。
     /// 返回 false 表示无权限（调用方应中止截图）。
-    private func ensureScreenCapturePermission() -> Bool {
-        if CGPreflightScreenCaptureAccess() { return true }
-        // 无权限：弹引导框
-        let alert = NSAlert()
-        alert.messageText = "需要屏幕录制权限"
-        alert.informativeText = "Rune需要屏幕录制权限才能截图。请在系统设置的「隐私与安全性 > 屏幕与系统音频录制」中允许“Rune”，然后重新打开Rune。"
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "打开系统设置")
-        alert.addButton(withTitle: "以后再说")
-        if alert.runModal() == .alertFirstButtonReturn {
-            // Deep link 到系统设置的屏幕录制页
-            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
-                NSWorkspace.shared.open(url)
-            }
-        }
-        return false
+    private func ensureScreenCapturePermission(
+        for purpose: ScreenCapturePermissionPurpose
+    ) async -> Bool {
+        await ScreenCapturePermissionController.shared.ensurePermission(
+            for: purpose,
+            on: captureScreen
+        )
     }
 
     /// M1 第⑤步：全屏截图经 ScreenCaptureKit 单帧引擎，直接拿到内存中的 CGImage，
     /// 省掉旧流程"写临时文件再读回"的重复 IO。后处理（美化/保存/预览）与旧流程一致。
     private func captureFullscreenViaSCK() async {
-        guard ensureScreenCapturePermission() else { return }
+        guard await ensureScreenCapturePermission(for: .screenshot) else { return }
         let delay = AppPreferences.selfTimerDelay
         if delay != .off {
             await CountdownOverlay.shared.showCountdown(seconds: delay.rawValue)
@@ -102,6 +93,7 @@ final class CaptureOrchestrator {
             }
         } catch {
             print("全屏截图失败：\(error.localizedDescription)")
+            showCaptureError("截图失败", detail: "没有抓到屏幕画面，请重试")
             return
         }
 
@@ -112,7 +104,7 @@ final class CaptureOrchestrator {
     /// M1 第⑤步（续）：区域截图经应用自己的 RegionSelectionOverlay 拿选区，
     /// 再走 SCK 引擎截取该区域。不再用 screencapture -s 系统命令。
     private func captureRegionViaSCK() async {
-        guard ensureScreenCapturePermission() else { return }
+        guard await ensureScreenCapturePermission(for: .screenshot) else { return }
         let delay = AppPreferences.selfTimerDelay
         if delay != .off {
             await CountdownOverlay.shared.showCountdown(seconds: delay.rawValue)
@@ -135,6 +127,7 @@ final class CaptureOrchestrator {
             }
         } catch {
             print("区域截图失败：\(error.localizedDescription)")
+            showCaptureError("截图失败", detail: "选区没有保存，请重新截一次")
             return
         }
 
@@ -175,7 +168,7 @@ final class CaptureOrchestrator {
     }
 
     private func captureWindowViaSCK() async {
-        guard ensureScreenCapturePermission() else { return }
+        guard await ensureScreenCapturePermission(for: .screenshot) else { return }
         // 挑窗口期间后台预热引擎
         prewarmEngineInBackground()
         // 1. 弹窗口选择器，拿 CGWindowID
@@ -188,6 +181,7 @@ final class CaptureOrchestrator {
             frame = try await sckEngine.capture(.window(selection.windowID))
         } catch {
             print("窗口截图失败：\(error.localizedDescription)")
+            showCaptureError("窗口截图失败", detail: "这个窗口暂时无法捕获，请重试")
             return
         }
 
@@ -218,28 +212,29 @@ final class CaptureOrchestrator {
         }
         if let burstRegion = CaptureConfirmController.shared.pendingBurstRegion {
             CaptureConfirmController.shared.clearPendingBurst()
-            await BurstCaptureController.shared.start(mode: .burst, on: screen, region: burstRegion)
-            if BurstCaptureController.shared.isActive {
-                BurstLiveBarController.shared.show(mode: .burst) {
-                    BurstCaptureController.shared.stop()
-                }
-            }
+            BurstCaptureController.shared.configureAndBegin(
+                presetMode: .burst,
+                on: screen,
+                region: burstRegion
+            )
             return
         }
         guard let annotations else { return }   // 取消：零残留
 
         guard let tempURL = writeCGImageToTemp(frame.image) else { return }
 
-        let record = await HistoryStore.shared.importCapture(from: tempURL)
-        if let record {
-            lastCaptureURL = HistoryStore.shared.urlForRecord(record)
+        guard let record = await HistoryStore.shared.importCapture(from: tempURL) else {
+            try? FileManager.default.removeItem(at: tempURL)
+            showCaptureError("截图没有保存", detail: "请检查磁盘空间后重试")
+            return
         }
-        guard let capturedURL = lastCaptureURL else { return }
+        let capturedURL = HistoryStore.shared.urlForRecord(record)
+        lastCaptureURL = capturedURL
 
         // 清理临时文件（importCapture 已复制到保存目录）
         try? FileManager.default.removeItem(at: tempURL)
 
-        await galleryApplyAndSave(capturedURL, recordID: record?.id, annotations: annotations)
+        await galleryApplyAndSave(capturedURL, recordID: record.id, annotations: annotations)
     }
 
     /// 供滚动截图等扩展功能复用统一的保存、美化、历史与预览流程。
@@ -274,31 +269,6 @@ final class CaptureOrchestrator {
         NSScreen.screens.first { displayID(for: $0) == id }
     }
 
-    private func captureAndProcess(_ capture: () async throws -> URL?) async {
-        let delay = AppPreferences.selfTimerDelay
-        if delay != .off {
-            await CountdownOverlay.shared.showCountdown(seconds: delay.rawValue)
-        }
-
-        do {
-            guard let url = try await capture() else { return }
-
-            ScreenCapture.shared.playShutterSound()
-
-            let record = await HistoryStore.shared.importCapture(from: url)
-            if let record {
-                lastCaptureURL = HistoryStore.shared.urlForRecord(record)
-            }
-
-            guard let capturedURL = lastCaptureURL else { return }
-
-            await galleryApplyAndSave(capturedURL, recordID: record?.id)
-        } catch {
-            print("截图失败：\(error.localizedDescription)")
-        }
-    }
-
-
     private func performColorPick() async {
         let overlay = ColorPickerOverlay()
         guard let hex = await overlay.pickColor() else { return }
@@ -317,7 +287,7 @@ final class CaptureOrchestrator {
     /// M3：OCR 取词。走应用自己的 RegionSelectionOverlay 选区 → SCK 截图 → OCRService 识别。
     /// 不再用老的 screencapture 命令 + ScreenCapture.captureAndOCR。
     private func performOCR() async {
-        guard ensureScreenCapturePermission() else { return }
+        guard await ensureScreenCapturePermission(for: .ocr) else { return }
         // 1. 选区（复用区域截图的选区 overlay）
         let selection = await RegionSelectionOverlay().selectRegion()
         guard let selection else { return }  // 用户取消
@@ -328,6 +298,7 @@ final class CaptureOrchestrator {
             frame = try await sckEngine.capture(.region(selection.pointsRect))
         } catch {
             print("OCR 截图失败: \(error.localizedDescription)")
+            showCaptureError("文字识别失败", detail: "选区没有捕获成功，请重试")
             return
         }
 
@@ -344,31 +315,38 @@ final class CaptureOrchestrator {
                 )
                 return
             }
-            // 复制原文到剪贴板
-            let pasteboard = NSPasteboard.general
-            pasteboard.clearContents()
-            pasteboard.setString(result.combinedText, forType: .string)
             ScreenCapture.shared.playShutterSound()
-            ToastWindow.shared.show(
-                title: "文字识别",
-                message: "识别结果已复制到剪贴板",
-                icon: NSImage(named: "AppIcon") ?? NSApp.applicationIconImage,
+            OCRResultPanelController.shared.show(
+                result: result,
+                near: selection.pointsRect,
                 on: captureScreen
             )
         } catch {
             print("OCR 识别失败: \(error.localizedDescription)")
+            ToastWindow.shared.show(
+                title: "文字识别失败",
+                message: error.localizedDescription,
+                systemIcon: "exclamationmark.triangle",
+                on: captureScreen
+            )
         }
     }
 
     private func galleryApplyAndSave(_ url: URL, recordID: UUID? = nil, annotations: [AnnotationItem] = []) async {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return }
+              let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+            showCaptureError("无法读取截图", detail: "原图仍保留在 Rune 历史中")
+            return
+        }
 
         let config = AppPreferences.defaultBeautifierConfig
         // 确认模式：标注随成品一起烘焙（底图 base 仍存无标注原图，编辑器可重编）
         let rendered = BeautifierRenderer.render(image: cgImage, config: config, annotations: annotations)
 
-        guard let rendered else { return }
+        guard let rendered else {
+            showCaptureError("无法生成截图", detail: "原图仍保留在 Rune 历史中")
+            return
+        }
 
         let savedURL = saveImage(rendered)
 
@@ -393,6 +371,13 @@ final class CaptureOrchestrator {
                 icon: appIcon,
                 on: captureScreen
             )
+        } else {
+            ToastWindow.shared.show(
+                title: "无法写入所选文件夹",
+                message: "原图已保存在 Rune 历史中，请检查保存位置",
+                systemIcon: "exclamationmark.triangle",
+                on: captureScreen
+            )
         }
 
         PreviewOverlay.shared.show(url: displayURL, on: captureScreen)
@@ -404,12 +389,14 @@ final class CaptureOrchestrator {
         // M2 自动命名保存：用 AppPreferences 生成器（系统截图风格），冲突加 _2/_3 后缀。
         let baseName = AppPreferences.generateFileName(ext: ext)
         let dirURL = URL(fileURLWithPath: dir)
+        let stem = (baseName as NSString).deletingPathExtension
         var filename = baseName
         var url = dirURL.appendingPathComponent(filename)
-        if FileManager.default.fileExists(atPath: url.path) {
-            let stem = (baseName as NSString).deletingPathExtension
-            filename = "\(stem)_2.\(ext)"
+        var suffix = 2
+        while FileManager.default.fileExists(atPath: url.path) {
+            filename = "\(stem)_\(suffix).\(ext)"
             url = dirURL.appendingPathComponent(filename)
+            suffix += 1
         }
 
         guard let destination = CGImageDestinationCreateWithURL(
@@ -475,5 +462,14 @@ final class CaptureOrchestrator {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.writeObjects([nsImage])
+    }
+
+    private func showCaptureError(_ title: String, detail: String) {
+        ToastWindow.shared.show(
+            title: title,
+            message: detail,
+            systemIcon: "exclamationmark.triangle",
+            on: captureScreen
+        )
     }
 }

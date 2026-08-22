@@ -2,13 +2,14 @@ import AppKit
 import AVFoundation
 import SwiftUI
 
-/// Shows a floating preview card after capture. Uses a borderless NSPanel.
+/// 截图或录屏完成后的轻量结果卡。文件已经保存，卡片只承接下一步动作。
 @MainActor
 @Observable
 final class PreviewOverlay {
     static let shared = PreviewOverlay()
 
     private(set) var currentURL: URL?
+    private(set) var currentKind: CaptureKind = .screenshot
     private(set) var isVisible = false
     private var panel: NSPanel?
     private var dismissTask: Task<Void, Never>?
@@ -16,11 +17,14 @@ final class PreviewOverlay {
 
     private init() {}
 
-    func show(url: URL, on screen: NSScreen? = nil) {
+    func show(
+        url: URL,
+        on screen: NSScreen? = nil,
+        kindOverride: CaptureKind? = nil
+    ) {
         dismissTask?.cancel()
-        dismissTask = nil
-
         currentURL = url
+        currentKind = kindOverride ?? (isVideo(url) ? .recording : .screenshot)
         targetScreen = screen
         isVisible = true
 
@@ -30,37 +34,56 @@ final class PreviewOverlay {
 
         positionPanel()
         panel?.orderFront(nil)
-
         scheduleDismiss()
     }
 
     func dismiss() {
         dismissTask?.cancel()
         dismissTask = nil
-
         panel?.orderOut(nil)
         panel = nil
         isVisible = false
         currentURL = nil
+        currentKind = .screenshot
     }
 
-    // MARK: - Panel Setup
+    func pauseAutoDismiss() {
+        dismissTask?.cancel()
+        dismissTask = nil
+    }
 
-    func openAnnotateEditor() {
+    func resumeAutoDismiss() {
+        scheduleDismiss()
+    }
+
+    func openEditor() {
         guard let url = currentURL else { return }
         let screen = targetScreen
+        let kind = currentKind
         dismiss()
-        let ext = url.pathExtension.lowercased()
-        if ext == "mov" || ext == "mp4" {
+        if kind == .recording {
             VideoEditorWindowController.shared.open(url: url, on: screen)
         } else {
             EditorWindowController.shared.open(url: url, on: screen)
         }
     }
 
+    func pinScreenshot() {
+        guard let url = currentURL, currentKind == .screenshot else { return }
+        let screen = targetScreen
+        dismiss()
+        PinnedScreenshotController.shared.pin(url: url, on: screen)
+    }
+
+    func revealInFinder() {
+        guard let url = currentURL else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+        dismiss()
+    }
+
     private func createPanel() {
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 160, height: 130),
+            contentRect: NSRect(x: 0, y: 0, width: 272, height: 224),
             styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -72,10 +95,7 @@ final class PreviewOverlay {
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isMovableByWindowBackground = false
-
-        let hostingView = NSHostingView(rootView: PreviewCardView(overlay: self))
-        panel.contentView = hostingView
-
+        panel.contentView = NSHostingView(rootView: PreviewCardView(overlay: self))
         self.panel = panel
     }
 
@@ -86,22 +106,25 @@ final class PreviewOverlay {
             ?? NSScreen.main
         guard let panel, let screen else { return }
 
-        let screenFrame = screen.visibleFrame
-        let panelSize = CGSize(width: 200, height: 170)
-
+        let visible = screen.visibleFrame
+        let size = CGSize(width: 272, height: 224)
+        let inset: CGFloat = 16
         let x: CGFloat
-        let y: CGFloat
 
         switch AppPreferences.overlayPosition {
         case .bottomRight:
-            x = screenFrame.maxX - panelSize.width
-            y = screenFrame.minY
+            x = visible.maxX - size.width - inset
         case .bottomLeft:
-            x = screenFrame.minX
-            y = screenFrame.minY
+            x = visible.minX + inset
         }
 
-        panel.setFrame(NSRect(origin: NSPoint(x: x, y: y), size: panelSize), display: true)
+        panel.setFrame(
+            NSRect(
+                origin: NSPoint(x: x, y: visible.minY + inset),
+                size: size
+            ),
+            display: true
+        )
     }
 
     private func scheduleDismiss() {
@@ -112,71 +135,43 @@ final class PreviewOverlay {
             dismiss()
         }
     }
-}
 
-// MARK: - Preview Card SwiftUI View
+    private func isVideo(_ url: URL) -> Bool {
+        ["mov", "mp4"].contains(url.pathExtension.lowercased())
+    }
+}
 
 struct PreviewCardView: View {
     let overlay: PreviewOverlay
-    @State private var isHovered = false
+
     @State private var thumbnail: NSImage?
 
-    private let cardSize = CGSize(width: 130, height: 98)
-
     private var isVideo: Bool {
-        guard let ext = overlay.currentURL?.pathExtension.lowercased() else { return false }
-        return ext == "mov" || ext == "mp4"
+        overlay.currentKind == .recording
     }
 
     var body: some View {
-        Group {
-            if let image = thumbnail {
-                ZStack {
-                    Image(nsImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: cardSize.width, height: cardSize.height)
-                        .clipped()
-
-                    if isVideo {
-                        Image(systemName: "play.circle.fill")
-                            .font(.system(size: 28))
-                            .foregroundStyle(.white.opacity(0.9))
-                            .shadow(radius: 4)
-                    }
-
-                    if isHovered {
-                        hoverOverlay(image: image)
-                            .transition(.opacity.animation(.easeInOut(duration: 0.15)))
-                    }
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.2), lineWidth: 0.5)
-                )
-                .shadow(color: .black.opacity(0.35), radius: 14, y: 6)
-                .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
-                .onHover { hovering in
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        isHovered = hovering
-                    }
-                }
-                .onTapGesture {
-                    overlay.openAnnotateEditor()
-                }
-                .onDrag {
-                    if let url = overlay.currentURL {
-                        return NSItemProvider(object: url as NSURL)
-                    }
-                    return NSItemProvider(object: image)
-                }
+        VStack(spacing: 0) {
+            header
+            preview
+            footer
+        }
+        .frame(width: 248, height: 200)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
+        )
+        .shadow(color: .black.opacity(0.20), radius: 18, y: 7)
+        .frame(width: 272, height: 224, alignment: .bottomTrailing)
+        .onHover { hovering in
+            if hovering {
+                overlay.pauseAutoDismiss()
+            } else {
+                overlay.resumeAutoDismiss()
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-        .padding(.trailing, 20)
-        .padding(.bottom, 24)
-        .frame(width: 200, height: 170)
         .onChange(of: overlay.currentURL) { _, newURL in
             loadThumbnail(from: newURL)
         }
@@ -185,116 +180,149 @@ struct PreviewCardView: View {
         }
     }
 
+    private var header: some View {
+        HStack(spacing: 7) {
+            Image(systemName: isVideo ? "record.circle.fill" : "checkmark.circle.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(RuneTheme.accent)
+
+            Text(isVideo ? "录屏已保存" : "截图已保存")
+                .font(.system(size: 12, weight: .semibold))
+
+            Spacer()
+
+            Button {
+                overlay.dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .frame(width: 24, height: 24)
+                    .background(Color.primary.opacity(0.055), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .help("关闭预览")
+            .accessibilityLabel("关闭预览")
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 40)
+    }
+
+    private var preview: some View {
+        ZStack {
+            Color.primary.opacity(0.035)
+
+            if let thumbnail {
+                Image(nsImage: thumbnail)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 224, height: 112)
+                    .clipped()
+            } else {
+                ProgressView()
+                    .controlSize(.small)
+            }
+
+            if isVideo {
+                Image(systemName: "play.circle.fill")
+                    .font(.system(size: 30))
+                    .foregroundStyle(.white.opacity(0.94))
+                    .shadow(color: .black.opacity(0.34), radius: 4, y: 2)
+            }
+        }
+        .frame(width: 224, height: 112)
+        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture { overlay.openEditor() }
+        .onDrag {
+            if let url = overlay.currentURL {
+                return NSItemProvider(object: url as NSURL)
+            }
+            return NSItemProvider()
+        }
+        .help(isVideo ? "打开录屏编辑器，也可以直接拖到其他应用" : "打开截图编辑器，也可以直接拖到其他应用")
+    }
+
+    private var footer: some View {
+        HStack(spacing: 8) {
+            if isVideo {
+                Button {
+                    overlay.openEditor()
+                } label: {
+                    RuneTheme.primaryButtonLabel("剪辑", systemImage: "slider.horizontal.3")
+                }
+                .buttonStyle(RuneTheme.RunePressStyle())
+            } else {
+                Button {
+                    guard let thumbnail else { return }
+                    let pasteboard = NSPasteboard.general
+                    pasteboard.clearContents()
+                    pasteboard.writeObjects([thumbnail])
+                    overlay.dismiss()
+                } label: {
+                    RuneTheme.primaryButtonLabel("复制", systemImage: "doc.on.doc")
+                }
+                .buttonStyle(RuneTheme.RunePressStyle())
+                .disabled(thumbnail == nil)
+
+                actionButton("pin", help: "贴在桌面上") {
+                    overlay.pinScreenshot()
+                }
+
+                actionButton("pencil", help: "打开编辑器") {
+                    overlay.openEditor()
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            actionButton("folder", help: "在访达中显示") {
+                overlay.revealInFinder()
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 48)
+    }
+
+    private func actionButton(_ systemName: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.primary.opacity(0.76))
+                .frame(width: 32, height: 32)
+                .background(Color.primary.opacity(0.055), in: Circle())
+        }
+        .buttonStyle(RuneTheme.RunePressStyle())
+        .help(help)
+        .accessibilityLabel(help)
+    }
+
     private func loadThumbnail(from url: URL?) {
         guard let url else {
             thumbnail = nil
             return
         }
 
-        let ext = url.pathExtension.lowercased()
-        if ext == "mov" || ext == "mp4" {
+        if isVideo, ["mov", "mp4"].contains(url.pathExtension.lowercased()) {
             Task.detached {
                 let asset = AVURLAsset(url: url)
                 let generator = AVAssetImageGenerator(asset: asset)
                 generator.appliesPreferredTrackTransform = true
-                generator.maximumSize = CGSize(width: 260, height: 196)
+                generator.maximumSize = CGSize(width: 448, height: 224)
                 if let result = try? await generator.image(at: .zero) {
                     let cgImage = result.image
-                    let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
-                    await MainActor.run { thumbnail = nsImage }
+                    let image = NSImage(
+                        cgImage: cgImage,
+                        size: NSSize(width: cgImage.width, height: cgImage.height)
+                    )
+                    await MainActor.run { thumbnail = image }
                 }
             }
         } else {
             thumbnail = NSImage(contentsOf: url)
         }
-    }
-
-    @ViewBuilder
-    private func hoverOverlay(image: NSImage) -> some View {
-        ZStack {
-            Color.black.opacity(0.45)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    overlay.openAnnotateEditor()
-                }
-
-            // Corner actions
-            VStack {
-                HStack {
-                    // Delete
-                    cornerButton("trash.circle.fill", help: "删除这张截图（连同文件）") {
-                        if let url = overlay.currentURL {
-                            if let record = HistoryStore.shared.records.first(where: {
-                                HistoryStore.shared.urlForRecord($0) == url
-                            }) {
-                                HistoryStore.shared.deleteRecord(record)
-                            } else {
-                                try? FileManager.default.removeItem(at: url)
-                            }
-                        }
-                        overlay.dismiss()
-                    }
-                    Spacer()
-                    // Dismiss
-                    cornerButton("xmark.circle.fill", help: "关闭预览") {
-                        overlay.dismiss()
-                    }
-                }
-
-                Spacer()
-
-                HStack {
-                    // Annotate (pen icon)
-                    cornerButton("pencil.circle.fill", help: "打开编辑器，标注这张图") {
-                        overlay.openAnnotateEditor()
-                    }
-                    Spacer()
-                    // Pin screenshot
-                    cornerButton("pin.circle.fill", help: "钉在桌面上（贴图）") {
-                        if let url = overlay.currentURL {
-                            PinnedScreenshotController.shared.pin(url: url)
-                        }
-                        overlay.dismiss()
-                    }
-                }
-            }
-            .padding(6)
-
-            // Center pill actions
-            HStack(spacing: 6) {
-                pillButton("复制") {
-                    let pb = NSPasteboard.general
-                    pb.clearContents()
-                    pb.writeObjects([image])
-                    overlay.dismiss()
-                }
-                pillButton("保存") {
-                    overlay.dismiss()
-                }
-            }
-        }
-    }
-
-    private func cornerButton(_ systemName: String, help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .symbolRenderingMode(.palette)
-                .foregroundStyle(.white, .white.opacity(0.25))
-                .font(.system(size: 16))
-        }
-        .buttonStyle(.plain)
-        .help(help)
-    }
-
-    private func pillButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.primary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(.white.opacity(0.85), in: Capsule())
-        }
-        .buttonStyle(.plain)
     }
 }

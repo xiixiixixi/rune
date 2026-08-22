@@ -6,14 +6,14 @@ import CoreImage
 import CoreVideo
 import ScreenCaptureKit
 
-/// 金手指模式。
+/// 连拍模式。
 enum BurstMode {
     case burst        // 连拍：持续抓到松开或上限
     case fixedCount   // 定数：抓固定 N 张
     case timelapse    // 延时：按间隔抓
 }
 
-/// 金手指（Burst Capture）：像相机连拍一样快速抓多张屏幕截图。
+/// 连拍（Burst Capture）：像相机连拍一样快速抓多张屏幕截图。
 ///
 /// 三种模式：连拍（持续）/ 定数（固定 N 张）/ 延时（按间隔）。
 /// 技术：SCStream 持续推流，每收到一帧立即写盘 PNG（不在内存囤积，控制内存）。
@@ -25,6 +25,7 @@ final class BurstCaptureController: NSObject {
     // MARK: - 状态
 
     private(set) var isActive = false
+    private(set) var isPaused = false
     private(set) var capturedCount = 0
     private(set) var currentMode: BurstMode = .burst
 
@@ -52,16 +53,23 @@ final class BurstCaptureController: NSObject {
     /// 延时拍摄循环任务（取代 DispatchSourceTimer——其回调在后台队列执行，
     /// 曾触发 Swift 6 隔离断言崩溃 dispatch_assert_queue；Task 循环天然在 MainActor）
     private var timelapseTask: Task<Void, Never>?
+    private var startupWatchdogTask: Task<Void, Never>?
     private var singleShotEngine = SCKStillCaptureBackend()
+    private var targetScreen: NSScreen?
     private var selectedDisplayID: CGDirectDisplayID?
     /// 连拍区域（CG 全局点坐标，nil=整屏）
     private var selectedRegion: CGRect?
     /// nonisolated 回调写入用（SCStreamOutput 回调从 captureQueue 来）。
     private var pendingStop = false
+    /// 用户主动放弃时不进入结果整理台；已经写入的图片整组移到废纸篓。
+    private var shouldDiscardOnEnd = false
+    private var consecutiveCaptureFailures = 0
+    private var failureMessage: String?
     /// 原子计数器：收帧回调从 captureQueue 来，用 NSLock 保护，避免跳 MainActor 的并发开销。
     /// nonisolated(unsafe)：用 frameLock 手动保护并发。
     private let frameLock = NSLock()
     private nonisolated(unsafe) var _frameIndex = 0
+    private nonisolated(unsafe) var _isPaused = false
     /// 收帧回调所需的上下文（dir/limit/mode），在 start 时捕获，供 nonisolated 回调用。
     private struct BurstContext { let dir: URL?; let limit: Int; let mode: BurstMode }
     private nonisolated(unsafe) var burstContext: BurstContext?
@@ -77,33 +85,39 @@ final class BurstCaptureController: NSObject {
     func start(mode: BurstMode, on screen: NSScreen? = nil, region: CGRect? = nil) async {
         guard !isActive else { return }
 
-        // 权限处理：用系统 API 请求（触发系统弹框），而不是自己弹自定义框。
-        // CGPreflightScreenCaptureAccess 只检查不请求；CGRequestScreenCaptureAccess 会触发系统弹框。
-        if !CGPreflightScreenCaptureAccess() {
-            // 主动请求权限——系统会弹出“Rune想要录制屏幕”的系统级对话框
-            let granted = CGRequestScreenCaptureAccess()
-            if !granted {
-                let alert = NSAlert()
-                alert.messageText = "需要屏幕录制权限"
-                alert.informativeText = "请在系统设置的「隐私与安全性 > 屏幕与系统音频录制」中允许“Rune”，然后重新打开Rune。"
-                alert.addButton(withTitle: "知道了")
-                alert.runModal()
-            }
-            // 请求后不继续（用户需要去授权，下次再按才会真正截图）
-            return
-        }
+        guard await ScreenCapturePermissionController.shared.ensurePermission(
+            for: .burst,
+            on: screen
+        ) else { return }
 
         isActive = true
+        isPaused = false
         currentMode = mode
         capturedCount = 0
         pendingStop = false
+        shouldDiscardOnEnd = false
+        consecutiveCaptureFailures = 0
+        failureMessage = nil
         selectedDisplayID = screen.flatMap { Self.displayID(for: $0) }
+        targetScreen = screen
         selectedRegion = region   // CG 全局点坐标；推流走 sourceRect、延时走 .region
-        frameLock.withLock { _frameIndex = 0 }
+        frameLock.withLock {
+            _frameIndex = 0
+            _isPaused = false
+        }
 
-        // 创建输出文件夹：~/Library/Application Support/Rune/连续截图/<时间戳>/
-        let stamp = Int(Date().timeIntervalSince1970)
-        let dir = burstBaseDir.appendingPathComponent("\(stamp)", isDirectory: true)
+        // 每次连拍单独放进用户设置的截图目录，拍完不用钻进系统隐藏文件夹找。
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
+        let sessionName = "Rune 连拍 \(formatter.string(from: Date()))"
+        let base = URL(fileURLWithPath: AppPreferences.saveDirectory, isDirectory: true)
+        var dir = base.appendingPathComponent(sessionName, isDirectory: true)
+        var suffix = 2
+        while FileManager.default.fileExists(atPath: dir.path) {
+            dir = base.appendingPathComponent("\(sessionName) \(suffix)", isDirectory: true)
+            suffix += 1
+        }
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         outputDir = dir
 
@@ -113,11 +127,36 @@ final class BurstCaptureController: NSObject {
         case .timelapse:
             startTimelapseCapture(on: screen)
         }
+
+        if isActive {
+            startupWatchdogTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(3))
+                guard let self, self.isActive, !self.isPaused, self.capturedCount == 0 else { return }
+                self.failureMessage = "3 秒内没有抓到画面，请检查权限或选区"
+                self.endCapture()
+            }
+        }
     }
 
     /// 停止抓拍（手动或达到上限时调）。
     func stop() {
         guard isActive else { return }
+        pendingStop = true
+        endCapture()
+    }
+
+    /// 暂停只停止写入新画面，已经拍到的图片原样保留；再次调用继续同一组连拍。
+    func togglePause() {
+        guard isActive else { return }
+        isPaused.toggle()
+        let paused = isPaused
+        frameLock.withLock { _isPaused = paused }
+    }
+
+    /// 放弃当前这一组。为避免误删，文件进入废纸篓而不是永久删除。
+    func discard() {
+        guard isActive else { return }
+        shouldDiscardOnEnd = true
         pendingStop = true
         endCapture()
     }
@@ -132,20 +171,45 @@ final class BurstCaptureController: NSObject {
             return
         }
 
+        guard await ScreenCapturePermissionController.shared.ensurePermission(
+            for: .burst,
+            on: screen
+        ) else { return }
+
         let selection = await RegionSelectionOverlay().selectRegion()
         guard let selection else { return }   // Esc/右键取消
 
         let sizeText = "\(Int(selection.pointsRect.width))×\(Int(selection.pointsRect.height))"
-        nonisolated(unsafe) let region = selection.pointsRect
+        configureAndBegin(
+            presetMode: presetMode,
+            on: screen,
+            region: selection.pointsRect,
+            regionSizeText: sizeText
+        )
+    }
+
+    /// 已经有选区时直接进入连拍准备面板。普通截图工具栏里的「连拍」走这里，
+    /// 不会让用户再框一次同样的区域。
+    func configureAndBegin(
+        presetMode: BurstMode,
+        on screen: NSScreen? = nil,
+        region: CGRect,
+        regionSizeText: String? = nil
+    ) {
+        let sizeText = regionSizeText ?? "\(Int(region.width))×\(Int(region.height))"
+        let selectedRegion = region
         nonisolated(unsafe) let targetScreen = screen
 
-        BurstSetupPanelController.shared.show(regionSizeText: sizeText, presetMode: presetMode) { mode in
+        BurstSetupPanelController.shared.show(
+            regionSizeText: sizeText,
+            presetMode: presetMode,
+            on: targetScreen
+        ) { mode in
             Task {
-                await self.start(mode: mode, on: targetScreen, region: region)
+                await self.start(mode: mode, on: targetScreen, region: selectedRegion)
                 guard self.isActive else { return }
-                BurstLiveBarController.shared.show(mode: mode) {
+                BurstLiveBarController.shared.show(mode: mode, on: targetScreen) {
                     self.stop()
-                    BurstLiveBarController.shared.dismiss()
                 }
             }
         }
@@ -158,7 +222,8 @@ final class BurstCaptureController: NSObject {
         do {
             content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         } catch {
-            print("金手指：获取内容失败 \(error)")
+            print("Rune 连拍：获取内容失败 \(error)")
+            failureMessage = "无法读取屏幕内容，请检查屏幕录制权限"
             endCapture()
             return
         }
@@ -204,14 +269,16 @@ final class BurstCaptureController: NSObject {
         do {
             try scStream.addStreamOutput(self, type: .screen, sampleHandlerQueue: captureQueue)
         } catch {
-            print("金手指：addStreamOutput 失败 \(error)")
+            print("Rune 连拍：addStreamOutput 失败 \(error)")
+            failureMessage = "连拍引擎没有启动，请重试"
             endCapture()
             return
         }
         stream = scStream
         do { try await scStream.startCapture() }
         catch {
-            print("金手指：startCapture 失败 \(error)")
+            print("Rune 连拍：startCapture 失败 \(error)")
+            failureMessage = "连拍引擎没有启动，请重试"
             endCapture()
         }
     }
@@ -227,6 +294,10 @@ final class BurstCaptureController: NSObject {
         timelapseTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self, self.isActive else { return }
+                if self.isPaused {
+                    try? await Task.sleep(for: .milliseconds(120))
+                    continue
+                }
                 await self.captureOneTimelapseFrame()
                 if self.capturedCount >= limit {
                     self.endCapture()
@@ -250,8 +321,10 @@ final class BurstCaptureController: NSObject {
             let frame = try await singleShotEngine.capture(target)
             try writePNG(frame.image, to: dir, index: capturedCount + 1)
             capturedCount += 1
+            consecutiveCaptureFailures = 0
         } catch {
-            print("金手指：延时单帧失败 \(error)")
+            print("Rune 连拍：延时单帧失败 \(error)")
+            noteCaptureFailure("连续三次没有抓到延时画面")
         }
     }
 
@@ -267,21 +340,31 @@ final class BurstCaptureController: NSObject {
         guard let cg = context.createCGImage(ciImage, from: ciImage.extent) else { return }
 
         // 加锁取序号
-        let index: Int = frameLock.withLock {
+        let index: Int? = frameLock.withLock {
+            guard !_isPaused, _frameIndex < limit else { return nil }
             _frameIndex += 1
             return _frameIndex
         }
+        guard let index else { return }
         // 写盘（线程安全：每个文件名唯一，CGImageDestination 是栈上局部变量）
-        let name = String(format: "连续截图_%03d.png", index)
+        let name = String(format: "连拍_%03d.png", index)
         let url = dir.appendingPathComponent(name)
-        if let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) {
-            CGImageDestinationAddImage(dest, cg, nil)
-            _ = CGImageDestinationFinalize(dest)
+        guard let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) else {
+            frameLock.withLock { _frameIndex = max(0, _frameIndex - 1) }
+            Task { @MainActor in self.noteCaptureFailure("连续三次无法写入连拍图片") }
+            return
+        }
+        CGImageDestinationAddImage(dest, cg, nil)
+        guard CGImageDestinationFinalize(dest) else {
+            frameLock.withLock { _frameIndex = max(0, _frameIndex - 1) }
+            Task { @MainActor in self.noteCaptureFailure("连续三次无法写入连拍图片") }
+            return
         }
 
         // 更新主线程计数 + 达上限检查
         let count = index
         Task { @MainActor in
+            self.consecutiveCaptureFailures = 0
             self.capturedCount = count
             if count >= limit {
                 self.endCapture()
@@ -292,7 +375,7 @@ final class BurstCaptureController: NSObject {
     // MARK: - 写盘
 
     private func writePNG(_ image: CGImage, to dir: URL, index: Int) throws {
-        let name = String(format: "连续截图_%03d.png", index)
+        let name = String(format: "连拍_%03d.png", index)
         let url = dir.appendingPathComponent(name)
         guard let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) else {
             throw NSError(domain: "BurstCapture", code: 1)
@@ -317,37 +400,78 @@ final class BurstCaptureController: NSObject {
         // 停延时定时器
         timelapseTask?.cancel()
         timelapseTask = nil
-        // 收掉拍摄状态条，弹完成提示（说清拍了多少、去哪了）
+        startupWatchdogTask?.cancel()
+        startupWatchdogTask = nil
+        // 收掉拍摄状态条，进入结果整理；不再突然弹 Finder 打断用户。
         BurstLiveBarController.shared.dismiss()
 
         let dir = outputDir
         let count = capturedCount
+        let screen = targetScreen
+        let discardsResults = shouldDiscardOnEnd
+        let capturedFailureMessage = failureMessage
+        burstContext = nil
+        outputDir = nil
+        shouldDiscardOnEnd = false
+        failureMessage = nil
+        consecutiveCaptureFailures = 0
+        isPaused = false
+        frameLock.withLock { _isPaused = false }
+
+        if discardsResults {
+            if let dir, FileManager.default.fileExists(atPath: dir.path) {
+                do {
+                    try FileManager.default.trashItem(at: dir, resultingItemURL: nil)
+                    ToastWindow.shared.show(
+                        title: "已放弃连拍",
+                        message: count > 0 ? "这组图片已移到废纸篓，可以恢复" : "没有保存任何图片",
+                        systemIcon: "trash",
+                        on: screen
+                    )
+                } catch {
+                    ToastWindow.shared.show(
+                        title: "无法移到废纸篓",
+                        message: "图片仍保留在原文件夹中",
+                        systemIcon: "exclamationmark.triangle",
+                        on: screen
+                    )
+                }
+            }
+            targetScreen = nil
+            return
+        }
 
         if count > 0 {
             ToastWindow.shared.show(
-                title: "连拍完成",
-                message: "已拍 \(count) 张，已为你打开保存文件夹",
-                systemIcon: "camera.burst"
+                title: capturedFailureMessage == nil ? "连拍完成" : "连拍已提前结束",
+                message: capturedFailureMessage.map { "\($0)；已保留 \(count) 张" }
+                    ?? "已拍 \(count) 张，可以挑选、删除或导出",
+                systemIcon: capturedFailureMessage == nil ? "camera.fill" : "exclamationmark.triangle",
+                on: screen
             )
-            // 抓到了图：回调 + 在 Finder 打开输出文件夹
             if let dir {
                 onComplete?(dir)
-                NSWorkspace.shared.open(dir)
+                BurstReviewWindowController.shared.show(directory: dir, on: screen)
             }
-            print("金手指：结束，共抓 \(count) 张，输出到 \(dir?.path ?? "?")")
+            print("Rune 连拍：结束，共抓 \(count) 张，输出到 \(dir?.path ?? "?")")
         } else {
-            // 一张都没抓到：SCStream 启动失败或权限问题，不弹 Finder
-            print("金手指：启动失败（可能屏幕录制权限未授或 SCStream 初始化失败），未抓到任何帧")
+            ToastWindow.shared.show(
+                title: "连拍没有开始",
+                message: capturedFailureMessage ?? "没有拍到画面，请检查屏幕录制权限后重试",
+                systemIcon: "exclamationmark.triangle",
+                on: screen
+            )
+            print("Rune 连拍：启动失败（可能屏幕录制权限未授或 SCStream 初始化失败），未抓到任何帧")
         }
+        targetScreen = nil
     }
 
-    // MARK: - 输出目录
-
-    private var burstBaseDir: URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = appSupport.appendingPathComponent("Rune/连续截图", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
+    private func noteCaptureFailure(_ message: String) {
+        guard isActive else { return }
+        consecutiveCaptureFailures += 1
+        guard consecutiveCaptureFailures >= 3 else { return }
+        failureMessage = message
+        endCapture()
     }
 
     private static func displayID(for screen: NSScreen) -> CGDirectDisplayID? {
@@ -361,7 +485,8 @@ final class BurstCaptureController: NSObject {
 extension BurstCaptureController: SCStreamDelegate, SCStreamOutput {
     nonisolated func stream(_ stream: SCStream, didStopWithError error: any Error) {
         Task { @MainActor in
-            print("金手指：流停止 \(error)")
+            print("Rune 连拍：流停止 \(error)")
+            self.failureMessage = "屏幕捕获意外中断，已保留拍到的画面"
             self.endCapture()
         }
     }

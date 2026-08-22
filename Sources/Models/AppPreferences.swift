@@ -16,8 +16,9 @@ enum AppPreferences {
     private static let recordingFPSKey = "bs_recordingFPS"
     private static let recordingShowCursorKey = "bs_recordingShowCursor"
     private static let recordingCaptureAudioKey = "bs_recordingCaptureAudio"
-    private static let recordingOpenEditorKey = "bs_recordingOpenEditor"
     private static let fileNameFormatKey = "bs_fileNameFormat"
+    private static let automaticallyChecksForUpdatesKey = "rune_automaticallyChecksForUpdates"
+    private static let lastAutomaticUpdateCheckKey = "rune_lastAutomaticUpdateCheck"
 
     // MARK: - Appearance
     static var appearance: AppAppearance {
@@ -36,7 +37,15 @@ enum AppPreferences {
 
     // MARK: - General
     static var saveDirectory: String {
-        get { UserDefaults.standard.string(forKey: saveDirKey) ?? NSHomeDirectory() + "/Desktop" }
+        get {
+            #if DEBUG
+            let prefix = "--audit-save-directory="
+            if let argument = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix(prefix) }) {
+                return String(argument.dropFirst(prefix.count))
+            }
+            #endif
+            return UserDefaults.standard.string(forKey: saveDirKey) ?? NSHomeDirectory() + "/Desktop"
+        }
         set { UserDefaults.standard.set(newValue, forKey: saveDirKey) }
     }
 
@@ -76,6 +85,27 @@ enum AppPreferences {
     static var playSound: Bool {
         get { UserDefaults.standard.object(forKey: playSoundKey) as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: playSoundKey) }
+    }
+
+    // MARK: - Updates
+
+    /// 默认关闭，保持 Rune 的“默认不联网”承诺；用户可在“关于”页主动开启。
+    static var automaticallyChecksForUpdates: Bool {
+        get { UserDefaults.standard.bool(forKey: automaticallyChecksForUpdatesKey) }
+        set { UserDefaults.standard.set(newValue, forKey: automaticallyChecksForUpdatesKey) }
+    }
+
+    static var lastAutomaticUpdateCheck: Date {
+        get {
+            let timestamp = UserDefaults.standard.double(forKey: lastAutomaticUpdateCheckKey)
+            return timestamp > 0 ? Date(timeIntervalSince1970: timestamp) : .distantPast
+        }
+        set {
+            UserDefaults.standard.set(
+                newValue.timeIntervalSince1970,
+                forKey: lastAutomaticUpdateCheckKey
+            )
+        }
     }
 
     // MARK: - Overlay
@@ -140,11 +170,6 @@ enum AppPreferences {
     static var recordingCaptureAudio: Bool {
         get { UserDefaults.standard.object(forKey: recordingCaptureAudioKey) as? Bool ?? false }
         set { UserDefaults.standard.set(newValue, forKey: recordingCaptureAudioKey) }
-    }
-
-    static var recordingOpenEditor: Bool {
-        get { UserDefaults.standard.object(forKey: recordingOpenEditorKey) as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: recordingOpenEditorKey) }
     }
 
     // MARK: - Default Beautifier Config

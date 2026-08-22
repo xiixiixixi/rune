@@ -25,6 +25,7 @@ final class HistoryStore {
         manifestURL = storageDir.appendingPathComponent("history.json")
 
         try? FileManager.default.createDirectory(at: storageDir, withIntermediateDirectories: true)
+        migrateLegacyBaseFiles()
         loadRecords()
     }
 
@@ -122,10 +123,26 @@ final class HistoryStore {
     }
 
     func thumbnail(for record: CaptureRecord, maxSize: CGFloat = 120) -> NSImage? {
-        let url = displayURLForRecord(record)
+        Self.renderThumbnail(
+            at: displayURLForRecord(record),
+            kind: record.kind,
+            maxSize: maxSize
+        )
+    }
 
-        if record.kind == .recording {
-            return videoThumbnail(url: url, maxSize: maxSize)
+    /// 缩略图解码可以在后台完成，避免打开菜单或记录页时卡住界面。
+    nonisolated static func renderThumbnail(
+        at url: URL,
+        kind: CaptureKind,
+        maxSize: CGFloat = 120
+    ) -> NSImage? {
+        if kind == .recording {
+            let asset = AVURLAsset(url: url)
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: maxSize, height: maxSize)
+            guard let cgImage = try? generator.copyCGImage(at: .zero, actualTime: nil) else { return nil }
+            return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
         }
 
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
@@ -140,52 +157,137 @@ final class HistoryStore {
         return NSImage(cgImage: thumb, size: NSSize(width: thumb.width, height: thumb.height))
     }
 
-    nonisolated func videoThumbnail(url: URL, maxSize: CGFloat = 120) -> NSImage? {
-        let asset = AVURLAsset(url: url)
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = CGSize(width: maxSize, height: maxSize)
-        guard let cgImage = try? generator.copyCGImage(at: .zero, actualTime: nil) else { return nil }
-        return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
-    }
-
     // MARK: - Delete
 
     func deleteRecord(_ record: CaptureRecord) {
         let url = urlForRecord(record)
-        try? FileManager.default.removeItem(at: url)
+        guard moveToTrashIfPresent(url) else { return }
         if let beautifiedPath = record.beautifiedPath {
             let beautifiedURL = URL(fileURLWithPath: beautifiedPath)
-            try? FileManager.default.removeItem(at: beautifiedURL)
+            _ = moveToTrashIfPresent(beautifiedURL)
             let baseURL = CaptureOrchestrator.baseImageURL(for: beautifiedURL)
-            try? FileManager.default.removeItem(at: baseURL)
+            _ = moveToTrashIfPresent(baseURL)
         }
         records.removeAll { $0.id == record.id }
         saveRecords()
     }
 
     func deleteAllRecords() {
-        for record in records {
-            let url = urlForRecord(record)
-            try? FileManager.default.removeItem(at: url)
-            if let beautifiedPath = record.beautifiedPath {
-                let beautifiedURL = URL(fileURLWithPath: beautifiedPath)
-                try? FileManager.default.removeItem(at: beautifiedURL)
-                let baseURL = CaptureOrchestrator.baseImageURL(for: beautifiedURL)
-                try? FileManager.default.removeItem(at: baseURL)
-            }
+        let snapshot = records
+        for record in snapshot {
+            deleteRecord(record)
         }
-        records.removeAll()
-        saveRecords()
+    }
+
+    /// 删除历史记录时统一进入废纸篓，避免一次误点永久丢失截图或录屏。
+    @discardableResult
+    private func moveToTrashIfPresent(_ url: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else { return true }
+        do {
+            try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+            return true
+        } catch {
+            print("移到废纸篓失败：\(url.lastPathComponent)：\(error)")
+            return false
+        }
     }
 
     // MARK: - Persistence
 
+    private func migrateLegacyBaseFiles() {
+        let baseDirectory = storageDir.appendingPathComponent("bases", isDirectory: true)
+        guard let urls = try? FileManager.default.contentsOfDirectory(
+            at: baseDirectory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        for oldURL in urls {
+            let name = oldURL.lastPathComponent
+            let lowercased = name.lowercased()
+            guard lowercased.hasPrefix("bettershot_") || lowercased.hasPrefix("better-shot_") else {
+                continue
+            }
+
+            let separatorIndex = name.firstIndex(of: "_")
+            let suffix = separatorIndex.map { String(name[$0...]) }
+                ?? "_\(UUID().uuidString).\((name as NSString).pathExtension)"
+            let (_, newURL) = uniqueFilename(baseName: "rune\(suffix)", in: baseDirectory)
+            do {
+                try FileManager.default.moveItem(at: oldURL, to: newURL)
+            } catch {
+                print("Rune 原图文件改名失败：\(name)：\(error)")
+            }
+        }
+    }
+
     private func loadRecords() {
         guard let data = try? Data(contentsOf: manifestURL) else { return }
-        let decoded = (try? JSONDecoder().decode([CaptureRecord].self, from: data)) ?? []
+        var decoded = (try? JSONDecoder().decode([CaptureRecord].self, from: data)) ?? []
+        var didMigrateLegacyRecords = false
+
+        for index in decoded.indices {
+            let oldFilename = decoded[index].filename
+            let lowercased = oldFilename.lowercased()
+            if lowercased.hasPrefix("bettershot_") || lowercased.hasPrefix("better-shot_") {
+                let separatorIndex = oldFilename.firstIndex(of: "_")
+                let suffix = separatorIndex.map { String(oldFilename[$0...]) }
+                    ?? "_\(decoded[index].id.uuidString).\((oldFilename as NSString).pathExtension)"
+                let desiredFilename = "rune\(suffix)"
+                let oldURL = storageDir.appendingPathComponent(oldFilename)
+                let (newFilename, newURL) = uniqueFilename(baseName: desiredFilename, in: storageDir)
+
+                do {
+                    if FileManager.default.fileExists(atPath: oldURL.path) {
+                        try FileManager.default.moveItem(at: oldURL, to: newURL)
+                    }
+                    decoded[index].filename = newFilename
+                    didMigrateLegacyRecords = true
+                } catch {
+                    print("Rune 历史文件改名失败：\(oldFilename)：\(error)")
+                }
+            }
+
+            guard let beautifiedPath = decoded[index].beautifiedPath else { continue }
+            let oldBeautifiedURL = URL(fileURLWithPath: beautifiedPath)
+            guard FileManager.default.fileExists(atPath: oldBeautifiedURL.path) else {
+                decoded[index].beautifiedPath = nil
+                didMigrateLegacyRecords = true
+                continue
+            }
+
+            let beautifiedName = oldBeautifiedURL.lastPathComponent
+            let beautifiedLowercased = beautifiedName.lowercased()
+            guard beautifiedLowercased.hasPrefix("bettershot_")
+                    || beautifiedLowercased.hasPrefix("better-shot_") else { continue }
+
+            let separatorIndex = beautifiedName.firstIndex(of: "_")
+            let suffix = separatorIndex.map { String(beautifiedName[$0...]) }
+                ?? "_\(decoded[index].id.uuidString).\((beautifiedName as NSString).pathExtension)"
+            let (_, newBeautifiedURL) = uniqueFilename(
+                baseName: "rune\(suffix)",
+                in: oldBeautifiedURL.deletingLastPathComponent()
+            )
+
+            do {
+                let oldBaseURL = CaptureOrchestrator.baseImageURL(for: oldBeautifiedURL)
+                try FileManager.default.moveItem(at: oldBeautifiedURL, to: newBeautifiedURL)
+                if FileManager.default.fileExists(atPath: oldBaseURL.path) {
+                    let newBaseURL = CaptureOrchestrator.baseImageURL(for: newBeautifiedURL)
+                    try? FileManager.default.moveItem(at: oldBaseURL, to: newBaseURL)
+                }
+                decoded[index].beautifiedPath = newBeautifiedURL.path
+                didMigrateLegacyRecords = true
+            } catch {
+                print("Rune 成品文件改名失败：\(beautifiedName)：\(error)")
+            }
+        }
+
         // Filter out records whose files no longer exist
         records = decoded.filter { FileManager.default.fileExists(atPath: urlForRecord($0).path) }
+        if didMigrateLegacyRecords {
+            saveRecords()
+        }
     }
 
     private func saveRecords() {

@@ -3,14 +3,27 @@ import UniformTypeIdentifiers
 
 struct EditorInspectorView: View {
     @Bindable var model: EditorModel
+    @State private var panel: InspectorPanel = .annotation
 
     var body: some View {
         VStack(spacing: 0) {
+            Picker("编辑面板", selection: $panel) {
+                ForEach(InspectorPanel.allCases) { item in
+                    Text(item.title).tag(item)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(12)
+
+            Divider()
+
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
+                    if panel == .annotation {
                     // MARK: Tools
                     VStack(alignment: .leading, spacing: 10) {
-                        InspectorSectionHeader("工具")
+                        InspectorSectionHeader("标注工具")
                         AnnotationInspectorToolGrid(selectedTool: model.selectedTool) { tool in
                             model.selectTool(tool)
                         }
@@ -97,9 +110,7 @@ struct EditorInspectorView: View {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 14)
                     }
-
-                    InspectorDivider()
-
+                    } else {
                     // MARK: Crop
                     ImageCropSection(model: model)
 
@@ -117,17 +128,32 @@ struct EditorInspectorView: View {
 
                     // MARK: Background
                     BackgroundPickerSection(model: model)
+                    }
 
                     Spacer(minLength: 20)
                 }
             }
             .scrollContentBackground(.hidden)
         }
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 }
 
 // MARK: - Inspector Components
+
+private enum InspectorPanel: String, CaseIterable, Identifiable {
+    case annotation
+    case appearance
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .annotation: "标注"
+        case .appearance: "外观"
+        }
+    }
+}
 
 private struct InspectorSectionHeader: View {
     let title: String
@@ -190,6 +216,7 @@ private struct AnnotationInspectorToolGrid: View {
                         .fill(selectedTool == tool ? Color.accentColor.opacity(0.15) : .clear)
                 )
                 .help(tool.title)
+                .accessibilityLabel(tool.title)
             }
         }
         .padding(4)
@@ -240,6 +267,7 @@ private struct AnnotationColorMenu: View {
             .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("标注颜色：\(selectedSwatch.title)")
         .popover(isPresented: $isPresented, arrowEdge: .trailing) {
             AnnotationColorPopover(
                 selectedSwatch: selectedSwatch,
@@ -585,6 +613,7 @@ private struct AnnotationTextStyleControls: View {
         .buttonStyle(.plain)
         .foregroundStyle(isSelected ? Color.white : Color.primary)
         .background { if isSelected { Capsule().fill(Color.accentColor) } }
+        .accessibilityLabel(alignment.accessibilityName)
     }
 
     private func syncFontSizeText() {
@@ -607,6 +636,19 @@ private struct AnnotationTextStyleControls: View {
     }
 }
 
+private extension NSTextAlignment {
+    var accessibilityName: String {
+        switch self {
+        case .left: "文字左对齐"
+        case .center: "文字居中"
+        case .right: "文字右对齐"
+        case .justified: "文字两端对齐"
+        case .natural: "文字自然对齐"
+        @unknown default: "文字对齐"
+        }
+    }
+}
+
 private struct AnnotationColorWellMenu: View {
     let selectedSwatch: AnnotationSwatch
     let onSelect: (AnnotationSwatch) -> Void
@@ -622,6 +664,7 @@ private struct AnnotationColorWellMenu: View {
                 .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).stroke(.white.opacity(0.15), lineWidth: 0.5))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("标注颜色：\(selectedSwatch.title)")
         .popover(isPresented: $isPresented, arrowEdge: .trailing) {
             AnnotationColorPopover(
                 selectedSwatch: selectedSwatch,
@@ -734,6 +777,8 @@ private struct AlignmentGridPicker: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("图像位置：\(alignment.displayName)")
+                        .accessibilityValue(selection == alignment ? "已选择" : "未选择")
                     }
                 }
             }
@@ -824,6 +869,7 @@ struct BackgroundPickerSection: View {
         }
         .buttonStyle(.plain)
         .help("无背景")
+        .accessibilityLabel("无背景")
     }
 
     private func solidButton(_ color: SolidColor) -> some View {
@@ -845,6 +891,7 @@ struct BackgroundPickerSection: View {
         }
         .buttonStyle(.plain)
         .help(color.name)
+        .accessibilityLabel("纯色背景：\(color.name)")
     }
 
     private func gradientButton(_ preset: GradientPreset) -> some View {
@@ -866,6 +913,7 @@ struct BackgroundPickerSection: View {
         }
         .buttonStyle(.plain)
         .help(preset.name)
+        .accessibilityLabel("渐变背景：\(preset.name)")
     }
 
     private func bundledImageButton(_ asset: BundledBackgrounds.ImageAsset) -> some View {
@@ -894,6 +942,7 @@ struct BackgroundPickerSection: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("macOS 背景 \(asset.id.replacingOccurrences(of: "mac-", with: ""))")
     }
 
     @ViewBuilder

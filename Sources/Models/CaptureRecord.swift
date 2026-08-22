@@ -30,7 +30,7 @@ struct CaptureRecord: Identifiable, Codable, Equatable {
     }
 }
 
-enum CaptureKind: String, Codable {
+enum CaptureKind: String, Codable, Sendable {
     case screenshot
     case recording
 }

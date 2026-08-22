@@ -649,7 +649,6 @@ final class ConfirmCanvasView: NSView {
     /// 钉为贴图（含标注），随后结束确认（不落历史文件）。
     func pinImage() {
         guard let cg = renderedImage() else { return }
-        let ns = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
         // PinnedScreenshotController.pin 吃 URL；写临时文件喂它
         let url = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("Rune_贴图_\(Int(Date().timeIntervalSince1970 * 1000)).png")

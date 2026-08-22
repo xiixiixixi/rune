@@ -16,13 +16,21 @@ struct ConfirmToolbarView: View {
     @State private var widthRaw: Int = 1
     @State private var customColor: Color = Color(red: 0.85, green: 0.64, blue: 0.25)
 
-    private let tools: [AnnotationTool] = [.select, .rectangle, .arrow, .text, .blur, .spotlight, .numberedCircle]
+    private let tools: [AnnotationTool] = [.select, .rectangle, .arrow, .text, .blur]
     /// 跨色系专业配色：芥末黄（默认）、珊瑚红、青碧、靛蓝 + 黑白基础
     private let swatches: [AnnotationSwatch] = [.mustard, .coral, .teal, .indigo, .black, .white]
     private let widths: [CGFloat] = [2, 4, 8]
 
-    /// 属性组常驻（CleanShot 式）：画新标注用它，选中已有标注也能随时改色/改粗细
-    private var showsToolOptions: Bool { true }
+    /// 只在当前工具真的需要时显示属性。默认确认态保持短而清楚。
+    private var showsColorOptions: Bool {
+        [.rectangle, .arrow, .text, .numberedCircle].contains(activeTool)
+    }
+
+    private var showsWidthOptions: Bool {
+        [.rectangle, .arrow, .numberedCircle].contains(activeTool)
+    }
+
+    private var showsToolOptions: Bool { showsColorOptions || showsWidthOptions }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -30,17 +38,28 @@ struct ConfirmToolbarView: View {
             HStack(spacing: 2) {
                 ForEach(tools, id: \.self) { tool in
                     Button {
-                        activeTool = tool
-                        canvas?.selectedTool = tool
-                        canvas?.selectedID = nil
-                        canvas?.needsDisplay = true
-                        canvas?.refreshCursor()
+                        activate(tool)
                     } label: {
                         RuneTheme.toolIcon(iconName(for: tool), active: activeTool == tool)
                     }
                     .buttonStyle(RuneTheme.RunePressStyle())
                     .help(tooltip(for: tool))
+                    .accessibilityLabel(tooltip(for: tool))
                 }
+
+                Menu {
+                    Button("聚光灯", systemImage: "light.max") { activate(.spotlight) }
+                    Button("编号圆点", systemImage: "1.circle") { activate(.numberedCircle) }
+                } label: {
+                    RuneTheme.toolIcon(
+                        "ellipsis.circle",
+                        active: activeTool == .spotlight || activeTool == .numberedCircle
+                    )
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .help("更多标注工具")
+                .accessibilityLabel("更多标注工具")
             }
 
             // ── 属性组（按需展开）
@@ -48,57 +67,64 @@ struct ConfirmToolbarView: View {
                 RuneTheme.groupSeparator
                 HStack(spacing: 14) {
                     // 色点：16pt 圆 + 白描边；选中=石墨环（红色只留给激活工具和保存）
-                    HStack(spacing: 6) {
-                        ForEach(swatches, id: \.self) { s in
-                            Button {
-                                swatch = s
-                                canvas?.selectedSwatch = s
-                                canvas?.updateSelectedAnnotation(swatch: s)
-                            } label: {
-                                Circle()
-                                    .fill(Color(s.nsColor))
-                                    .frame(width: 15, height: 15)
-                                    .overlay(Circle().strokeBorder(Color.white, lineWidth: 1.5))
-                                    .overlay(
-                                        Circle()
-                                            .strokeBorder(swatch == s ? RuneTheme.textPrimary.opacity(0.75) : .clear, lineWidth: 1.5)
-                                            .frame(width: 19, height: 19)
-                                    )
-                                    .frame(width: 20, height: 24)
+                    if showsColorOptions {
+                        HStack(spacing: 6) {
+                            ForEach(swatches, id: \.self) { s in
+                                Button {
+                                    swatch = s
+                                    canvas?.selectedSwatch = s
+                                    canvas?.updateSelectedAnnotation(swatch: s)
+                                } label: {
+                                    Circle()
+                                        .fill(Color(s.nsColor))
+                                        .frame(width: 15, height: 15)
+                                        .overlay(Circle().strokeBorder(Color.white, lineWidth: 1.5))
+                                        .overlay(
+                                            Circle()
+                                                .strokeBorder(swatch == s ? RuneTheme.textPrimary.opacity(0.75) : .clear, lineWidth: 1.5)
+                                                .frame(width: 19, height: 19)
+                                        )
+                                        .frame(width: 20, height: 24)
+                                }
+                                .buttonStyle(RuneTheme.RunePressStyle())
+                                .help(s.title)
+                                .accessibilityLabel("颜色：\(s.title)")
                             }
-                            .buttonStyle(RuneTheme.RunePressStyle())
-                            .help(s.title)
                         }
+
+                        // 自定义颜色：系统取色器，不限于预设色板
+                        ColorPicker("自定义颜色", selection: $customColor, supportsOpacity: false)
+                            .labelsHidden()
+                            .scaleEffect(0.72)
+                            .frame(width: 24, height: 24)
+                            .help("自定义颜色")
+                            .accessibilityLabel("自定义颜色")
+                            .onChange(of: customColor) { _, newColor in
+                                let custom = AnnotationSwatch.custom(from: newColor)
+                                swatch = custom
+                                canvas?.selectedSwatch = custom
+                                canvas?.updateSelectedAnnotation(swatch: custom)
+                            }
                     }
 
-                    // 自定义颜色：系统取色器，不限于预设色板
-                    ColorPicker("", selection: $customColor, supportsOpacity: false)
-                        .labelsHidden()
-                        .scaleEffect(0.72)
-                        .frame(width: 24, height: 24)
-                        .help("自定义颜色：任选任意颜色")
-                        .onChange(of: customColor) { _, newColor in
-                            let custom = AnnotationSwatch.custom(from: newColor)
-                            swatch = custom
-                            canvas?.selectedSwatch = custom
-                            canvas?.updateSelectedAnnotation(swatch: custom)
-                        }
-
                     // 粗细：小中大实心点，选中加深
-                    HStack(spacing: 4) {
-                        ForEach(widths.indices, id: \.self) { i in
-                            Button {
-                                widthRaw = i
-                                canvas?.strokeWidth = widths[i]
-                                canvas?.updateSelectedAnnotation(strokeWidth: widths[i])
-                            } label: {
-                                Circle()
-                                    .fill(widthRaw == i ? RuneTheme.textPrimary : RuneTheme.textSecondary.opacity(0.45))
-                                    .frame(width: CGFloat(4 + i * 3))
-                                    .frame(width: 22, height: 24)
+                    if showsWidthOptions {
+                        HStack(spacing: 4) {
+                            ForEach(widths.indices, id: \.self) { i in
+                                Button {
+                                    widthRaw = i
+                                    canvas?.strokeWidth = widths[i]
+                                    canvas?.updateSelectedAnnotation(strokeWidth: widths[i])
+                                } label: {
+                                    Circle()
+                                        .fill(widthRaw == i ? RuneTheme.textPrimary : RuneTheme.textSecondary.opacity(0.45))
+                                        .frame(width: CGFloat(4 + i * 3))
+                                        .frame(width: 22, height: 24)
+                                }
+                                .buttonStyle(RuneTheme.RunePressStyle())
+                                .help("粗细：\(["细", "中", "粗"][min(i, 2)])")
+                                .accessibilityLabel("粗细：\(["细", "中", "粗"][min(i, 2)])")
                             }
-                            .buttonStyle(RuneTheme.RunePressStyle())
-                            .help("粗细：\(["细", "中", "粗"][min(i, 2)])")
                         }
                     }
                 }
@@ -118,32 +144,41 @@ struct ConfirmToolbarView: View {
 
             RuneTheme.groupSeparator
 
-            // ── 功能组（截图之后展示的功能：选字复制 / 滚动长图）
-            Button {
-                canvas?.toggleOCRMode { message in
-                    ToastWindow.shared.show(title: "文字识别", message: message, systemIcon: "doc.text.viewfinder")
+            // ── 次频功能收进一处；连拍作为核心功能保持直接可见。
+            Menu {
+                Button("识别文字", systemImage: "doc.text.viewfinder") {
+                    canvas?.toggleOCRMode { message in
+                        ToastWindow.shared.show(title: "文字识别", message: message, systemIcon: "doc.text.viewfinder")
+                    }
+                }
+                Button("滚动长图", systemImage: "arrow.down.doc") {
+                    controller.requestScrollCapture()
                 }
             } label: {
-                RuneTheme.toolIcon("doc.text.viewfinder", active: canvas?.ocrMode == true)
+                RuneTheme.toolIcon("ellipsis", active: canvas?.ocrMode == true)
             }
-            .buttonStyle(RuneTheme.RunePressStyle())
-            .help("选字模式：识别图里的文字，点一块复制一块，拖动选一段；再点一次或 Esc 退出")
-
-            Button {
-                controller.requestScrollCapture()
-            } label: {
-                RuneTheme.toolIcon("arrow.down.doc", active: false)
-            }
-            .buttonStyle(RuneTheme.RunePressStyle())
-            .help("滚动长图：把当前选区转为滚动截图，往下滚完拼成一张长图")
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .help("更多：识别文字、滚动长图")
+            .accessibilityLabel("更多截图功能")
 
             Button {
                 controller.requestBurstCapture()
             } label: {
-                RuneTheme.toolIcon("camera", active: false)
+                Label("连拍", systemImage: "camera.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(RuneTheme.accent)
+                    .padding(.horizontal, 11)
+                    .frame(height: 34)
+                    .background(
+                        Capsule()
+                            .fill(RuneTheme.accent.opacity(0.09))
+                            .overlay(Capsule().strokeBorder(RuneTheme.accent.opacity(0.18), lineWidth: 0.5))
+                    )
             }
             .buttonStyle(RuneTheme.RunePressStyle())
-            .help("连拍：对当前选区连续抓拍，随时点关闭停止")
+            .help("连拍：沿用当前选区，选择连续、定数或延时拍摄")
+            .accessibilityLabel("对当前选区连拍")
 
             // ── 复制 / 贴图（纯图标，悬停有中文提示）
             Button {
@@ -153,6 +188,7 @@ struct ConfirmToolbarView: View {
             }
             .buttonStyle(RuneTheme.RunePressStyle())
             .help("复制到剪贴板 (⌘C)")
+            .accessibilityLabel("复制到剪贴板")
 
             Button {
                 canvas?.pinImage()
@@ -162,6 +198,7 @@ struct ConfirmToolbarView: View {
             }
             .buttonStyle(RuneTheme.RunePressStyle())
             .help("钉在桌面上（贴图）")
+            .accessibilityLabel("钉在桌面上")
 
             RuneTheme.groupSeparator
 
@@ -199,6 +236,14 @@ struct ConfirmToolbarView: View {
                     }
             }
         )
+    }
+
+    private func activate(_ tool: AnnotationTool) {
+        activeTool = tool
+        canvas?.selectedTool = tool
+        canvas?.selectedID = nil
+        canvas?.needsDisplay = true
+        canvas?.refreshCursor()
     }
 
     /// 精选图标映射（统一线性风格；覆盖编辑器的默认选型）

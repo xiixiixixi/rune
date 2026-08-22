@@ -5,17 +5,32 @@ import SwiftUI
 
 /// Manages multiple pinned screenshot floating windows.
 @MainActor
+@Observable
 final class PinnedScreenshotController {
     static let shared = PinnedScreenshotController()
-    private var panels: [NSPanel] = []
+
+    private struct Session {
+        let panel: NSPanel
+        let interaction: PinnedScreenshotInteraction
+    }
+
+    private var sessions: [Session] = []
     private init() {}
 
     var hasPinnedWindows: Bool {
-        !panels.isEmpty
+        !sessions.isEmpty
+    }
+
+    var hasPassthroughWindows: Bool {
+        sessions.contains { $0.interaction.clickThrough }
     }
 
     /// Creates a new borderless, always-on-top floating panel showing the image at `url`.
-    func pin(url: URL, on preferredScreen: NSScreen? = nil) {
+    func pin(
+        url: URL,
+        on preferredScreen: NSScreen? = nil,
+        auditShowsControls: Bool = false
+    ) {
         guard let image = NSImage(contentsOf: url) else { return }
 
         // Compute initial panel size: scale image to max 400pt on longest side.
@@ -46,48 +61,67 @@ final class PinnedScreenshotController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isMovableByWindowBackground = true
 
+        let interaction = PinnedScreenshotInteraction()
         let contentView = PinnedScreenshotView(
             image: image,
             originalDisplaySize: panelSize,
+            interaction: interaction,
+            alwaysShowsControls: auditShowsControls,
             onClose: { [weak self, weak panel] in
                 guard let self, let panel else { return }
                 panel.orderOut(nil)
-                self.panels.removeAll { $0 === panel }
+                self.sessions.removeAll { $0.panel === panel }
             }
         )
         panel.contentView = NSHostingView(rootView: contentView)
 
         if let screen = preferredScreen ?? NSScreen.main {
             let sf = screen.visibleFrame
-            let x = sf.midX - panelSize.width / 2 + CGFloat(panels.count) * 20
-            let y = sf.midY - panelSize.height / 2 - CGFloat(panels.count) * 20
+            let x = sf.midX - panelSize.width / 2 + CGFloat(sessions.count) * 20
+            let y = sf.midY - panelSize.height / 2 - CGFloat(sessions.count) * 20
             panel.setFrameOrigin(NSPoint(x: x, y: y))
         }
 
-        panels.append(panel)
+        sessions.append(Session(panel: panel, interaction: interaction))
         panel.orderFront(nil)
     }
 
     /// Closes all pinned panels.
     func unpinAll() {
-        panels.forEach { $0.orderOut(nil) }
-        panels.removeAll()
+        sessions.forEach { $0.panel.orderOut(nil) }
+        sessions.removeAll()
     }
+
+    /// 鼠标穿透开启后，贴图本身收不到点击；菜单栏提供统一恢复入口。
+    func restoreInteractions() {
+        for session in sessions {
+            session.interaction.clickThrough = false
+            session.panel.ignoresMouseEvents = false
+        }
+    }
+}
+
+@MainActor
+@Observable
+private final class PinnedScreenshotInteraction {
+    var opacity: Double = 1.0
+    var clickThrough = false
 }
 
 // MARK: - PinnedScreenshotView
 
 /// SwiftUI content view for a single pinned screenshot panel.
-struct PinnedScreenshotView: View {
+private struct PinnedScreenshotView: View {
     let image: NSImage
     let originalDisplaySize: CGSize
+    @Bindable var interaction: PinnedScreenshotInteraction
+    let alwaysShowsControls: Bool
     let onClose: () -> Void
 
     @State private var scaleFactor: CGFloat = 1.0
     @State private var isHovered: Bool = false
-    @State private var opacity: Double = 1.0           // P1 贴图增强：透明度
-    @State private var clickThrough: Bool = false      // P1 贴图增强：鼠标穿透
     @State private var dragStartScale: CGFloat?        // 四角缩放：手势起始比例
+    @State private var hostingWindow: NSWindow?
 
     private let minScale: CGFloat = 0.25
     private let maxScale: CGFloat = 4.0
@@ -96,7 +130,7 @@ struct PinnedScreenshotView: View {
         let w = originalDisplaySize.width * scaleFactor
         let h = originalDisplaySize.height * scaleFactor
 
-        ZStack(alignment: .topTrailing) {
+        ZStack(alignment: .top) {
             Image(nsImage: image)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
@@ -105,62 +139,121 @@ struct PinnedScreenshotView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 4)
                 .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
-                .opacity(opacity)   // P1：透明度
-                .help("滚轮：缩放大小 ｜ 拖动：移动位置 ｜ 右键：透明度 / 鼠标穿透 / 关闭")
+                .opacity(interaction.opacity)
+                .help("滚轮缩放，拖动移动；悬停可显示贴图工具条")
                 .onHover { hovering in
                     withAnimation(.easeInOut(duration: 0.15)) {
                         isHovered = hovering
                     }
                 }
 
-            // Close (X) button — visible on hover
-            if isHovered {
-                Button(action: onClose) {
-                    Image(systemName: "xmark.circle.fill")
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(.white, .black.opacity(0.6))
-                        .font(.system(size: 18))
-                }
-                .buttonStyle(.plain)
-                .padding(4)
-                .help("关闭贴图")
-                .transition(.opacity.animation(.easeInOut(duration: 0.15)))
+            if (isHovered || alwaysShowsControls) && !interaction.clickThrough {
+                pinToolbar
+                    .padding(.top, 8)
+                    .transition(.opacity.animation(.easeInOut(duration: 0.12)))
 
-                // 四角等比缩放手柄：拖角按原比例拉大拉小（滚轮缩放保留）
                 ForEach(PinCorner.allCases, id: \.self) { corner in
                     cornerHandle(corner)
                 }
             }
+
+            if interaction.clickThrough {
+                Text("鼠标穿透中 · 从 Rune 菜单恢复")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 9)
+                    .frame(height: 26)
+                    .background(.black.opacity(0.66), in: Capsule())
+                    .padding(.top, 8)
+            }
         }
         .frame(width: w, height: h)
-        // 鼠标穿透时，让窗口忽略鼠标事件（点穿到后面的窗口）
-        .background(MousePassthroughView(isPassthrough: clickThrough))
-        // Resize via scroll wheel
+        .background(
+            PinnedWindowResolver { window in
+                hostingWindow = window
+            }
+        )
+        .background(MousePassthroughView(isPassthrough: interaction.clickThrough))
         .onScrollWheel { delta in
             let newScale = (scaleFactor + delta * 0.05).clamped(to: minScale...maxScale)
-            scaleFactor = newScale
-            resizeWindow(to: CGSize(width: originalDisplaySize.width * newScale,
-                                    height: originalDisplaySize.height * newScale))
+            setScale(newScale)
         }
-        // Right-click context menu（含透明度/穿透切换）
         .contextMenu {
             Button("复制图片") {
-                let pb = NSPasteboard.general
-                pb.clearContents()
-                pb.writeObjects([image])
+                copyImage()
             }
             Divider()
-            // P1 贴图增强：透明度调节
-            Slider(value: $opacity, in: 0.2...1.0, step: 0.1) {
-                Text("透明度：\(Int(opacity * 100))%")
+            Slider(value: $interaction.opacity, in: 0.2...1.0, step: 0.1) {
+                Text("透明度：\(Int(interaction.opacity * 100))%")
             }
-            // P1 贴图增强：鼠标穿透切换
-            Toggle("鼠标穿透", isOn: $clickThrough)
+            Button("开启鼠标穿透") {
+                interaction.clickThrough = true
+            }
             Divider()
-            Button("关闭") {
-                onClose()
-            }
+            Button("关闭贴图", role: .destructive, action: onClose)
         }
+    }
+
+    private var pinToolbar: some View {
+        HStack(spacing: 7) {
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .foregroundStyle(RuneTheme.accent)
+                    .frame(width: 24, height: 24)
+            }
+            .help("关闭贴图")
+
+            Divider()
+                .frame(height: 18)
+
+            Image(systemName: "circle.lefthalf.filled")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+
+            Slider(value: $interaction.opacity, in: 0.2...1.0, step: 0.1)
+                .frame(width: 62)
+                .controlSize(.mini)
+                .help("透明度 \(Int(interaction.opacity * 100))%")
+
+            Menu {
+                ForEach([0.5, 0.75, 1.0, 1.5, 2.0], id: \.self) { value in
+                    Button("\(Int(value * 100))%") {
+                        setScale(value)
+                    }
+                }
+            } label: {
+                Text("\(Int(scaleFactor * 100))%")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .frame(minWidth: 34)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .help("贴图大小")
+
+            Button {
+                copyImage()
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .frame(width: 24, height: 24)
+            }
+            .help("复制图片")
+
+            Button {
+                interaction.clickThrough = true
+            } label: {
+                Image(systemName: "cursorarrow.rays")
+                    .frame(width: 24, height: 24)
+            }
+            .help("开启鼠标穿透；从 Rune 菜单恢复")
+        }
+        .font(.system(size: 11, weight: .semibold))
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary.opacity(0.78))
+        .padding(.horizontal, 7)
+        .frame(height: 34)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
     }
 
     /// 四角等比缩放手柄：拖动按原比例缩放（宽高等比，不会变形）。
@@ -195,29 +288,29 @@ struct PinnedScreenshotView: View {
             }
     }
 
-        private func resizeWindow(to newSize: CGSize) {
-        guard let window = NSApp.windows.first(where: {
-            ($0.contentView as? NSHostingView<PinnedScreenshotView>) != nil
-        }) ?? findHostingWindow() else { return }
+    private func copyImage() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.writeObjects([image])
+    }
+
+    private func setScale(_ newScale: CGFloat) {
+        let clampedScale = newScale.clamped(to: minScale...maxScale)
+        scaleFactor = clampedScale
+        resizeWindow(to: CGSize(
+            width: originalDisplaySize.width * clampedScale,
+            height: originalDisplaySize.height * clampedScale
+        ))
+    }
+
+    private func resizeWindow(to newSize: CGSize) {
+        guard let window = hostingWindow else { return }
 
         var frame = window.frame
-        // Keep the top-left corner anchored.
+        // 缩放时固定左上角，画面不会突然跳到另一处。
         frame.origin.y += frame.size.height - newSize.height
         frame.size = newSize
         window.setFrame(frame, display: true, animate: false)
-    }
-
-    private func findHostingWindow() -> NSWindow? {
-        // Walk all app windows to find the one hosting this view.
-        for window in NSApp.windows {
-            if let hv = window.contentView as? NSHostingView<PinnedScreenshotView> {
-                // Check it's ours by comparing image size as a proxy.
-                if hv.rootView.image.size == image.size {
-                    return window
-                }
-            }
-        }
-        return nil
     }
 }
 
@@ -234,6 +327,20 @@ enum PinCorner: CaseIterable {
         case .bottomLeft: CGPoint(x: 10, y: 10)
         case .bottomRight: CGPoint(x: size.width - 10, y: 10)
         }
+    }
+}
+
+private struct PinnedWindowResolver: NSViewRepresentable {
+    let onResolve: (NSWindow?) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { onResolve(view.window) }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { onResolve(nsView.window) }
     }
 }
 

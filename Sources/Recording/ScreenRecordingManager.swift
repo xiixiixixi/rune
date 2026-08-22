@@ -66,7 +66,14 @@ final class ScreenRecordingManager: NSObject {
 
     func startFullScreenRecording(on screen: NSScreen? = nil) async throws -> Bool {
         guard state == .idle else { return false }
+        guard await ScreenCapturePermissionController.shared.ensurePermission(
+            for: .recording,
+            on: screen
+        ) else { return false }
         state = .preparing
+        defer {
+            if state == .preparing { resetAfterFailedStart() }
+        }
 
         let captureAudio = AppPreferences.recordingCaptureAudio
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
@@ -91,21 +98,33 @@ final class ScreenRecordingManager: NSObject {
         let captureWidth = Int(contentRect.width * pointPixelScale)
         let captureHeight = Int(contentRect.height * pointPixelScale)
 
-        return try await beginCapture(
-            filter: filter,
-            width: captureWidth,
-            height: captureHeight,
-            captureAudio: captureAudio
-        )
+        do {
+            return try await beginCapture(
+                filter: filter,
+                width: captureWidth,
+                height: captureHeight,
+                captureAudio: captureAudio
+            )
+        } catch {
+            resetAfterFailedStart()
+            throw error
+        }
     }
 
-    func startAreaRecording() async throws -> Bool {
+    func startAreaRecording(on screen: NSScreen? = nil) async throws -> Bool {
         guard state == .idle else { return false }
+        guard await ScreenCapturePermissionController.shared.ensurePermission(
+            for: .recording,
+            on: screen
+        ) else { return false }
 
         let overlay = RegionSelectionOverlay()
         guard let selection = await overlay.selectRegion() else { return false }
 
         state = .preparing
+        defer {
+            if state == .preparing { resetAfterFailedStart() }
+        }
         let captureAudio = AppPreferences.recordingCaptureAudio
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         let center = CGPoint(x: selection.pointsRect.midX, y: selection.pointsRect.midY)
@@ -141,13 +160,18 @@ final class ScreenRecordingManager: NSObject {
         let captureWidth = Int(clamped.width * scale)
         let captureHeight = Int(clamped.height * scale)
 
-        return try await beginCapture(
-            filter: filter,
-            width: captureWidth,
-            height: captureHeight,
-            captureAudio: captureAudio,
-            sourceRect: mappedSourceRect
-        )
+        do {
+            return try await beginCapture(
+                filter: filter,
+                width: captureWidth,
+                height: captureHeight,
+                captureAudio: captureAudio,
+                sourceRect: mappedSourceRect
+            )
+        } catch {
+            resetAfterFailedStart()
+            throw error
+        }
     }
 
     private func beginCapture(
@@ -214,6 +238,19 @@ final class ScreenRecordingManager: NSObject {
         startTimer()
 
         return true
+    }
+
+    private func resetAfterFailedStart() {
+        session?.cancelWriting()
+        session = nil
+        streamSessionSink.set(nil)
+        stream = nil
+        if let outputURL {
+            try? FileManager.default.removeItem(at: outputURL)
+        }
+        outputURL = nil
+        state = .idle
+        elapsedSeconds = 0
     }
 
     // MARK: - Stop

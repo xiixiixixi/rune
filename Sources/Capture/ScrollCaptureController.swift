@@ -32,7 +32,10 @@ final class ScrollCaptureController {
 
     func start(on screen: NSScreen? = nil, presetRegion: CGRect? = nil) async {
         guard !isActive else { return }
-        guard requestPermissionIfNeeded() else { return }
+        guard await ScreenCapturePermissionController.shared.ensurePermission(
+            for: .scrollCapture,
+            on: screen
+        ) else { return }
 
         // 预设选区（从确认画面「滚动长图」转入）时跳过框选
         var pointsRect = presetRegion
@@ -220,14 +223,6 @@ final class ScrollCaptureController {
         return context.makeImage()
     }
 
-    private func requestPermissionIfNeeded() -> Bool {
-        if CGPreflightScreenCaptureAccess() { return true }
-        _ = CGRequestScreenCaptureAccess()
-        if CGPreflightScreenCaptureAccess() { return true }
-        showError("请在系统设置的「隐私与安全性 > 屏幕与系统音频录制」中允许“Rune”，然后重新打开Rune。")
-        return false
-    }
-
     private func showError(_ message: String) {
         let alert = NSAlert()
         alert.messageText = "滚动截图"
@@ -255,14 +250,10 @@ final class ScrollCaptureStatusBarController {
 
     func show(on screen: NSScreen? = nil) {
         dismiss()
-        let view = ScrollCaptureStatusBarView(
-            controller: .shared,
-            onWidthChange: { [weak self] in self?.relayout() }
-        )
+        let view = ScrollCaptureStatusBarView(controller: .shared)
         let hosting = NSHostingView(rootView: view)
-        // 宽度自适应：文字变长面板跟着变宽（上限 620，超长才截断），杜绝写死 410pt 截字
-        let width = min(ceil(hosting.fittingSize.width), 620)
-        let size = NSSize(width: width, height: 48)
+        // 状态变化时宽度保持不跳动，避免用户滚动过程中按钮来回移动。
+        let size = NSSize(width: 540, height: 60)
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
@@ -279,18 +270,22 @@ final class ScrollCaptureStatusBarController {
         if let frame = (screen ?? NSScreen.main)?.visibleFrame {
             panel.setFrameOrigin(NSPoint(x: frame.midX - size.width / 2, y: frame.maxY - size.height - 12))
         }
-        panel.orderFront(nil)
+        panel.orderFrontRegardless()
         self.panel = panel
     }
 
-    /// 状态文字变化时按 fittingSize 重新居中（顶部锚定）
-    private func relayout() {
-        guard let panel,
-              let hosting = panel.contentView as? NSHostingView<ScrollCaptureStatusBarView> else { return }
-        let width = min(ceil(hosting.fittingSize.width), 620)
-        guard width > 60, abs(width - panel.frame.width) > 0.5 else { return }
-        let x = panel.frame.midX - width / 2
-        panel.setFrame(NSRect(x: x, y: panel.frame.minY, width: width, height: panel.frame.height), display: true)
+    func confirmAndCancel() {
+        let count = ScrollCaptureController.shared.capturedFrameCount
+        let alert = NSAlert()
+        alert.messageText = "放弃这次滚动截图？"
+        alert.informativeText = count > 1
+            ? "已经拼接的 \(count) 屏内容不会保存。"
+            : "当前画面不会保存。"
+        alert.addButton(withTitle: "放弃")
+        alert.addButton(withTitle: "继续滚动")
+        alert.alertStyle = .warning
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        ScrollCaptureController.shared.cancel()
     }
 
     func dismiss() {
@@ -301,30 +296,64 @@ final class ScrollCaptureStatusBarController {
 
 private struct ScrollCaptureStatusBarView: View {
     @State var controller: ScrollCaptureController
-    var onWidthChange: () -> Void = {}
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "rectangle.stack")
-                .foregroundStyle(.orange)
+        HStack(spacing: 12) {
+            Image(systemName: "rectangle.stack.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(RuneTheme.accent)
+                .frame(width: 30, height: 30)
+                .background(RuneTheme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
                 .help("滚动截图进行中")
-            Text(controller.statusMessage)
-                .font(.system(size: 12))
-                .lineLimit(1)
-            Spacer()
-            Button("取消") { controller.cancel() }
-                .buttonStyle(.borderless)
-                .help("放弃本次滚动截图（不保存）")
-            Button("生成长图") {
-                Task { await controller.stop() }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("正在拼接长图")
+                    .font(.system(size: 12, weight: .semibold))
+                Text(controller.statusMessage)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("\(controller.capturedFrameCount) 屏")
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .monospacedDigit()
+                .frame(minWidth: 42, alignment: .trailing)
+
+            Menu {
+                Button("放弃这次长图…", systemImage: "trash", role: .destructive) {
+                    ScrollCaptureStatusBarController.shared.confirmAndCancel()
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("更多滚动截图操作")
+
+            Spacer()
+
+            Button {
+                Task { await controller.stop() }
+            } label: {
+                RuneTheme.primaryButtonLabel("完成")
+            }
+            .buttonStyle(RuneTheme.RunePressStyle())
             .help("结束滚动，把已抓的画面拼成一张长图")
         }
-        .padding(.horizontal, 12)
-        .frame(height: 48)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-        .onChange(of: controller.statusMessage) { _, _ in onWidthChange() }
+        .padding(.horizontal, 14)
+        .frame(height: 60)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
+        )
+        .accessibilityElement(children: .contain)
     }
 }

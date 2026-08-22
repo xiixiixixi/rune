@@ -1,14 +1,16 @@
 import SwiftUI
 
-// MARK: - Panel Root (Arrow + Body)
+// MARK: - Panel Root
 
 struct MenuBarPanelView: View {
     var dismissPopover: @MainActor () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isVisible = false
 
     private let arrowWidth: CGFloat = 22
     private let arrowHeight: CGFloat = 10
-    private let panelRadius: CGFloat = 12
+    private let panelRadius: CGFloat = 14
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,23 +23,20 @@ struct MenuBarPanelView: View {
                 .clipShape(RoundedRectangle(cornerRadius: panelRadius, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: panelRadius, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                        .strokeBorder(Color.primary.opacity(0.09), lineWidth: 0.5)
                 )
         }
         .shadow(color: .black.opacity(0.18), radius: 20, y: 8)
         .shadow(color: .black.opacity(0.08), radius: 4, y: 2)
-        .scaleEffect(isVisible ? 1 : 0.92, anchor: .top)
+        .offset(y: isVisible || reduceMotion ? 0 : -4)
         .opacity(isVisible ? 1 : 0)
-        .blur(radius: isVisible ? 0 : 4)
         .onAppear {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.12)) {
                 isVisible = true
             }
         }
     }
 }
-
-// MARK: - Arrow Shape
 
 private struct PopoverArrow: Shape {
     func path(in rect: CGRect) -> Path {
@@ -62,144 +61,141 @@ struct MenuBarContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // ── 唯一主入口（飞书/钉钉式）：截完图，功能才会在底部工具栏出现
-            VStack(spacing: 6) {
-                Button {
-                    dismissAndRun(.main)
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "camera.viewfinder")
-                            .font(.system(size: 17, weight: .semibold))
-                        Text("截图")
-                            .font(.system(size: 15, weight: .semibold))
-                        Spacer()
-                        Text("⇧⌘A")
-                            .font(.system(size: 11, weight: .medium, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.75))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .frame(height: 44)
-                    .background(
-                        RoundedRectangle(cornerRadius: 11, style: .continuous)
-                            .fill(RuneTheme.accent)
-                    )
-                    .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-                }
-                .buttonStyle(RuneTheme.RunePressStyle())
-                .help("拖拽＝自定义区域 · 点窗口＝截整窗 · 点桌面空白＝截全屏")
+            header
 
-                Text("拖＝选区域 · 点窗口＝整窗 · 点桌面＝全屏，截完后再标注、识别文字或转长图")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
+            HStack(spacing: 8) {
+                TrayFeatureButton(
+                    title: "截图",
+                    subtitle: "拖选区域或点窗口",
+                    icon: "camera.viewfinder",
+                    shortcut: "⇧⌘A",
+                    isAccent: false
+                ) {
+                    dismissAndRun(.main)
+                }
+
+                TrayFeatureButton(
+                    title: "连拍",
+                    subtitle: "连续 · 定数 · 延时",
+                    icon: "camera.fill",
+                    shortcut: "⇧⌘B",
+                    isAccent: true
+                ) {
+                    dismissAndRunBurst(mode: .burst)
+                }
             }
-            .padding(.horizontal, 10)
-            .padding(.top, 12)
-            .padding(.bottom, 10)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 12)
 
             TrayDivider()
 
-            secondaryGrid
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+            LazyVGrid(
+                columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
+                spacing: 8
+            ) {
+                TrayActionButton(title: "滚动长图", icon: "arrow.down.doc") {
+                    dismissAndRunScrollCapture()
+                }
+
+                TrayRecordingMenu(
+                    onFullScreen: { startRecordingFromMenu(mode: .fullScreen) },
+                    onArea: { startRecordingFromMenu(mode: .area) }
+                )
+
+                TrayActionButton(title: "取色", icon: "eyedropper") {
+                    dismissAndRun(.colorPicker)
+                }
+
+                TrayActionButton(title: "文字识别", icon: "text.viewfinder") {
+                    dismissAndRun(.ocr)
+                }
+            }
+            .padding(12)
+
+            TrayDivider()
+
+            RecentCaptureSection(
+                records: Array(HistoryStore.shared.records.prefix(3)),
+                onOpen: open,
+                onShowAll: { openSettings(section: .history) }
+            )
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
 
             if PinnedScreenshotController.shared.hasPinnedWindows {
                 TrayDivider()
 
-                TrayFullWidthButton(title: "取消全部贴图", icon: "pin.slash") {
-                    PinnedScreenshotController.shared.unpinAll()
-                    dismissPopover()
+                VStack(spacing: 7) {
+                    if PinnedScreenshotController.shared.hasPassthroughWindows {
+                        TrayFullWidthButton(title: "恢复贴图交互", icon: "cursorarrow.rays") {
+                            PinnedScreenshotController.shared.restoreInteractions()
+                        }
+                    }
+
+                    TrayFullWidthButton(title: "关闭全部贴图", icon: "pin.slash") {
+                        PinnedScreenshotController.shared.unpinAll()
+                        dismissPopover()
+                    }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
             }
 
             TrayDivider()
 
-            footerGrid
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+            HStack(spacing: 8) {
+                Button {
+                    openSettings()
+                } label: {
+                    Label("设置", systemImage: "gearshape")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("设置 (⌘,)")
 
-            versionLabel
-                .padding(.bottom, 8)
-        }
-        .frame(width: 290)
-    }
+                Spacer()
 
-    // MARK: - Secondary Grid（过程性功能 + 记录）
+                Text("Rune")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.quaternary)
 
-    private var recentScreenshots: [CaptureRecord] {
-        HistoryStore.shared.records.filter { $0.kind == .screenshot }
-    }
-
-    private var recentRecordings: [CaptureRecord] {
-        HistoryStore.shared.records.filter { $0.kind == .recording }
-    }
-
-    private var secondaryGrid: some View {
-        let columns = [
-            GridItem(.flexible(), spacing: 6),
-            GridItem(.flexible(), spacing: 6),
-        ]
-
-        return LazyVGrid(columns: columns, spacing: 6) {
-            TrayGridMenu(title: "录屏", icon: "record.circle", menuItems: [
-                TrayMenuItem(title: "全屏录制", icon: "desktopcomputer") {
-                    nonisolated(unsafe) let screen = originScreen
-                    dismissPopover()
-                    Task.detached {
-                        try? await Task.sleep(nanoseconds: 200_000_000)
-                        await startRecording(mode: .fullScreen, on: screen)
-                    }
-                },
-                TrayMenuItem(title: "区域录制", icon: "rectangle.dashed") {
-                    nonisolated(unsafe) let screen = originScreen
-                    dismissPopover()
-                    Task.detached {
-                        try? await Task.sleep(nanoseconds: 200_000_000)
-                        await startRecording(mode: .area, on: screen)
-                    }
-                },
-            ])
-
-            TrayGridMenu(title: "最近记录", icon: "clock.arrow.circlepath", menuItems: recentMenuItems())
-        }
-    }
-
-    // MARK: - Footer
-
-    private var footerGrid: some View {
-        let columns = [
-            GridItem(.flexible(), spacing: 6),
-            GridItem(.flexible(), spacing: 6),
-        ]
-
-        return LazyVGrid(columns: columns, spacing: 6) {
-            TrayGridButton(title: "设置", icon: "gearshape", shortcut: "\u{2318},") {
-                openSettings()
+                Button {
+                    NSApplication.shared.terminate(nil)
+                } label: {
+                    Image(systemName: "power")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 24, height: 24)
+                }
+                .buttonStyle(.plain)
+                .help("退出 Rune (⌘Q)")
+                .accessibilityLabel("退出 Rune")
             }
-
-            TrayGridButton(title: "退出", icon: "power", shortcut: "\u{2318}Q") {
-                NSApplication.shared.terminate(nil)
-            }
+            .padding(.horizontal, 14)
+            .frame(height: 42)
         }
+        .frame(width: 320)
     }
 
-    // MARK: - Version
+    private var header: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(RuneTheme.accent)
+                .frame(width: 8, height: 8)
 
-    private var versionLabel: some View {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
-        return HStack(spacing: 4) {
-            Text("版本 \(version)")
-                .font(.system(size: 10))
-                .foregroundStyle(.quaternary)
+            Text("Rune")
+                .font(.system(size: 15, weight: .semibold))
 
+            Spacer()
+
+            Text("截图与连拍")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
         }
+        .padding(.horizontal, 14)
+        .frame(height: 48)
     }
-
-    // MARK: - Actions
 
     private var originScreen: NSScreen? {
         MenuBarPopoverController.shared.originScreen
@@ -208,87 +204,49 @@ struct MenuBarContentView: View {
     private func dismissAndRun(_ action: ShortcutService.Action) {
         nonisolated(unsafe) let screen = originScreen
         dismissPopover()
-        Task.detached {
-            try? await Task.sleep(nanoseconds: 200_000_000)
+        Task {
+            try? await Task.sleep(for: .milliseconds(160))
             await CaptureOrchestrator.shared.performCapture(action, on: screen)
         }
     }
 
-    /// 金手指新流程：菜单触发也走 框选→控制台→开始。
     private func dismissAndRunBurst(mode: BurstMode) {
         nonisolated(unsafe) let screen = originScreen
         dismissPopover()
-        Task.detached {
-            try? await Task.sleep(nanoseconds: 200_000_000)
-            await MainActor.run {
-                Task {
-                    await BurstCaptureController.shared.prepareAndBegin(presetMode: mode, on: screen)
-                }
-            }
+        Task {
+            try? await Task.sleep(for: .milliseconds(160))
+            await BurstCaptureController.shared.prepareAndBegin(presetMode: mode, on: screen)
         }
     }
 
     private func dismissAndRunScrollCapture() {
         nonisolated(unsafe) let screen = originScreen
         dismissPopover()
-        Task.detached {
-            try? await Task.sleep(nanoseconds: 200_000_000)
+        Task {
+            try? await Task.sleep(for: .milliseconds(160))
             await ScrollCaptureController.shared.start(on: screen)
         }
     }
 
-    private func recentMenuItems() -> [TrayMenuItem] {
-        var items: [TrayMenuItem] = []
-
-        var screenshotItems: [TrayMenuItem] = []
-        if recentScreenshots.isEmpty {
-            screenshotItems.append(TrayMenuItem(title: "还没有截图", icon: "photo", action: {}, isDisabled: true))
-        } else {
-            for record in recentScreenshots.prefix(8) {
-                screenshotItems.append(TrayMenuItem(title: record.filename, icon: "photo") { [record] in
-                    let screen = originScreen
-                    dismissPopover()
-                    let url = HistoryStore.shared.displayURLForRecord(record)
-                    PreviewOverlay.shared.show(url: url, on: screen)
-                })
-            }
-            screenshotItems.append(.separator())
-            screenshotItems.append(TrayMenuItem(title: "清空截图", icon: "trash", action: {
-                HistoryStore.shared.records
-                    .filter { $0.kind == .screenshot }
-                    .forEach { HistoryStore.shared.deleteRecord($0) }
-            }, isDestructive: true))
+    private func startRecordingFromMenu(mode: RecordingMode) {
+        nonisolated(unsafe) let screen = originScreen
+        dismissPopover()
+        Task {
+            try? await Task.sleep(for: .milliseconds(160))
+            await startRecording(mode: mode, on: screen)
         }
-        items.append(TrayMenuItem(title: "截图", icon: "photo.on.rectangle", action: {}, submenu: screenshotItems))
-
-        var recordingItems: [TrayMenuItem] = []
-        if recentRecordings.isEmpty {
-            recordingItems.append(TrayMenuItem(title: "还没有录屏", icon: "video", action: {}, isDisabled: true))
-        } else {
-            for record in recentRecordings.prefix(8) {
-                recordingItems.append(TrayMenuItem(title: record.filename, icon: "video") { [record] in
-                    let screen = originScreen
-                    dismissPopover()
-                    let url = HistoryStore.shared.displayURLForRecord(record)
-                    PreviewOverlay.shared.show(url: url, on: screen)
-                })
-            }
-            recordingItems.append(.separator())
-            recordingItems.append(TrayMenuItem(title: "清空录屏", icon: "trash", action: {
-                HistoryStore.shared.records
-                    .filter { $0.kind == .recording }
-                    .forEach { HistoryStore.shared.deleteRecord($0) }
-            }, isDestructive: true))
-        }
-        items.append(TrayMenuItem(title: "录屏", icon: "video.circle", action: {}, submenu: recordingItems))
-
-        return items
     }
 
-    private func openSettings() {
+    private func open(_ record: CaptureRecord) {
         let screen = originScreen
         dismissPopover()
-        SettingsWindowController.shared.open(on: screen)
+        PreviewOverlay.shared.show(url: HistoryStore.shared.displayURLForRecord(record), on: screen)
+    }
+
+    private func openSettings(section: SettingsSection? = nil) {
+        let screen = originScreen
+        dismissPopover()
+        SettingsWindowController.shared.open(on: screen, section: section)
     }
 
     private enum RecordingMode {
@@ -296,295 +254,298 @@ struct MenuBarContentView: View {
     }
 
     @MainActor
-    private func startRecording(mode: RecordingMode = .fullScreen, on screen: NSScreen? = nil) async {
+    private func startRecording(mode: RecordingMode, on screen: NSScreen?) async {
         do {
             let started: Bool
             switch mode {
             case .fullScreen:
                 started = try await ScreenRecordingManager.shared.startFullScreenRecording(on: screen)
             case .area:
-                started = try await ScreenRecordingManager.shared.startAreaRecording()
+                started = try await ScreenRecordingManager.shared.startAreaRecording(on: screen)
             }
             if started {
                 RecordingStatusBarController.shared.show(on: screen)
             }
         } catch {
-            print("录屏失败：\(error.localizedDescription)")
+            ToastWindow.shared.show(
+                title: "录屏没有开始",
+                message: error.localizedDescription,
+                systemIcon: "exclamationmark.triangle",
+                on: screen
+            )
         }
     }
-
 }
 
-// MARK: - Grid Button
+// MARK: - Reusable Controls
 
-struct TrayGridButton: View {
+private struct TrayFeatureButton: View {
     let title: String
+    let subtitle: String
     let icon: String
-    var shortcut: String? = nil
+    let shortcut: String
+    let isAccent: Bool
     let action: () -> Void
 
     @State private var isHovered = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.primary.opacity(0.7))
-                    .frame(width: 16)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: icon)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(isAccent ? RuneTheme.accent : .primary)
 
-                Text(title)
-                    .font(.system(size: 12, weight: .medium))
-                    .lineLimit(1)
+                    Spacer()
 
-                Spacer(minLength: 2)
-
-                if let shortcut {
                     Text(shortcut)
                         .font(.system(size: 9, weight: .medium, design: .rounded))
-                        .foregroundStyle(.primary.opacity(0.25))
+                        .foregroundStyle(.secondary)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 14, weight: .semibold))
+                    Text(subtitle)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 8)
+            .padding(12)
+            .frame(maxWidth: .infinity, minHeight: 84, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isHovered ? Color.primary.opacity(0.15) : Color.primary.opacity(0.08))
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(isHovered ? Color.primary.opacity(0.10) : Color.primary.opacity(0.055))
             )
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .strokeBorder(isAccent ? RuneTheme.accent.opacity(0.22) : Color.primary.opacity(0.06), lineWidth: 0.5)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(RuneTheme.RunePressStyle())
         .onHover { isHovered = $0 }
+        .help(title == "连拍" ? "连续、定数或延时拍摄，开始后可暂停或结束" : "拖选区域、点窗口或点桌面截图")
+        .accessibilityLabel("\(title)，\(subtitle)，快捷键 \(shortcut)")
     }
 }
 
-// MARK: - Grid Menu (dropdown matching grid button style via NSMenu)
-
-struct TrayGridMenu: NSViewRepresentable {
-    let title: String
-    let icon: String
-    let menuItems: [TrayMenuItem]
-
-    func makeNSView(context: Context) -> TrayGridMenuButton {
-        let button = TrayGridMenuButton(title: title, icon: icon, menuItems: menuItems)
-        return button
-    }
-
-    func updateNSView(_ nsView: TrayGridMenuButton, context: Context) {
-        nsView.menuItems = menuItems
-    }
-}
-
-struct TrayMenuItem {
+private struct TrayActionButton: View {
     let title: String
     let icon: String
     let action: () -> Void
-    var isDestructive: Bool = false
-    var isSeparator: Bool = false
-    var isDisabled: Bool = false
-    var submenu: [TrayMenuItem]? = nil
 
-    static func separator() -> TrayMenuItem {
-        TrayMenuItem(title: "", icon: "", action: {}, isSeparator: true)
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            TrayActionLabel(title: title, icon: icon, isHovered: isHovered)
+        }
+        .buttonStyle(RuneTheme.RunePressStyle())
+        .onHover { isHovered = $0 }
+        .accessibilityLabel(title)
     }
 }
 
-final class TrayGridMenuButton: NSView {
-    var menuItems: [TrayMenuItem]
-    private let titleText: String
-    private let iconName: String
-    private var isHovered = false
-    private var trackingArea: NSTrackingArea?
+private struct TrayActionLabel: View {
+    let title: String
+    let icon: String
+    var showsChevron = false
+    var isHovered = false
 
-    init(title: String, icon: String, menuItems: [TrayMenuItem]) {
-        self.titleText = title
-        self.iconName = icon
-        self.menuItems = menuItems
-        super.init(frame: .zero)
-    }
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 17)
 
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.primary)
 
-    override var intrinsicContentSize: NSSize {
-        NSSize(width: NSView.noIntrinsicMetric, height: 32)
-    }
+            Spacer(minLength: 2)
 
-    override func updateTrackingAreas() {
-        if let existing = trackingArea { removeTrackingArea(existing) }
-        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways], owner: self)
-        addTrackingArea(area)
-        trackingArea = area
-        super.updateTrackingAreas()
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        isHovered = true
-        needsDisplay = true
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        isHovered = false
-        needsDisplay = true
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        let menu = NSMenu()
-        for item in menuItems {
-            if item.isSeparator {
-                menu.addItem(.separator())
-                continue
-            }
-            if let submenuItems = item.submenu {
-                let parentItem = NSMenuItem(title: item.title, action: nil, keyEquivalent: "")
-                if let img = NSImage(systemSymbolName: item.icon, accessibilityDescription: nil) {
-                    parentItem.image = img
-                }
-                let sub = NSMenu()
-                for subItem in submenuItems {
-                    if subItem.isSeparator {
-                        sub.addItem(.separator())
-                        continue
-                    }
-                    let mi = NSMenuItem(title: subItem.title, action: #selector(menuAction(_:)), keyEquivalent: "")
-                    mi.target = self
-                    mi.representedObject = subItem.action
-                    if let img = NSImage(systemSymbolName: subItem.icon, accessibilityDescription: nil) {
-                        mi.image = img
-                    }
-                    if subItem.isDestructive {
-                        mi.attributedTitle = NSAttributedString(string: subItem.title, attributes: [.foregroundColor: NSColor.systemRed])
-                    }
-                    mi.isEnabled = !subItem.isDisabled
-                    sub.addItem(mi)
-                }
-                parentItem.submenu = sub
-                menu.addItem(parentItem)
-            } else {
-                let mi = NSMenuItem(title: item.title, action: #selector(menuAction(_:)), keyEquivalent: "")
-                mi.target = self
-                mi.representedObject = item.action
-                if let img = NSImage(systemSymbolName: item.icon, accessibilityDescription: nil) {
-                    mi.image = img
-                }
-                if item.isDestructive {
-                    mi.attributedTitle = NSAttributedString(string: item.title, attributes: [.foregroundColor: NSColor.systemRed])
-                }
-                mi.isEnabled = !item.isDisabled
-                menu.addItem(mi)
+            if showsChevron {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.tertiary)
             }
         }
-        let point = NSPoint(x: 0, y: bounds.height + 4)
-        menu.popUp(positioning: nil, at: point, in: self)
-    }
-
-    @objc private func menuAction(_ sender: NSMenuItem) {
-        if let action = sender.representedObject as? () -> Void {
-            action()
-        }
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let bgColor: NSColor = isHovered
-            ? NSColor.labelColor.withAlphaComponent(0.15)
-            : NSColor.labelColor.withAlphaComponent(0.08)
-
-        let path = NSBezierPath(roundedRect: bounds, xRadius: 8, yRadius: 8)
-        bgColor.setFill()
-        path.fill()
-
-        let iconColor = NSColor.labelColor.withAlphaComponent(0.7)
-        let iconConfig = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
-
-        let iconX: CGFloat = 8
-        let textX: CGFloat = 30
-        let chevronWidth: CGFloat = 20
-        let centerY = bounds.midY
-
-        if let img = NSImage(systemSymbolName: iconName, accessibilityDescription: nil)?
-            .withSymbolConfiguration(iconConfig) {
-            let tinted = tintImage(img, color: iconColor)
-            let imgSize = tinted.size
-            let imgRect = NSRect(x: iconX, y: centerY - imgSize.height / 2, width: imgSize.width, height: imgSize.height)
-            tinted.draw(in: imgRect)
-        }
-
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 12, weight: .medium),
-            .foregroundColor: NSColor.labelColor,
-        ]
-        let textSize = (titleText as NSString).size(withAttributes: attrs)
-        let textPoint = NSPoint(x: textX, y: centerY - textSize.height / 2)
-        (titleText as NSString).draw(at: textPoint, withAttributes: attrs)
-
-        let chevronColor = NSColor.labelColor.withAlphaComponent(0.25)
-        let chevronConfig = NSImage.SymbolConfiguration(pointSize: 8, weight: .bold)
-        if let chevron = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)?
-            .withSymbolConfiguration(chevronConfig) {
-            let tinted = tintImage(chevron, color: chevronColor)
-            let chevronSize = tinted.size
-            let chevronRect = NSRect(
-                x: bounds.maxX - chevronWidth,
-                y: centerY - chevronSize.height / 2,
-                width: chevronSize.width,
-                height: chevronSize.height
-            )
-            tinted.draw(in: chevronRect)
-        }
-    }
-
-    private func tintImage(_ image: NSImage, color: NSColor) -> NSImage {
-        let tinted = image.copy() as! NSImage
-        tinted.isTemplate = false
-        tinted.lockFocus()
-        color.set()
-        let rect = NSRect(origin: .zero, size: tinted.size)
-        rect.fill(using: .sourceAtop)
-        tinted.unlockFocus()
-        return tinted
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, minHeight: 38)
+        .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(isHovered ? Color.primary.opacity(0.10) : Color.primary.opacity(0.055))
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 }
 
-// MARK: - Full Width Button
+private struct TrayRecordingMenu: View {
+    let onFullScreen: () -> Void
+    let onArea: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(isHovered ? Color.primary.opacity(0.10) : Color.primary.opacity(0.055))
+
+            Menu {
+                Button("全屏录制", systemImage: "desktopcomputer", action: onFullScreen)
+                Button("区域录制", systemImage: "rectangle.dashed", action: onArea)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "record.circle")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 17)
+
+                    Text("录屏")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.primary)
+
+                    Spacer(minLength: 2)
+                }
+                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity, minHeight: 38)
+                .contentShape(Rectangle())
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .frame(maxWidth: .infinity)
+
+            HStack {
+                Spacer()
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.tertiary)
+                    .padding(.trailing, 10)
+            }
+            .allowsHitTesting(false)
+        }
+        .frame(maxWidth: .infinity, minHeight: 38)
+        .onHover { isHovered = $0 }
+        .help("选择全屏或区域录制")
+        .accessibilityLabel("录屏，选择全屏或区域")
+    }
+}
 
 private struct TrayFullWidthButton: View {
     let title: String
     let icon: String
     let action: () -> Void
 
-    @State private var isHovered = false
-
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.primary.opacity(0.7))
-                    .frame(width: 16)
-
-                Text(title)
-                    .font(.system(size: 12, weight: .medium))
-
-                Spacer()
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isHovered ? Color.primary.opacity(0.15) : Color.primary.opacity(0.08))
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
+        TrayActionButton(title: title, icon: icon, action: action)
     }
 }
 
-// MARK: - Divider
+private struct RecentCaptureSection: View {
+    let records: [CaptureRecord]
+    let onOpen: (CaptureRecord) -> Void
+    let onShowAll: () -> Void
+
+    @State private var thumbnails: [UUID: NSImage] = [:]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("最近记录", systemImage: "clock.arrow.circlepath")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Button(action: onShowAll) {
+                    HStack(spacing: 3) {
+                        Text("全部")
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 8, weight: .bold))
+                    }
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("查看全部记录")
+            }
+
+            if records.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "photo.stack")
+                        .foregroundStyle(.tertiary)
+                    Text("截图和录屏会出现在这里")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 10)
+                .frame(height: 46)
+                .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 9))
+            } else {
+                HStack(spacing: 8) {
+                    ForEach(records) { record in
+                        Button {
+                            onOpen(record)
+                        } label: {
+                            ZStack {
+                                Color.primary.opacity(0.045)
+
+                                if let thumbnail = thumbnails[record.id] {
+                                    Image(nsImage: thumbnail)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: tileWidth, height: 58)
+                                        .clipped()
+                                } else {
+                                    ProgressView()
+                                        .controlSize(.mini)
+                                }
+
+                                if record.kind == .recording {
+                                    Image(systemName: "play.circle.fill")
+                                        .font(.system(size: 18))
+                                        .foregroundStyle(.white.opacity(0.92))
+                                        .shadow(color: .black.opacity(0.30), radius: 2, y: 1)
+                                }
+                            }
+                            .frame(width: tileWidth, height: 58)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .strokeBorder(Color.primary.opacity(0.09), lineWidth: 0.5)
+                            )
+                            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        }
+                        .buttonStyle(RuneTheme.RunePressStyle())
+                        .help(record.filename)
+                        .accessibilityLabel("打开最近的\(record.kind == .recording ? "录屏" : "截图")，\(record.filename)")
+                        .task(id: record.id) {
+                            let url = HistoryStore.shared.displayURLForRecord(record)
+                            let kind = record.kind
+                            let thumbnail = await Task.detached {
+                                HistoryStore.renderThumbnail(at: url, kind: kind, maxSize: 180)
+                            }.value
+                            thumbnails[record.id] = thumbnail
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var tileWidth: CGFloat {
+        guard !records.isEmpty else { return 88 }
+        return (280 - CGFloat(max(records.count - 1, 0)) * 8) / CGFloat(records.count)
+    }
+}
 
 private struct TrayDivider: View {
     var body: some View {
-        Divider()
-            .padding(.horizontal, 12)
+        Divider().padding(.horizontal, 12)
     }
 }

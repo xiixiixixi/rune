@@ -38,7 +38,13 @@ final class CaptureConfirmController: NSObject {
 
         let targetScreen = screen ?? NSScreen.main ?? NSScreen.screens.first!
         capturedRegion = region
+        #if DEBUG
+        if !ProcessInfo.processInfo.arguments.contains("--audit-confirm") {
+            installFocusGuard()
+        }
+        #else
         installFocusGuard()
+        #endif
 
         return await withCheckedContinuation { cont in
             self.continuation = cont
@@ -87,6 +93,12 @@ final class CaptureConfirmController: NSObject {
         toolbarPanel = panel
         layoutToolbarInitial()
         panel.orderFrontRegardless()
+
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--audit-confirm") {
+            panel.makeKeyAndOrderFront(nil)
+        }
+        #endif
 
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -227,5 +239,12 @@ private final class OverlayWindow: NSWindow {
 
 /// 底部工具栏面板：nonactivating 不抢画布焦点；点击按钮仍可触发（SwiftUI 按钮）。
 private final class ToolbarPanel: NSPanel {
-    override var canBecomeKey: Bool { false }
+    override var canBecomeKey: Bool {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--audit-confirm") {
+            return true
+        }
+        #endif
+        return false
+    }
 }

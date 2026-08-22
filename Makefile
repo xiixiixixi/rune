@@ -86,6 +86,7 @@ dmg: release ## 创建本地安装包
 	@echo "==> 正在创建 Rune 安装包…"
 	@mkdir -p $(DMG_DIR)/staging
 	@cp -R "$(APP_RELEASE)" $(DMG_DIR)/staging/
+	@cp LICENSE $(DMG_DIR)/staging/LICENSE
 	@ln -sf /Applications $(DMG_DIR)/staging/Applications
 	@hdiutil create -volname "Rune" \
 		-srcfolder $(DMG_DIR)/staging \

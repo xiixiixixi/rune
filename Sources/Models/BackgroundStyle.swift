@@ -189,6 +189,20 @@ enum ImageAlignment: String, Codable, CaseIterable {
         }
     }
 
+    var displayName: String {
+        switch self {
+        case .topLeading: "左上"
+        case .top: "上方"
+        case .topTrailing: "右上"
+        case .leading: "左侧"
+        case .center: "居中"
+        case .trailing: "右侧"
+        case .bottomLeading: "左下"
+        case .bottom: "下方"
+        case .bottomTrailing: "右下"
+        }
+    }
+
     /// Returns per-corner radius multipliers. Corners touching a stuck edge get 0.
     var cornerMultipliers: (tl: CGFloat, tr: CGFloat, br: CGFloat, bl: CGFloat) {
         let stuckTop = self == .topLeading || self == .top || self == .topTrailing

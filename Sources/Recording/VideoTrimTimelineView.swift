@@ -7,12 +7,25 @@ struct VideoTrimTimelineView: NSViewRepresentable {
     func makeNSView(context: Context) -> VideoTrimTimelineControl {
         let control = VideoTrimTimelineControl()
         control.model = model
+        control.setAccessibilityElement(true)
+        control.setAccessibilityRole(.group)
+        control.setAccessibilityLabel("视频裁剪时间轴")
+        control.setAccessibilityHelp("拖动黄色把手调整开始和结束位置，点击时间轴移动播放位置。")
         return control
     }
 
     func updateNSView(_ nsView: VideoTrimTimelineControl, context: Context) {
         nsView.model = model
+        nsView.setAccessibilityValue(
+            "从 \(format(model.trimStart)) 到 \(format(model.trimEnd))，当前 \(format(model.currentTime))"
+        )
         nsView.needsDisplay = true
+    }
+
+    private func format(_ seconds: Double) -> String {
+        let minutes = Int(seconds) / 60
+        let remainingSeconds = Int(seconds) % 60
+        return String(format: "%02d:%02d", minutes, remainingSeconds)
     }
 }
 
@@ -266,7 +279,7 @@ final class VideoTrimTimelineControl: NSView {
         ctx.restoreGState()
 
         // 4. Selection border (top and bottom lines)
-        let selColor = NSColor.systemOrange.cgColor
+        let selColor = NSColor.systemRed.cgColor
         ctx.setFillColor(selColor)
         ctx.fill(CGRect(x: startX, y: 0, width: endX - startX, height: borderWidth))
         ctx.fill(CGRect(x: startX, y: bounds.height - borderWidth, width: endX - startX, height: borderWidth))
@@ -297,7 +310,7 @@ final class VideoTrimTimelineControl: NSView {
 
     private func drawHandle(ctx: CGContext, x: CGFloat, isStart: Bool) {
         let handleRect = CGRect(x: x, y: 0, width: handleWidth, height: bounds.height)
-        let handleColor = NSColor.systemOrange.cgColor
+        let handleColor = NSColor.systemRed.cgColor
 
         let path = CGMutablePath()
         let r = cornerRadius

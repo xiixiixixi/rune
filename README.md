@@ -8,6 +8,8 @@
 
 到 [Releases](https://github.com/xiixiixixi/rune/releases/latest) 下载最新 `Rune-x.x.x.dmg`，双击打开，把"Rune"拖进 Applications 文件夹。
 
+Rune 也可以在「设置 → 关于」中检查新版本。自动检查默认关闭；开启后每天最多向 Rune 自己的 GitHub Release 查询一次版本号，不连接 BetterShot，也不会上传截图或使用数据。
+
 第一次使用：
 1. 右键点"Rune" → 打开 → 再点"打开"（本地签名，只需这一次）
 2. 首次截图时在系统设置中允许屏幕录制权限
@@ -59,6 +61,7 @@ cd CaptureKit && swift test   # 单元测试
 
 - 文字识别使用 Apple Vision，在本机执行，结果只进本机剪贴板
 - 不自动上传截图，不包含遥测和使用数据上报
+- 在线更新只查询 Rune 自己的 GitHub Release，且自动检查默认关闭
 
 ## 开源协议和版权
 

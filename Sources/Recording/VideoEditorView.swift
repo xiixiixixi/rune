@@ -19,7 +19,16 @@ struct AVPlayerRepresentable: NSViewRepresentable {
 }
 
 struct VideoEditorView: View {
+    private enum InspectorTab: String, CaseIterable, Identifiable {
+        case edit = "剪辑"
+        case appearance = "外观"
+
+        var id: Self { self }
+    }
+
     @State var model = VideoEditorModel()
+    @State private var confirmsMovingRecordingToTrash = false
+    @State private var inspectorTab: InspectorTab = .edit
     let url: URL
 
     var body: some View {
@@ -55,7 +64,7 @@ struct VideoEditorView: View {
                 .keyboardShortcut(.escape, modifiers: [])
 
                 Button {
-                    deleteRecording()
+                    confirmsMovingRecordingToTrash = true
                 } label: {
                     Label("删除", systemImage: "trash")
                         .foregroundStyle(.red)
@@ -95,33 +104,51 @@ struct VideoEditorView: View {
             }
         }
         .frame(minWidth: 780, minHeight: 520)
+        .tint(RuneTheme.accent)
         .onAppear { model.loadVideo(from: url) }
         .onDisappear { model.cleanup() }
+        .alert("把这段录屏移到废纸篓？", isPresented: $confirmsMovingRecordingToTrash) {
+            Button("移到废纸篓", role: .destructive) { deleteRecording() }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("录屏之后仍可以从废纸篓恢复。")
+        }
     }
 
     // MARK: - Inspector Sidebar
 
     private var videoInspector: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                VideoTrimSection(model: model)
-
-                VideoInspectorDivider()
-
-                VideoEffectsSection(model: model)
-
-                VideoInspectorDivider()
-
-                VideoCropSection(model: model)
-
-                VideoInspectorDivider()
-
-                VideoBackgroundSection(model: model)
-
-                Spacer(minLength: 20)
+        VStack(spacing: 0) {
+            Picker("视频工具", selection: $inspectorTab) {
+                ForEach(InspectorTab.allCases) { tab in
+                    Text(tab.rawValue).tag(tab)
+                }
             }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(10)
+            .accessibilityLabel("视频编辑工具")
+
+            Divider()
+
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    switch inspectorTab {
+                    case .edit:
+                        VideoTrimSection(model: model)
+                        VideoInspectorDivider()
+                        VideoCropSection(model: model)
+                    case .appearance:
+                        VideoEffectsSection(model: model)
+                        VideoInspectorDivider()
+                        VideoBackgroundSection(model: model)
+                    }
+
+                    Spacer(minLength: 20)
+                }
+            }
+            .scrollContentBackground(.hidden)
         }
-        .scrollContentBackground(.hidden)
         .background(Color(nsColor: .controlBackgroundColor))
     }
 
@@ -231,6 +258,7 @@ struct VideoEditorView: View {
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.leftArrow, modifiers: [])
+                .accessibilityLabel("后退 1 秒")
 
                 Button { model.togglePlayback() } label: {
                     Image(systemName: model.isPlaying ? "pause.circle.fill" : "play.circle.fill")
@@ -238,6 +266,7 @@ struct VideoEditorView: View {
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.space, modifiers: [])
+                .accessibilityLabel(model.isPlaying ? "暂停" : "播放")
 
                 Button { model.stepForward() } label: {
                     Image(systemName: "forward.fill")
@@ -245,6 +274,7 @@ struct VideoEditorView: View {
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.rightArrow, modifiers: [])
+                .accessibilityLabel("前进 1 秒")
             }
 
             Spacer()
@@ -253,7 +283,7 @@ struct VideoEditorView: View {
                 Text(model.formattedDuration)
                     .font(.system(size: 12, design: .monospaced))
                     .monospacedDigit()
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(RuneTheme.accent)
                     .frame(width: 50)
             } else {
                 Text(model.formattedDuration)
@@ -281,29 +311,25 @@ struct VideoEditorView: View {
                 || HistoryStore.shared.displayURLForRecord($0) == sourceURL
         }) {
             HistoryStore.shared.deleteRecord(record)
+        } else if FileManager.default.fileExists(atPath: sourceURL.path) {
+            try? FileManager.default.trashItem(at: sourceURL, resultingItemURL: nil)
         }
-        try? FileManager.default.removeItem(at: sourceURL)
         model.cleanup()
         NSApp.keyWindow?.close()
     }
 
     private func exportRecording() async {
         model.isExporting = true
-        let sourceURL = model.sourceURL
         if let exportedURL = await model.exportTrimmed() {
-            if let sourceURL {
-                if let oldRecord = HistoryStore.shared.records.first(where: {
-                    HistoryStore.shared.urlForRecord($0) == sourceURL
-                        || HistoryStore.shared.displayURLForRecord($0) == sourceURL
-                }) {
-                    HistoryStore.shared.deleteRecord(oldRecord)
-                }
-            }
             _ = await HistoryStore.shared.importCapture(from: exportedURL, deleteSource: false, kind: .recording)
             let appIcon = NSImage(named: "AppIcon") ?? NSApp.applicationIconImage
             ToastWindow.shared.show(message: "录屏已导出！", icon: appIcon)
             model.cleanup()
             NSApp.keyWindow?.close()
+        } else {
+            withAnimation {
+                model.toastMessage = "导出失败，请检查保存位置和可用空间"
+            }
         }
         model.isExporting = false
     }
@@ -374,6 +400,15 @@ private struct VideoTrimSection: View {
                         .font(.system(.caption2, design: .monospaced))
                         .foregroundStyle(model.hasTrim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.quaternary))
                 }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("裁剪开始")
+                .accessibilityValue(formatTime(model.trimStart))
+                .accessibilityAdjustableAction { direction in
+                    let delta = direction == .increment ? 0.1 : -0.1
+                    let newStart = max(0, min(model.trimStart + delta, model.trimEnd - 0.25))
+                    model.setTrimStart(newStart)
+                    model.seekTo(newStart)
+                }
                 HStack {
                     Text("结束")
                         .font(.caption2)
@@ -383,6 +418,15 @@ private struct VideoTrimSection: View {
                         .font(.system(.caption2, design: .monospaced))
                         .foregroundStyle(model.hasTrim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.quaternary))
                 }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("裁剪结束")
+                .accessibilityValue(formatTime(model.trimEnd))
+                .accessibilityAdjustableAction { direction in
+                    let delta = direction == .increment ? 0.1 : -0.1
+                    let newEnd = min(model.duration, max(model.trimEnd + delta, model.trimStart + 0.25))
+                    model.setTrimEnd(newEnd)
+                    model.seekTo(newEnd)
+                }
                 HStack {
                     Text("时长")
                         .font(.caption2)
@@ -390,7 +434,7 @@ private struct VideoTrimSection: View {
                     Spacer()
                     Text(formatTime(model.trimmedDuration))
                         .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(model.hasTrim ? AnyShapeStyle(.orange) : AnyShapeStyle(.quaternary))
+                        .foregroundStyle(model.hasTrim ? AnyShapeStyle(RuneTheme.accent) : AnyShapeStyle(.quaternary))
                 }
             }
 
@@ -531,6 +575,7 @@ private struct VideoBackgroundSection: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("无背景")
     }
 
     private func solidButton(_ color: SolidColor) -> some View {
@@ -552,6 +597,7 @@ private struct VideoBackgroundSection: View {
         }
         .buttonStyle(.plain)
         .help(color.name)
+        .accessibilityLabel("纯色背景：\(color.name)")
     }
 
     private func gradientButton(_ preset: GradientPreset) -> some View {
@@ -573,6 +619,7 @@ private struct VideoBackgroundSection: View {
         }
         .buttonStyle(.plain)
         .help(preset.name)
+        .accessibilityLabel("渐变背景：\(preset.name)")
     }
 
     private func bundledImageButton(_ asset: BundledBackgrounds.ImageAsset) -> some View {
@@ -601,6 +648,7 @@ private struct VideoBackgroundSection: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("macOS 背景 \(asset.id.split(separator: "-").last ?? "")")
     }
 
     @ViewBuilder
@@ -692,6 +740,7 @@ private struct VideoCropSection: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(model.isCropping ? "完成裁剪" : "裁剪画面")
 
                 if model.hasCrop {
                     Button {

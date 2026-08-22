@@ -9,15 +9,22 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     private override init() { super.init() }
 
-    func open(on screen: NSScreen? = nil) {
+    func open(on screen: NSScreen? = nil, section: SettingsSection? = nil) {
         if let existing = window, existing.isVisible {
+            if let section {
+                existing.contentView = NSHostingView(
+                    rootView: PreferencesView(initialSection: section)
+                )
+            }
             existing.orderFrontRegardless()
             NSApp.activate(ignoringOtherApps: true)
             existing.makeKeyAndOrderFront(nil)
             return
         }
 
-        let hostingView = NSHostingView(rootView: PreferencesView())
+        let hostingView = NSHostingView(
+            rootView: PreferencesView(initialSection: section ?? .general)
+        )
 
         let win = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 680, height: 560),

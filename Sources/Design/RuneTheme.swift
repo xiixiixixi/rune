@@ -102,12 +102,18 @@ enum RuneTheme {
             .padding(.horizontal, 13)
     }
 
-    /// 按压反馈：轻微缩放（弹簧），所有按钮统一
+    /// 按压反馈：极轻微缩放，像系统按钮一样干脆，不弹跳。
     struct RunePressStyle: ButtonStyle {
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
         func makeBody(configuration: Configuration) -> some View {
             configuration.label
-                .scaleEffect(configuration.isPressed ? 0.93 : 1)
-                .animation(.spring(response: 0.25, dampingFraction: 0.55), value: configuration.isPressed)
+                .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+                .opacity(configuration.isPressed ? 0.86 : 1)
+                .animation(
+                    reduceMotion ? nil : .easeOut(duration: 0.10),
+                    value: configuration.isPressed
+                )
         }
     }
 

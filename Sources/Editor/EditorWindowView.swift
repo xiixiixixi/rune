@@ -3,17 +3,25 @@ import SwiftUI
 struct EditorWindowView: View {
     @Bindable var urlHolder: CurrentURL
     @State private var model = EditorModel()
+    @State private var showsInspector = true
+    @State private var confirmsMovingCaptureToTrash = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        HSplitView {
-            EditorInspectorView(model: model)
-                .frame(width: 280)
+        HStack(spacing: 0) {
+            if showsInspector {
+                EditorInspectorView(model: model)
+                    .frame(width: 264)
+                    .transition(.move(edge: .leading).combined(with: .opacity))
+
+                Divider()
+            }
 
             EditorCanvasView(model: model)
                 .frame(minWidth: 500, minHeight: 400)
                 .background(Color(nsColor: .windowBackgroundColor))
         }
+        .tint(RuneTheme.accent)
         .overlay(alignment: .bottom) {
             if let message = model.toastMessage {
                 Text(message)
@@ -42,6 +50,18 @@ struct EditorWindowView: View {
             )
         }
         .toolbar {
+            ToolbarItemGroup(placement: .navigation) {
+                Button {
+                    withAnimation(.easeOut(duration: 0.14)) {
+                        showsInspector.toggle()
+                    }
+                } label: {
+                    Image(systemName: "sidebar.left")
+                }
+                .help(showsInspector ? "收起工具面板" : "显示工具面板")
+                .accessibilityLabel(showsInspector ? "收起工具面板" : "显示工具面板")
+            }
+
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     model.undo()
@@ -61,38 +81,28 @@ struct EditorWindowView: View {
 
                 Spacer()
 
-                Button("取消") {
-                    NSApp.keyWindow?.close()
-                }
-                .keyboardShortcut(.escape, modifiers: [])
-
-                // P1：自动 PII 打码（识别手机号/邮箱/身份证并模糊）
-                Button {
-                    Task {
-                        let count = await model.autoRedactPII()
-                        if count == 0 {
-                            model.toastMessage = "未检测到敏感信息"
+                Menu {
+                    Button {
+                        Task {
+                            let count = await model.autoRedactPII()
+                            if count == 0 {
+                                model.toastMessage = "未检测到敏感信息"
+                            }
                         }
+                    } label: {
+                        Label("隐私信息打码", systemImage: "eye.slash")
+                    }
+
+                    Button {
+                        Task { await model.autoRedactFaces() }
+                    } label: {
+                        Label("人脸打码", systemImage: "face.dashed")
                     }
                 } label: {
-                    Label("隐私信息打码", systemImage: "eye.slash")
+                    Label("自动打码", systemImage: "eye.slash")
                 }
-                .help("自动打码手机号/邮箱/身份证号")
-
-                // P1：自动人脸打码（参考 macshot VNDetectFaceRectanglesRequest）
-                Button {
-                    Task { await model.autoRedactFaces() }
-                } label: {
-                    Label("人脸打码", systemImage: "face.dashed")
-                }
-                .help("自动打码所有人脸")
-
-                Button {
-                    deleteCapture()
-                } label: {
-                    Label("删除", systemImage: "trash")
-                        .foregroundStyle(.red)
-                }
+                .help("自动处理隐私信息或人脸")
+                .accessibilityLabel("自动打码")
 
                 Button {
                     Task { await copyToClipboard() }
@@ -101,11 +111,28 @@ struct EditorWindowView: View {
                 }
                 .keyboardShortcut("c", modifiers: [.command, .shift])
 
+                Menu {
+                    Button("删除这张截图", systemImage: "trash", role: .destructive) {
+                        confirmsMovingCaptureToTrash = true
+                    }
+                    Divider()
+                    Button("关闭编辑器", systemImage: "xmark") {
+                        NSApp.keyWindow?.close()
+                    }
+                    .keyboardShortcut(.escape, modifiers: [])
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .help("更多操作")
+                .accessibilityLabel("更多操作")
+
                 Button {
                     Task { await exportImage() }
                 } label: {
                     Label("导出", systemImage: "square.and.arrow.down")
                 }
+                .buttonStyle(.borderedProminent)
+                .tint(RuneTheme.accent)
                 .keyboardShortcut("s", modifiers: .command)
             }
         }
@@ -115,10 +142,19 @@ struct EditorWindowView: View {
         .onChange(of: urlHolder.url) { _, newURL in
             model.loadImage(from: newURL)
         }
+        .alert("把这张截图移到废纸篓？", isPresented: $confirmsMovingCaptureToTrash) {
+            Button("移到废纸篓", role: .destructive) { deleteCapture() }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("截图之后仍可以从废纸篓恢复。")
+        }
     }
 
     private func exportImage() async {
-        guard let rendered = model.renderFinal() else { return }
+        guard let rendered = model.renderFinal() else {
+            withAnimation { model.toastMessage = "导出失败，无法生成图片" }
+            return
+        }
 
         let dir = AppPreferences.saveDirectory
         let stamp = Int(Date().timeIntervalSince1970 * 1000)
@@ -130,7 +166,10 @@ struct EditorWindowView: View {
             url as CFURL,
             AppPreferences.exportFormat.utType as CFString,
             1, nil
-        ) else { return }
+        ) else {
+            withAnimation { model.toastMessage = "无法写入保存位置" }
+            return
+        }
 
         var options: [CFString: Any] = [:]
         if AppPreferences.exportFormat == .jpeg {
@@ -138,18 +177,14 @@ struct EditorWindowView: View {
         }
 
         CGImageDestinationAddImage(dest, rendered, options as CFDictionary)
-        guard CGImageDestinationFinalize(dest) else { return }
+        guard CGImageDestinationFinalize(dest) else {
+            withAnimation { model.toastMessage = "导出失败，请检查磁盘空间" }
+            return
+        }
 
         if let sourceURL = model.sourceURL {
             let baseURL = CaptureOrchestrator.baseImageURL(for: url)
             try? FileManager.default.copyItem(at: sourceURL, to: baseURL)
-
-            if let record = HistoryStore.shared.records.first(where: {
-                HistoryStore.shared.urlForRecord($0) == sourceURL
-                    || HistoryStore.shared.displayURLForRecord($0) == sourceURL
-            }) {
-                HistoryStore.shared.deleteRecord(record)
-            }
 
             _ = await HistoryStore.shared.importCapture(from: url, deleteSource: false, kind: .screenshot)
         }
@@ -174,8 +209,9 @@ struct EditorWindowView: View {
                 || HistoryStore.shared.displayURLForRecord($0) == url
         }) {
             HistoryStore.shared.deleteRecord(record)
+        } else if FileManager.default.fileExists(atPath: url.path) {
+            try? FileManager.default.trashItem(at: url, resultingItemURL: nil)
         }
-        try? FileManager.default.removeItem(at: url)
         NSApp.keyWindow?.close()
     }
 

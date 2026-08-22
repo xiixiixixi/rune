@@ -156,22 +156,30 @@ final class ShortcutService {
         let mouseScreen = NSScreen.screenAtMouse()
         Task { @MainActor in
             if action == .recording {
-                if ScreenRecordingManager.shared.isRecording { return }
-                let started = try? await ScreenRecordingManager.shared.startRecording(on: mouseScreen)
-                if started == true {
-                    RecordingStatusBarController.shared.show(on: mouseScreen)
+                // 与连拍保持一致：空闲时开始，再按一次同一快捷键就结束并保存。
+                if ScreenRecordingManager.shared.isRecording {
+                    RecordingStatusBarController.shared.finishRecording()
+                } else {
+                    do {
+                        let started = try await ScreenRecordingManager.shared.startRecording(on: mouseScreen)
+                        if started {
+                            RecordingStatusBarController.shared.show(on: mouseScreen)
+                        }
+                    } catch {
+                        ToastWindow.shared.show(
+                            title: "录屏没有开始",
+                            message: error.localizedDescription,
+                            systemIcon: "exclamationmark.triangle",
+                            on: mouseScreen
+                        )
+                    }
                 }
             } else if action == .burst {
-                // 连拍单一入口=截图工具栏按钮；⇧⌘B 仅作为拍摄中的停止键
+                // 连拍是一级功能：空闲时直接框选并进入准备面板；拍摄中再次按下就停止。
                 if BurstCaptureController.shared.isActive {
                     BurstCaptureController.shared.stop()
                 } else {
-                    ToastWindow.shared.show(
-                        title: "连拍",
-                        message: "请先 ⇧⌘A 截图，再点底部工具栏的连拍按钮",
-                        systemIcon: "camera.burst",
-                        on: mouseScreen
-                    )
+                    await BurstCaptureController.shared.prepareAndBegin(presetMode: .burst, on: mouseScreen)
                 }
             } else {
                 await CaptureOrchestrator.shared.performCapture(action, on: mouseScreen)

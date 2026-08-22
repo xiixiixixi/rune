@@ -965,7 +965,6 @@ final class EditorModel {
     }
 
     /// 自动检测人脸并在人脸位置加 blur 标注（脱敏）。
-    /// 参考 macshot AutoRedactor.redactFaces 的 VNDetectFaceRectanglesRequest。
     /// - Returns: 打码的人脸数量
     @discardableResult
     func autoRedactFaces() async -> Int {
@@ -975,18 +974,23 @@ final class EditorModel {
             toastMessage = "未检测到人脸"
             return 0
         }
-        // Vision boundingBox 原点左下（Y 轴朝上），AnnotationItem Y 轴朝下，需翻转。
-        for bb in faceBoxes {
-            let item = AnnotationItem(
+        // Vision 坐标原点在左下角，画布原点在左上角，这里统一翻转纵坐标。
+        let redactions = faceBoxes.map { faceBox in
+            AnnotationItem(
                 tool: .blur,
-                rect: CGRect(x: bb.minX, y: 1 - bb.maxY, width: bb.width, height: bb.height),
+                rect: CGRect(
+                    x: faceBox.minX,
+                    y: 1 - faceBox.maxY,
+                    width: faceBox.width,
+                    height: faceBox.height
+                ),
                 points: [],
                 swatch: selectedSwatch,
                 strokeWidth: strokeWidth,
                 redactionDensity: 0.7
             )
-            items.append(item)
         }
+        items.append(contentsOf: redactions)
         toastMessage = "已打码 \(faceBoxes.count) 张人脸"
         return faceBoxes.count
     }

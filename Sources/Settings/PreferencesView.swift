@@ -24,43 +24,96 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 }
 
 struct PreferencesView: View {
-    @State private var selectedSection: SettingsSection = .general
+    @State private var selectedSection: SettingsSection
+
+    init(initialSection: SettingsSection = .general) {
+        _selectedSection = State(initialValue: initialSection)
+    }
 
     var body: some View {
         HStack(spacing: 0) {
-            List(SettingsSection.allCases, selection: $selectedSection) { section in
-                Label(section.rawValue, systemImage: section.icon)
-                    .tag(section)
+            VStack(spacing: 4) {
+                ForEach(SettingsSection.allCases) { section in
+                    SettingsSidebarRow(
+                        section: section,
+                        isSelected: selectedSection == section
+                    ) {
+                        selectedSection = section
+                    }
+                }
+                Spacer(minLength: 0)
             }
-            .listStyle(.sidebar)
+            .padding(.horizontal, 8)
+            .padding(.top, 12)
             .frame(width: 170)
+            .frame(maxHeight: .infinity)
+            .background(Color.primary.opacity(0.035))
 
             Divider()
 
-            ZStack {
-                GeneralSettingsTab()
-                    .opacity(selectedSection == .general ? 1 : 0)
-                    .allowsHitTesting(selectedSection == .general)
-                CaptureSettingsTab()
-                    .opacity(selectedSection == .capture ? 1 : 0)
-                    .allowsHitTesting(selectedSection == .capture)
-                RecordingSettingsTab()
-                    .opacity(selectedSection == .recording ? 1 : 0)
-                    .allowsHitTesting(selectedSection == .recording)
-                HistoryTab()
-                    .opacity(selectedSection == .history ? 1 : 0)
-                    .allowsHitTesting(selectedSection == .history)
-                VideosTab()
-                    .opacity(selectedSection == .videos ? 1 : 0)
-                    .allowsHitTesting(selectedSection == .videos)
-                AboutTab()
-                    .opacity(selectedSection == .about ? 1 : 0)
-                    .allowsHitTesting(selectedSection == .about)
+            Group {
+                switch selectedSection {
+                case .general:
+                    GeneralSettingsTab()
+                case .capture:
+                    CaptureSettingsTab()
+                case .recording:
+                    RecordingSettingsTab()
+                case .history:
+                    HistoryTab()
+                case .videos:
+                    VideosTab()
+                case .about:
+                    AboutTab()
+                }
             }
+            .id(selectedSection)
+            .transition(.opacity)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .tint(RuneTheme.accent)
         .frame(minWidth: 680, minHeight: 560)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct SettingsSidebarRow: View {
+    let section: SettingsSection
+    let isSelected: Bool
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 9) {
+                Capsule()
+                    .fill(isSelected ? RuneTheme.accent : Color.clear)
+                    .frame(width: 3, height: 18)
+
+                Image(systemName: section.icon)
+                    .frame(width: 18)
+
+                Text(section.rawValue)
+                    .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(isSelected ? RuneTheme.accent : Color.primary.opacity(0.78))
+            .padding(.horizontal, 8)
+            .frame(height: 34)
+            .contentShape(Rectangle())
+            .background(
+                isSelected
+                    ? RuneTheme.accent.opacity(0.10)
+                    : (isHovered ? Color.primary.opacity(0.055) : Color.clear),
+                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .accessibilityLabel(section.rawValue)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -621,8 +674,9 @@ struct CaptureSettingsTab: View {
             Section("键盘快捷键") {
                 VStack(alignment: .leading, spacing: 8) {
                     ShortcutRow(label: "全局截图", action: .main)
-                    // 其余功能已并入截图流程（截完图后底部工具栏选择），
-                    // 或保留隐藏快捷键：⇧⌘B 连拍中停止 / ⇧⌘C 取色 / ⇧⌘2 录屏
+                    ShortcutRow(label: "连拍", action: .burst)
+                    ShortcutRow(label: "录屏", action: .recording)
+                    ShortcutRow(label: "取色", action: .colorPicker)
                 }
                 .id(shortcutResetID)
 
@@ -685,7 +739,6 @@ struct RecordingSettingsTab: View {
     @AppStorage("bs_recordingFPS") private var recordingFPS: Int = 30
     @AppStorage("bs_recordingShowCursor") private var showCursor: Bool = true
     @AppStorage("bs_recordingCaptureAudio") private var captureAudio: Bool = false
-    @AppStorage("bs_recordingOpenEditor") private var openEditor: Bool = true
 
     var body: some View {
         Form {
@@ -708,9 +761,9 @@ struct RecordingSettingsTab: View {
             }
 
             Section("录制完成后") {
-                Toggle("停止后打开编辑器", isOn: $openEditor)
-
-                Text("关闭后，录屏会直接保存，不再打开裁剪编辑器。")
+                Label("先显示轻量结果卡", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(RuneTheme.accent)
+                Text("你可以从结果卡直接剪辑，也可以拖到其他应用或在访达中查看。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -720,7 +773,6 @@ struct RecordingSettingsTab: View {
                     recordingFPS = 30
                     showCursor = true
                     captureAudio = false
-                    openEditor = true
                 }
                 .controlSize(.small)
                 .foregroundStyle(.red)
@@ -941,6 +993,7 @@ private func keyCodeToString(_ code: UInt32) -> String {
 
 struct HistoryTab: View {
     @State private var thumbnails: [String: NSImage] = [:]
+    @State private var confirmsMovingAllToTrash = false
 
     private var screenshots: [CaptureRecord] {
         HistoryStore.shared.records.filter { $0.kind == .screenshot }
@@ -955,16 +1008,16 @@ struct HistoryTab: View {
                 HStack {
                     Spacer()
                     Button(role: .destructive) {
-                        thumbnails.removeAll()
-                        screenshots.forEach { HistoryStore.shared.deleteRecord($0) }
+                        confirmsMovingAllToTrash = true
                     } label: {
-                        Label("全部清空", systemImage: "trash")
+                        Label("全部移到废纸篓", systemImage: "trash")
                             .font(.caption)
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.red)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
+                    .help("把全部截图移到废纸篓，可恢复")
                 }
 
                 List {
@@ -1019,20 +1072,33 @@ struct HistoryTab: View {
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(.secondary)
+                            .help("移到废纸篓，可恢复")
                         }
                         .padding(.vertical, 2)
                     }
                 }
             }
+            .alert("把全部截图移到废纸篓？", isPresented: $confirmsMovingAllToTrash) {
+                Button("移到废纸篓", role: .destructive) {
+                    thumbnails.removeAll()
+                    screenshots.forEach { HistoryStore.shared.deleteRecord($0) }
+                }
+                Button("取消", role: .cancel) {}
+            } message: {
+                Text("之后仍可以从废纸篓恢复。")
+            }
         }
     }
 
     private func loadThumbnail(for record: CaptureRecord) {
+        let url = HistoryStore.shared.displayURLForRecord(record)
+        let kind = record.kind
+        let recordID = record.id.uuidString
         Task.detached {
-            let thumb = await HistoryStore.shared.thumbnail(for: record, maxSize: 80)
+            let thumb = HistoryStore.renderThumbnail(at: url, kind: kind, maxSize: 80)
             await MainActor.run {
                 if let thumb {
-                    thumbnails[record.id.uuidString] = thumb
+                    thumbnails[recordID] = thumb
                 }
             }
         }
@@ -1043,6 +1109,7 @@ struct HistoryTab: View {
 
 struct VideosTab: View {
     @State private var thumbnails: [String: NSImage] = [:]
+    @State private var confirmsMovingAllToTrash = false
 
     private var recordings: [CaptureRecord] {
         HistoryStore.shared.records.filter { $0.kind == .recording }
@@ -1057,16 +1124,16 @@ struct VideosTab: View {
                 HStack {
                     Spacer()
                     Button(role: .destructive) {
-                        thumbnails.removeAll()
-                        recordings.forEach { HistoryStore.shared.deleteRecord($0) }
+                        confirmsMovingAllToTrash = true
                     } label: {
-                        Label("全部清空", systemImage: "trash")
+                        Label("全部移到废纸篓", systemImage: "trash")
                             .font(.caption)
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.red)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
+                    .help("把全部录屏移到废纸篓，可恢复")
                 }
 
                 List {
@@ -1126,20 +1193,33 @@ struct VideosTab: View {
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(.secondary)
+                            .help("移到废纸篓，可恢复")
                         }
                         .padding(.vertical, 2)
                     }
                 }
             }
+            .alert("把全部录屏移到废纸篓？", isPresented: $confirmsMovingAllToTrash) {
+                Button("移到废纸篓", role: .destructive) {
+                    thumbnails.removeAll()
+                    recordings.forEach { HistoryStore.shared.deleteRecord($0) }
+                }
+                Button("取消", role: .cancel) {}
+            } message: {
+                Text("之后仍可以从废纸篓恢复。")
+            }
         }
     }
 
     private func loadThumbnail(for record: CaptureRecord) {
+        let url = HistoryStore.shared.displayURLForRecord(record)
+        let kind = record.kind
+        let recordID = record.id.uuidString
         Task.detached {
-            let thumb = await HistoryStore.shared.thumbnail(for: record, maxSize: 80)
+            let thumb = HistoryStore.renderThumbnail(at: url, kind: kind, maxSize: 80)
             await MainActor.run {
                 if let thumb {
-                    thumbnails[record.id.uuidString] = thumb
+                    thumbnails[recordID] = thumb
                 }
             }
         }
@@ -1149,6 +1229,11 @@ struct VideosTab: View {
 // MARK: - About
 
 struct AboutTab: View {
+    @AppStorage("rune_automaticallyChecksForUpdates")
+    private var automaticallyChecksForUpdates = false
+
+    @State private var updateState: UpdateViewState = .idle
+
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
     }
@@ -1191,12 +1276,24 @@ struct AboutTab: View {
                 }
                 .padding(.bottom, 20)
 
-                aboutSection("软件说明") {
+                aboutSection("软件更新") {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("这是你的独立版本，不连接原项目的更新服务，也不会自动检查或下载更新。新版本由你自己编译和安装。")
+                        Text("只连接 Rune 自己的 GitHub Release，不使用 BetterShot 的更新服务。检查时只查询版本号，不会上传截图或使用数据。")
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                             .lineSpacing(2)
+
+                        Toggle("启动后自动检查更新（每天最多一次）", isOn: $automaticallyChecksForUpdates)
+                            .font(.system(size: 12))
+
+                        HStack(spacing: 10) {
+                            Button(updateState.isChecking ? "正在检查…" : "检查更新") {
+                                checkForUpdates()
+                            }
+                            .disabled(updateState.isChecking)
+
+                            updateStatusView
+                        }
                     }
                 }
 
@@ -1213,6 +1310,45 @@ struct AboutTab: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
+    @ViewBuilder
+    private var updateStatusView: some View {
+        switch updateState {
+        case .idle, .checking:
+            EmptyView()
+        case let .upToDate(latestVersion):
+            Label("已是最新版 \(latestVersion)", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .font(.system(size: 12))
+        case let .available(update):
+            Button("下载 Rune \(update.version)") {
+                NSWorkspace.shared.open(update.preferredURL)
+            }
+            .font(.system(size: 12, weight: .semibold))
+        case let .failed(message):
+            Label(message, systemImage: "exclamationmark.triangle")
+                .foregroundStyle(.secondary)
+                .font(.system(size: 12))
+        }
+    }
+
+    private func checkForUpdates() {
+        updateState = .checking
+        Task {
+            do {
+                switch try await UpdateService.check(currentVersion: version) {
+                case let .upToDate(latestVersion):
+                    updateState = .upToDate(latestVersion: latestVersion)
+                case let .updateAvailable(update):
+                    updateState = .available(update)
+                }
+            } catch {
+                updateState = .failed(
+                    message: (error as? LocalizedError)?.errorDescription ?? "检查失败，请稍后再试。"
+                )
+            }
+        }
+    }
+
     private func aboutSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(title)
@@ -1225,4 +1361,17 @@ struct AboutTab: View {
         }
     }
 
+}
+
+private enum UpdateViewState {
+    case idle
+    case checking
+    case upToDate(latestVersion: String)
+    case available(RuneUpdate)
+    case failed(message: String)
+
+    var isChecking: Bool {
+        if case .checking = self { return true }
+        return false
+    }
 }
