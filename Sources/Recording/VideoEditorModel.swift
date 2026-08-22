@@ -331,23 +331,34 @@ final class VideoEditorModel {
 
     private func generateThumbnails() {
         guard let sourceURL, duration > 0 else { return }
-        let asset = AVURLAsset(url: sourceURL)
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.maximumSize = CGSize(width: 120, height: 68)
-        generator.appliesPreferredTrackTransform = true
-
         let count = 20
         let step = duration / Double(count)
 
-        Task.detached { [weak self] in
-            var images: [NSImage] = []
-            for i in 0..<count {
-                let time = CMTime(seconds: step * Double(i), preferredTimescale: 600)
-                if let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) {
-                    images.append(NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height)))
+        Task { [weak self] in
+            let batch = await Task.detached(priority: .userInitiated) {
+                let asset = AVURLAsset(url: sourceURL)
+                let generator = AVAssetImageGenerator(asset: asset)
+                generator.maximumSize = CGSize(width: 120, height: 68)
+                generator.appliesPreferredTrackTransform = true
+
+                var images: [NSImage] = []
+                for index in 0..<count {
+                    let time = CMTime(
+                        seconds: step * Double(index),
+                        preferredTimescale: 600
+                    )
+                    if let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) {
+                        images.append(
+                            NSImage(
+                                cgImage: cgImage,
+                                size: NSSize(width: cgImage.width, height: cgImage.height)
+                            )
+                        )
+                    }
                 }
-            }
-            await MainActor.run { self?.thumbnails = images }
+                return VideoThumbnailBatch(images: images)
+            }.value
+            self?.thumbnails = batch.images
         }
     }
 
@@ -356,4 +367,9 @@ final class VideoEditorModel {
         let s = Int(seconds) % 60
         return String(format: "%02d:%02d", m, s)
     }
+}
+
+/// NSImage 由后台任务完整创建后只读地交回主线程，不会跨线程继续修改。
+private struct VideoThumbnailBatch: @unchecked Sendable {
+    let images: [NSImage]
 }
