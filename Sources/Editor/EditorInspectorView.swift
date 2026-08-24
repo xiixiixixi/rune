@@ -30,7 +30,7 @@ struct EditorInspectorView: View {
 
                         Text("画好的标注：直接点击选中，拖动移动，Delete 删除。")
                             .font(RuneFont.caption2)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(RuneTheme.textMuted)
                     }
                     .padding(.horizontal, 14)
                     .padding(.top, 14)
@@ -60,7 +60,7 @@ struct EditorInspectorView: View {
                             if model.selectionCount > 1 {
                                 Text("已选择 \(model.selectionCount) 个标注")
                                     .font(RuneFont.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(RuneTheme.textSecondary)
                             }
 
                             InspectorRow(title: "颜色") {
@@ -82,11 +82,11 @@ struct EditorInspectorView: View {
                                     HStack {
                                         Text("密度")
                                             .font(RuneFont.caption2)
-                                            .foregroundStyle(.tertiary)
+                                            .foregroundStyle(RuneTheme.textMuted)
                                         Spacer()
                                         Text("\(Int(model.redactionDensity * 100))%")
                                             .font(RuneFont.caption2)
-                                            .foregroundStyle(.tertiary)
+                                            .foregroundStyle(RuneTheme.textMuted)
                                     }
                                     Slider(
                                         value: Binding(
@@ -120,7 +120,7 @@ struct EditorInspectorView: View {
                         InspectorSectionHeader("美化")
                         Text("把截图包装成适合分享的卡片：裁剪画面、加边距圆角阴影、配纯色或渐变背景。")
                             .font(RuneFont.caption2)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(RuneTheme.textMuted)
                     }
                     .padding(.horizontal, 14)
                     .padding(.top, 14)
@@ -174,10 +174,11 @@ private struct InspectorSectionHeader: View {
     init(_ title: String) { self.title = title }
 
     var body: some View {
+        // 图章：Space Mono 小号 + 宽字距，像盖在校样上的工序章
         Text(title)
-            .font(RuneFont.swiftUI(size: 11, weight: .semibold))
-            .foregroundStyle(.tertiary)
-            .tracking(0.5)
+            .font(RuneFont.mono(size: 10, weight: .medium))
+            .foregroundStyle(RuneTheme.textMuted)
+            .tracking(1.6)
     }
 }
 
@@ -195,7 +196,7 @@ private struct InspectorRow<Content: View>: View {
         HStack(spacing: 10) {
             Text(title)
                 .font(RuneFont.swiftUI(size: 12))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(RuneTheme.textSecondary)
                 .frame(width: 52, alignment: .leading)
             content()
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -233,7 +234,7 @@ private struct AnnotationInspectorToolGrid: View {
             HStack(spacing: 4) {
                 Text("更多")
                     .font(RuneFont.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(RuneTheme.textMuted)
                     .frame(width: 30, alignment: .leading)
 
                 ForEach(secondaryTools) { tool in
@@ -322,13 +323,13 @@ private struct AnnotationColorMenu: View {
 
                 Text(selectedSwatch.title)
                     .font(RuneFont.swiftUI(size: 12))
-                    .foregroundStyle(.primary.opacity(0.8))
+                    .foregroundStyle(RuneTheme.textPrimary.opacity(0.8))
 
                 Spacer()
 
                 Image(systemName: "chevron.up.chevron.down")
                     .font(RuneFont.swiftUI(size: 8, weight: .semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(RuneTheme.textMuted)
             }
             .padding(.horizontal, 8)
             .frame(height: 26)
@@ -444,14 +445,14 @@ private struct AnnotationStrokeMenu: View {
 
                 Text("\(Int(strokeWidth)) 像素")
                     .font(RuneFont.swiftUI(size: 12))
-                    .foregroundStyle(.primary.opacity(0.8))
+                    .foregroundStyle(RuneTheme.textPrimary.opacity(0.8))
                     .frame(minWidth: 28, alignment: .leading)
 
                 Spacer(minLength: 10)
 
                 Image(systemName: "chevron.up.chevron.down")
                     .font(RuneFont.swiftUI(size: 8, weight: .semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(RuneTheme.textMuted)
             }
             .padding(.horizontal, 8)
             .frame(height: 26)
@@ -572,14 +573,14 @@ private struct AnnotationTextStyleControls: View {
             HStack(spacing: 6) {
                 Text(model.selectedTextFontName)
                     .font(RuneFont.swiftUI(size: 12))
-                    .foregroundStyle(.primary.opacity(0.8))
+                    .foregroundStyle(RuneTheme.textPrimary.opacity(0.8))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
                 Image(systemName: "chevron.up.chevron.down")
                     .font(RuneFont.swiftUI(size: 8, weight: .semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(RuneTheme.textMuted)
             }
             .padding(.horizontal, 8)
             .frame(height: 26)
@@ -601,7 +602,7 @@ private struct AnnotationTextStyleControls: View {
         HStack(spacing: 0) {
             Button { adjustFontSize(by: -1) } label: {
                 Image(systemName: "minus").font(RuneFont.swiftUI(size: 10, weight: .medium)).frame(width: 22, height: 24).contentShape(Rectangle())
-            }.buttonStyle(.plain).foregroundStyle(.secondary)
+            }.buttonStyle(.plain).foregroundStyle(RuneTheme.textSecondary)
 
             Divider().frame(height: 14)
 
@@ -617,7 +618,7 @@ private struct AnnotationTextStyleControls: View {
 
             Button { adjustFontSize(by: 1) } label: {
                 Image(systemName: "plus").font(RuneFont.swiftUI(size: 10, weight: .medium)).frame(width: 22, height: 24).contentShape(Rectangle())
-            }.buttonStyle(.plain).foregroundStyle(.secondary)
+            }.buttonStyle(.plain).foregroundStyle(RuneTheme.textSecondary)
         }
         .frame(height: 26)
         .background(
@@ -687,7 +688,7 @@ private struct AnnotationTextStyleControls: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(isSelected ? Color.white : Color.primary)
+        .foregroundStyle(isSelected ? Color.white : RuneTheme.textPrimary)
         .background { if isSelected { Capsule().fill(Color.accentColor) } }
         .accessibilityLabel(alignment.accessibilityName)
     }
@@ -763,7 +764,7 @@ private struct LayoutSection: View {
             HStack(spacing: 10) {
                 Text("比例")
                     .font(RuneFont.swiftUI(size: 12))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(RuneTheme.textSecondary)
                     .frame(width: 52, alignment: .leading)
 
                 Menu {
@@ -782,12 +783,12 @@ private struct LayoutSection: View {
                     HStack(spacing: 6) {
                         Text(model.config.aspectRatio.displayName)
                             .font(RuneFont.swiftUI(size: 12))
-                            .foregroundStyle(.primary.opacity(0.8))
+                            .foregroundStyle(RuneTheme.textPrimary.opacity(0.8))
                             .frame(maxWidth: .infinity, alignment: .leading)
 
                         Image(systemName: "chevron.up.chevron.down")
                             .font(RuneFont.swiftUI(size: 8, weight: .semibold))
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(RuneTheme.textMuted)
                     }
                     .padding(.horizontal, 8)
                     .frame(height: 26)
@@ -808,7 +809,7 @@ private struct LayoutSection: View {
             HStack(alignment: .top, spacing: 10) {
                 Text("对齐")
                     .font(RuneFont.swiftUI(size: 12))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(RuneTheme.textSecondary)
                     .frame(width: 52, alignment: .leading)
                     .padding(.top, 6)
 
@@ -884,7 +885,7 @@ struct BackgroundPickerSection: View {
 
             Text("纯色")
                 .font(RuneFont.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(RuneTheme.textMuted)
 
             LazyVGrid(columns: swatchColumns, spacing: 6) {
                 noneButton
@@ -896,7 +897,7 @@ struct BackgroundPickerSection: View {
 
             Text("渐变")
                 .font(RuneFont.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(RuneTheme.textMuted)
 
             LazyVGrid(columns: swatchColumns, spacing: 6) {
                 ForEach(GradientPreset.presets) { preset in
@@ -906,7 +907,7 @@ struct BackgroundPickerSection: View {
 
             Text("macOS")
                 .font(RuneFont.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(RuneTheme.textMuted)
 
             LazyVGrid(columns: Array(repeating: GridItem(.fixed(48), spacing: 6), count: 4), spacing: 6) {
                 ForEach(BundledBackgrounds.macAssets) { asset in
@@ -1039,7 +1040,7 @@ struct BackgroundPickerSection: View {
 
                 Text(URL(fileURLWithPath: source.path).lastPathComponent)
                     .font(RuneFont.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(RuneTheme.textSecondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
 
@@ -1071,7 +1072,7 @@ struct BackgroundPickerSection: View {
                 )
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(RuneTheme.textSecondary)
         }
     }
 
@@ -1140,7 +1141,7 @@ private struct ImageCropSection: View {
                 let h = Int(CGFloat(model.sourceImage?.height ?? 0) * model.cropRect.height)
                 Text("\(w) × \(h)")
                     .font(RuneFont.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(RuneTheme.textMuted)
             }
         }
         .padding(.horizontal, 14)
@@ -1210,11 +1211,11 @@ struct LabeledSlider: View {
             HStack {
                 Text(label)
                     .font(RuneFont.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(RuneTheme.textMuted)
                 Spacer()
                 Text(format(value))
                     .font(RuneFont.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(RuneTheme.textMuted)
             }
             Slider(value: $value, in: range) { editing in
                 onEditingChanged?(editing)

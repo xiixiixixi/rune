@@ -26,8 +26,8 @@ struct MenuBarPanelView: View {
                         .strokeBorder(RuneTheme.separator, lineWidth: 1)
                 )
         }
-        .shadow(color: .black.opacity(0.18), radius: 20, y: 8)
-        .shadow(color: .black.opacity(0.08), radius: 4, y: 2)
+        .shadow(color: .black.opacity(0.14), radius: 22, y: 8)
+        .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
         .offset(y: isVisible || reduceMotion ? 0 : -4)
         .opacity(isVisible ? 1 : 0)
         .onAppear {
@@ -69,7 +69,7 @@ struct MenuBarContentView: View {
                     subtitle: "拖选区域或点窗口",
                     icon: "camera.viewfinder",
                     shortcut: ShortcutService.shared.displayString(for: .main),
-                    isAccent: false
+                    isAccent: true
                 ) {
                     dismissAndRun(.main)
                 }
@@ -79,7 +79,7 @@ struct MenuBarContentView: View {
                     subtitle: "连续 · 定数 · 延时",
                     icon: "camera.fill",
                     shortcut: ShortcutService.shared.displayString(for: .burst),
-                    isAccent: true
+                    isAccent: false
                 ) {
                     dismissAndRunBurst(mode: .burst)
                 }
@@ -149,7 +149,7 @@ struct MenuBarContentView: View {
                 } label: {
                     Label("设置", systemImage: "gearshape")
                         .font(RuneFont.swiftUI(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(RuneTheme.textSecondary)
                 }
                 .buttonStyle(.plain)
                 .help("设置 (⌘,)")
@@ -157,15 +157,15 @@ struct MenuBarContentView: View {
                 Spacer()
 
                 Text("Rune")
-                    .font(RuneFont.swiftUI(size: 10, weight: .medium))
-                    .foregroundStyle(.quaternary)
+                    .font(RuneFont.mono(size: 9, weight: .medium))
+                    .foregroundStyle(RuneTheme.textMuted)
 
                 Button {
                     NSApplication.shared.terminate(nil)
                 } label: {
                     Image(systemName: "power")
                         .font(RuneFont.swiftUI(size: 12, weight: .medium))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(RuneTheme.textMuted)
                         .frame(width: 24, height: 24)
                 }
                 .buttonStyle(.plain)
@@ -174,27 +174,35 @@ struct MenuBarContentView: View {
             }
             .padding(.horizontal, 14)
             .frame(height: 42)
+            .overlay(alignment: .top) {
+                Rectangle()
+                    .fill(RuneTheme.separator)
+                    .frame(height: 1)
+            }
         }
         .frame(width: 320)
     }
 
     private var header: some View {
         HStack(spacing: 8) {
-            Circle()
-                .fill(RuneTheme.accent)
-                .frame(width: 8, height: 8)
-
             Text("Rune")
-                .font(RuneFont.swiftUI(size: 15, weight: .semibold))
+                .font(RuneFont.swiftUI(size: 16, weight: .bold))
+                .foregroundStyle(RuneTheme.ink)
+
+            // 数据声部的小章：版本号用 Space Mono，像校样单上的机读行
+            Text("v\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")")
+                .font(RuneFont.mono(size: 9, weight: .medium))
+                .foregroundStyle(RuneTheme.textMuted)
 
             Spacer()
 
-            Text("截图与连拍")
-                .font(RuneFont.swiftUI(size: 11))
-                .foregroundStyle(.secondary)
+            Text("截图 · 标注 · 贴图")
+                .font(RuneFont.mono(size: 9, weight: .medium))
+                .foregroundStyle(RuneTheme.textMuted)
+                .tracking(1.2)
         }
         .padding(.horizontal, 14)
-        .frame(height: 48)
+        .frame(height: 46)
     }
 
     private var originScreen: NSScreen? {
@@ -303,41 +311,53 @@ private struct TrayFeatureButton: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Image(systemName: icon)
-                        .font(RuneFont.swiftUI(size: 18, weight: .semibold))
-                        .foregroundStyle(isAccent ? RuneTheme.accent : .primary)
+                        .font(RuneFont.swiftUI(size: 19, weight: .medium))
+                        .foregroundStyle(isAccent ? Color.white : RuneTheme.ink)
 
                     Spacer()
 
+                    // 快捷键是"机器读数"：主卡上白底墨字，次卡上纸底灰字
                     Text(shortcut)
-                        .font(RuneFont.swiftUI(size: 9, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
+                        .font(RuneFont.mono(size: 9, weight: .medium))
+                        .foregroundStyle(isAccent ? Color.white.opacity(0.85) : RuneTheme.textMuted)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(isAccent ? Color.white.opacity(0.16) : RuneTheme.background)
+                        )
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(RuneFont.swiftUI(size: 14, weight: .semibold))
+                        .font(RuneFont.swiftUI(size: 14, weight: .bold))
                     Text(subtitle)
                         .font(RuneFont.swiftUI(size: 10))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(isAccent ? Color.white.opacity(0.72) : RuneTheme.textSecondary)
                         .lineLimit(1)
                 }
             }
             .padding(12)
             .frame(maxWidth: .infinity, minHeight: 84, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(RuneTheme.card)
+                RoundedRectangle(cornerRadius: RuneTheme.cardCorner, style: .continuous)
+                    .fill(isAccent ? RuneTheme.accent : RuneTheme.card)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: RuneTheme.cardCorner, style: .continuous)
                     .strokeBorder(
                         isAccent
-                            ? RuneTheme.accent.opacity(0.35)
+                            ? Color.clear
                             : (isHovered ? RuneTheme.textMuted : RuneTheme.separator),
                         lineWidth: 1
                     )
             )
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .shadow(
+                color: isAccent ? RuneTheme.accent.opacity(isHovered ? 0.30 : 0.20) : .clear,
+                radius: isHovered ? 12 : 8,
+                y: 4
+            )
+            .contentShape(RoundedRectangle(cornerRadius: RuneTheme.cardCorner, style: .continuous))
         }
         .buttonStyle(RuneTheme.RunePressStyle())
         .onHover { isHovered = $0 }
@@ -373,19 +393,19 @@ private struct TrayActionLabel: View {
         HStack(spacing: 8) {
             Image(systemName: icon)
                 .font(RuneFont.swiftUI(size: 13, weight: .medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(RuneTheme.textSecondary)
                 .frame(width: 17)
 
             Text(title)
                 .font(RuneFont.swiftUI(size: 12, weight: .medium))
-                .foregroundStyle(.primary)
+                .foregroundStyle(RuneTheme.ink)
 
             Spacer(minLength: 2)
 
             if showsChevron {
                 Image(systemName: "chevron.down")
                     .font(RuneFont.swiftUI(size: 8, weight: .bold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(RuneTheme.textMuted)
             }
         }
         .padding(.horizontal, 10)
@@ -461,9 +481,7 @@ private struct RecentCaptureSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Label("最近记录", systemImage: "clock.arrow.circlepath")
-                    .font(RuneFont.swiftUI(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                RuneTheme.stampLabel("最近记录")
 
                 Spacer()
 
@@ -474,7 +492,7 @@ private struct RecentCaptureSection: View {
                             .font(RuneFont.swiftUI(size: 8, weight: .bold))
                     }
                     .font(RuneFont.swiftUI(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(RuneTheme.textSecondary)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("查看全部记录")
@@ -483,10 +501,10 @@ private struct RecentCaptureSection: View {
             if records.isEmpty {
                 HStack(spacing: 8) {
                     Image(systemName: "photo.stack")
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(RuneTheme.textMuted)
                     Text("截图和录屏会出现在这里")
                         .font(RuneFont.swiftUI(size: 11))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(RuneTheme.textSecondary)
                     Spacer()
                 }
                 .padding(.horizontal, 10)

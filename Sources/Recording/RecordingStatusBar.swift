@@ -24,25 +24,24 @@ struct RecordingStatusBarView: View {
     var body: some View {
         HStack(spacing: 10) {
             Circle()
-                .fill(isPaused ? Color.orange : RuneTheme.accent)
+                .fill(isPaused ? RuneTheme.chromeMuted : RuneTheme.signal)
                 .frame(width: 8, height: 8)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(isPaused ? "录屏已暂停" : "正在录屏")
                     .font(RuneFont.swiftUI(size: 11, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(RuneTheme.chromeText)
 
                 Text(formatTime(elapsedSeconds))
-                    .font(RuneFont.swiftUI(size: 12, weight: .medium, design: .monospaced))
-                    .monospacedDigit()
-                    .foregroundStyle(.white.opacity(0.72))
+                    .font(RuneFont.mono(size: 12, weight: .medium))
+                    .foregroundStyle(RuneTheme.chromeText.opacity(0.72))
                     .contentTransition(.numericText())
             }
             .frame(minWidth: 72, alignment: .leading)
 
-            Divider()
-                .overlay(Color.white.opacity(0.16))
-                .frame(height: 24)
+            Rectangle()
+                .fill(Color.white.opacity(0.14))
+                .frame(width: 1, height: 24)
 
             Button {
                 recorder.togglePause()
@@ -81,7 +80,7 @@ struct RecordingStatusBarView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12)
                     .frame(height: 30)
-                    .background(RuneTheme.accent, in: Capsule())
+                    .background(RuneTheme.chromeBlueFill, in: Capsule())
             }
             .buttonStyle(RecordingControlButtonStyle())
             .keyboardShortcut(.escape, modifiers: [])
@@ -92,10 +91,10 @@ struct RecordingStatusBarView: View {
         .fixedSize()
         .background(
             RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .fill(Color(white: 0.10))
+                .fill(RuneTheme.chromeBase.opacity(0.97))
                 .overlay(
                     RoundedRectangle(cornerRadius: 13, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5)
+                        .strokeBorder(RuneTheme.chromeLine, lineWidth: 1)
                 )
                 .shadow(color: .black.opacity(0.34), radius: 12, y: 4)
         )

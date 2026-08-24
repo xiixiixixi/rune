@@ -19,17 +19,18 @@ struct EditorWindowView: View {
 
             EditorCanvasView(model: model)
                 .frame(minWidth: 500, minHeight: 400)
-                .background(Color(nsColor: .windowBackgroundColor))
+                .background(RuneTheme.background)
         }
         .tint(RuneTheme.accent)
         .overlay(alignment: .bottom) {
             if let message = model.toastMessage {
                 Text(message)
                     .font(RuneFont.swiftUI(size: 13, weight: .medium))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(RuneTheme.chromeText)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(.black.opacity(0.75), in: Capsule())
+                    .background(RuneTheme.chromeBase.opacity(0.92), in: Capsule())
+                    .overlay(Capsule().strokeBorder(RuneTheme.chromeLine, lineWidth: 1))
                     .padding(.bottom, 24)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .onAppear {
@@ -49,6 +50,7 @@ struct EditorWindowView: View {
                 onSelectTool: { tool in model.selectTool(tool) }
             )
         }
+        .toolbarBackgroundHiddenIfAvailable()
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
                 Button {
@@ -132,7 +134,7 @@ struct EditorWindowView: View {
                     Label("导出", systemImage: "square.and.arrow.down")
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(RuneTheme.ink)
+                .tint(RuneTheme.accent)
                 .keyboardShortcut("s", modifiers: .command)
             }
         }

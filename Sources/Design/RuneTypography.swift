@@ -2,14 +2,24 @@ import AppKit
 import CoreText
 import SwiftUI
 
-/// Rune 的统一字体入口。
+/// Rune 的统一字体入口（校样台设计系统）。
 ///
-/// 与 Mana 保持一致：界面优先使用 Space Mono，只有字体未能加载时才回退到
-/// macOS 自带的等宽字体。Space Mono 本身没有中文字形，中文会由系统自动补齐。
+/// 两个声部：
+/// - **界面声部 Space Grotesk**：所有标题、按钮、正文——有性格的几何无衬线，
+///   与 Space Mono 同门，保留极客血统但更适合阅读。中文自动回退苹方。
+/// - **数据声部 Space Mono**：快捷键、尺寸、版本号、计数等"机器读数"，
+///   等宽让数字对齐、可校对，像校样单上的打字机数据。
 enum RuneFont {
-    private static let familyName = "Space Mono"
-    private static let regularPostScriptName = "SpaceMono-Regular"
-    private static let boldPostScriptName = "SpaceMono-Bold"
+    // MARK: - 家族
+
+    private static let uiFamilyName = "Space Grotesk"
+    private static let uiRegular = "SpaceGrotesk-Regular"
+    private static let uiMedium = "SpaceGrotesk-Medium"
+    private static let uiBold = "SpaceGrotesk-Bold"
+
+    private static let monoFamilyName = "Space Mono"
+    private static let monoRegular = "SpaceMono-Regular"
+    private static let monoBold = "SpaceMono-Bold"
 
     @MainActor private static var didRegisterBundledFonts = false
 
@@ -19,7 +29,11 @@ enum RuneFont {
         guard !didRegisterBundledFonts else { return }
         didRegisterBundledFonts = true
 
-        for resource in [regularPostScriptName, boldPostScriptName] {
+        let resources = [
+            uiRegular, uiMedium, uiBold,
+            monoRegular, monoBold,
+        ]
+        for resource in resources {
             guard let url = Bundle.main.url(
                 forResource: resource,
                 withExtension: "ttf",
@@ -42,41 +56,68 @@ enum RuneFont {
         }
     }
 
-    /// SwiftUI 字体。`design` 参数保留是为了方便替换原有系统字体调用；
-    /// Rune 的界面设计始终使用 Space Mono。
+    // MARK: - SwiftUI
+
+    /// 界面字体（Space Grotesk）。`design` 参数保留兼容旧调用，统一忽略。
     static func swiftUI(
         size: CGFloat,
         weight: Font.Weight = .regular,
         design _: Font.Design? = nil
     ) -> Font {
-        Font.custom(familyName, fixedSize: size).weight(weight)
+        Font.custom(uiFamilyName, fixedSize: size).weight(weight)
+    }
+
+    /// 数据字体（Space Mono）：快捷键、尺寸、版本号、计数。
+    static func mono(size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        Font.custom(monoFamilyName, fixedSize: size).weight(weight)
     }
 
     static let body = swiftUI(size: 13)
     static let caption = swiftUI(size: 12)
     static let caption2 = swiftUI(size: 10)
 
-    /// AppKit 字体。Mana 只使用 400 / 700 两档，因此半粗以上映射到 Bold。
+    // MARK: - AppKit
+
+    /// 界面字体。三档静态字重：≥semibold 用 Bold，≥medium 用 Medium，其余 Regular。
     static func appKit(size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
+        let postScriptName: String
+        if weight.rawValue >= NSFont.Weight.semibold.rawValue {
+            postScriptName = uiBold
+        } else if weight.rawValue >= NSFont.Weight.medium.rawValue {
+            postScriptName = uiMedium
+        } else {
+            postScriptName = uiRegular
+        }
+        return NSFont(name: postScriptName, size: size)
+            ?? NSFont.systemFont(ofSize: size, weight: weight)
+    }
+
+    /// 数据字体的 AppKit 版本。
+    static func monoAppKit(size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
         let postScriptName = weight.rawValue >= NSFont.Weight.semibold.rawValue
-            ? boldPostScriptName
-            : regularPostScriptName
+            ? monoBold
+            : monoRegular
         return NSFont(name: postScriptName, size: size)
             ?? NSFont.monospacedSystemFont(ofSize: size, weight: weight)
     }
 
-    /// 字体自检（--audit-font）：确认 Space Mono 已注册且实际取到的是它而非回退。
+    // MARK: - 自检
+
+    /// 字体自检（--audit-font）：确认两个家族都已注册且实际取到而非回退。
     /// 结果写 /tmp/rune-font-result.txt。
     @MainActor
     static func runFontSelfTest() {
         registerBundledFonts()
 
-        // NSFont 按名字能取到，即说明注册成功且实际可用
-        let regular = appKit(size: 13)
-        let bold = appKit(size: 13, weight: .bold)
+        let ui = appKit(size: 13)
+        let uiMediumFont = appKit(size: 13, weight: .medium)
+        let uiBoldFont = appKit(size: 13, weight: .bold)
+        let mono = monoAppKit(size: 13)
         let report = """
-        常规: \(regular.fontName == regularPostScriptName ? "PASS ✅" : "FAIL ❌") \(regular.fontName)
-        粗体: \(bold.fontName == boldPostScriptName ? "PASS ✅" : "FAIL ❌") \(bold.fontName)
+        界面 Regular: \(ui.fontName == uiRegular ? "PASS ✅" : "FAIL ❌") \(ui.fontName)
+        界面 Medium:  \(uiMediumFont.fontName == uiMedium ? "PASS ✅" : "FAIL ❌") \(uiMediumFont.fontName)
+        界面 Bold:    \(uiBoldFont.fontName == uiBold ? "PASS ✅" : "FAIL ❌") \(uiBoldFont.fontName)
+        数据 Mono:    \(mono.fontName == monoRegular ? "PASS ✅" : "FAIL ❌") \(mono.fontName)
         """
         try? report.write(toFile: "/tmp/rune-font-result.txt", atomically: true, encoding: .utf8)
         print("[字体自测]\n" + report)

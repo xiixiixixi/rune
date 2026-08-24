@@ -43,13 +43,15 @@ struct PreferencesView: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 8)
-            .padding(.top, 12)
-            .frame(width: 170)
+            .padding(.horizontal, 10)
+            .padding(.top, 14)
+            .frame(width: 176)
             .frame(maxHeight: .infinity)
-            .background(Color.primary.opacity(0.035))
+            .background(RuneTheme.background)
 
-            Divider()
+            Rectangle()
+                .fill(RuneTheme.separator)
+                .frame(width: 1)
 
             Group {
                 switch selectedSection {
@@ -72,10 +74,13 @@ struct PreferencesView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .tint(RuneTheme.accent)
+        .background(RuneTheme.background)
         .frame(minWidth: 680, minHeight: 560)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
+
+// MARK: - 侧栏
 
 private struct SettingsSidebarRow: View {
     let section: SettingsSection
@@ -87,33 +92,168 @@ private struct SettingsSidebarRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 9) {
-                Capsule()
-                    .fill(isSelected ? RuneTheme.accent : Color.clear)
-                    .frame(width: 3, height: 18)
-
                 Image(systemName: section.icon)
+                    .font(RuneFont.swiftUI(size: 13, weight: .medium))
                     .frame(width: 18)
 
                 Text(section.rawValue)
-                    .font(RuneFont.swiftUI(size: 13, weight: isSelected ? .semibold : .regular))
+                    .font(RuneFont.swiftUI(size: 13, weight: isSelected ? .semibold : .medium))
 
                 Spacer(minLength: 0)
             }
-            .foregroundStyle(isSelected ? RuneTheme.accent : Color.primary.opacity(0.78))
-            .padding(.horizontal, 8)
+            .foregroundStyle(isSelected ? Color.white : RuneTheme.textPrimary.opacity(0.78))
+            .padding(.horizontal, 10)
             .frame(height: 34)
             .contentShape(Rectangle())
             .background(
-                isSelected
-                    ? RuneTheme.accent.opacity(0.10)
-                    : (isHovered ? Color.primary.opacity(0.055) : Color.clear),
-                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                Group {
+                    if isSelected {
+                        // 选中态：墨色胶囊——整间车间里最重的一块墨
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(RuneTheme.ink)
+                    } else if isHovered {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.primary.opacity(0.05))
+                    } else {
+                        Color.clear
+                    }
+                }
             )
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
         .accessibilityLabel(section.rawValue)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+// MARK: - 校样卡片骨架
+
+/// 设置页的分区骨架：图章标签 + 白色校样卡。
+/// 卡里的控件保持原生（开关、分段选择、滑杆），容器是我们的纸与墨。
+private struct ProofSection<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: () -> Content
+
+    init(_ title: String, @ViewBuilder content: @escaping () -> Content) {
+        self.title = title
+        self.content = content
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            RuneTheme.stampLabel(title)
+
+            VStack(alignment: .leading, spacing: 12) {
+                content()
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RuneTheme.proofCardBackground())
+        }
+    }
+}
+
+/// 设置页滚动容器：瓷白纸面 + 统一页边距
+private struct SettingsScroll<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                content()
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(RuneTheme.background)
+    }
+}
+
+/// 常规行：标签在左，控件在右
+private struct SettingsRow<Control: View>: View {
+    let label: String
+    @ViewBuilder let control: () -> Control
+
+    init(_ label: String, @ViewBuilder control: @escaping () -> Control) {
+        self.label = label
+        self.control = control
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(label)
+                .font(RuneFont.swiftUI(size: 13))
+                .foregroundStyle(RuneTheme.textPrimary)
+            Spacer(minLength: 12)
+            control()
+        }
+    }
+}
+
+/// 滑杆行：标签 + 等宽读数在上，滑杆在下
+private struct SettingsSliderRow: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        VStack(spacing: 6) {
+            HStack {
+                Text(label)
+                    .font(RuneFont.swiftUI(size: 12))
+                    .foregroundStyle(RuneTheme.textSecondary)
+                Spacer()
+                Text(value)
+                    .font(RuneFont.mono(size: 11, weight: .medium))
+                    .foregroundStyle(RuneTheme.textSecondary)
+            }
+        }
+    }
+}
+
+/// 卡内说明文字
+private struct ProofFootnote: View {
+    let text: String
+
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text)
+            .font(RuneFont.swiftUI(size: 12))
+            .foregroundStyle(RuneTheme.textSecondary)
+            .lineSpacing(2)
+    }
+}
+
+/// 恢复默认按钮：安静的次级文字按钮
+private struct ResetButton: View {
+    let title: String
+    let isDestructive: Bool
+    let action: () -> Void
+
+    init(_ title: String, isDestructive: Bool = false, action: @escaping () -> Void) {
+        self.title = title
+        self.isDestructive = isDestructive
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(RuneFont.swiftUI(size: 12, weight: .medium))
+                .foregroundStyle(isDestructive ? RuneTheme.signal : RuneTheme.textSecondary)
+                .padding(.horizontal, 12)
+                .frame(height: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(RuneTheme.card)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(RuneTheme.separator, lineWidth: 1)
+                )
+        }
+        .buttonStyle(RuneTheme.RunePressStyle())
     }
 }
 
@@ -153,48 +293,59 @@ struct GeneralSettingsTab: View {
     }
 
     var body: some View {
-        Form {
-            Section("外观") {
-                Picker("模式", selection: appAppearance) {
-                    ForEach(AppAppearance.allCases) { appearance in
-                        Text(appearance.label).tag(appearance)
-                    }
-                }
-                .pickerStyle(.segmented)
-            }
-
-            Section("保存") {
-                HStack {
-                    Text("保存到")
-                    Spacer()
-                    Text(saveDirDisplayName)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.head)
-                    Button("选择…") {
-                        let panel = NSOpenPanel()
-                        panel.canChooseFiles = false
-                        panel.canChooseDirectories = true
-                        panel.allowsMultipleSelection = false
-                        panel.directoryURL = URL(fileURLWithPath: saveDir)
-                        if panel.runModal() == .OK, let url = panel.url {
-                            saveDir = url.path
+        SettingsScroll {
+            ProofSection("外观") {
+                SettingsRow("模式") {
+                    Picker("模式", selection: appAppearance) {
+                        ForEach(AppAppearance.allCases) { appearance in
+                            Text(appearance.label).tag(appearance)
                         }
                     }
-                    .controlSize(.small)
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+            }
+
+            ProofSection("保存") {
+                SettingsRow("保存到") {
+                    HStack(spacing: 8) {
+                        Text(saveDirDisplayName)
+                            .font(RuneFont.mono(size: 11, weight: .medium))
+                            .foregroundStyle(RuneTheme.textSecondary)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                        Button("选择…") {
+                            let panel = NSOpenPanel()
+                            panel.canChooseFiles = false
+                            panel.canChooseDirectories = true
+                            panel.allowsMultipleSelection = false
+                            panel.directoryURL = URL(fileURLWithPath: saveDir)
+                            if panel.runModal() == .OK, let url = panel.url {
+                                saveDir = url.path
+                            }
+                        }
+                        .controlSize(.small)
+                    }
                 }
 
-                Toggle("保存后复制到剪贴板", isOn: $copyAfterSave)
+                SettingsRow("保存后复制到剪贴板") {
+                    Toggle("保存后复制到剪贴板", isOn: $copyAfterSave)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
             }
 
-            Section("截图") {
-                Toggle("播放快门声", isOn: $playSound)
+            ProofSection("截图") {
+                SettingsRow("播放快门声") {
+                    Toggle("播放快门声", isOn: $playSound)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
             }
 
-            Section("默认效果") {
+            ProofSection("默认效果") {
                 DefaultConfigPreview(config: defaultConfig)
                     .frame(height: 120)
-                    .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4))
 
                 defaultSlider(label: "边距", value: $defaultConfig.padding, range: 0.0...0.45) {
                     "\(Int($0 * 100))%"
@@ -210,53 +361,56 @@ struct GeneralSettingsTab: View {
                 AppPreferences.defaultBeautifierConfig = newValue
             }
 
-            Section {
+            ProofSection("默认背景") {
                 DefaultBackgroundPicker(selectedStyle: $defaultConfig.style)
 
-                Button("恢复默认效果") {
-                    defaultConfig = .default
-                    AppPreferences.defaultBeautifierConfig = .default
-                }
-                .controlSize(.small)
-                .foregroundStyle(.secondary)
-            } header: {
                 HStack {
-                    Text("默认背景")
-                    Spacer()
                     Text(backgroundLabel(for: defaultConfig.style))
-                        .font(RuneFont.caption)
-                        .foregroundStyle(.secondary)
-                        .textCase(.none)
+                        .font(RuneFont.mono(size: 11, weight: .medium))
+                        .foregroundStyle(RuneTheme.textMuted)
+                    Spacer()
+                    ResetButton("恢复默认效果") {
+                        defaultConfig = .default
+                        AppPreferences.defaultBeautifierConfig = .default
+                    }
                 }
             }
 
-            Section("导出") {
-                Picker("格式", selection: exportFormat) {
-                    ForEach(ExportFormat.allCases, id: \.self) { format in
-                        Text(format.rawValue.uppercased()).tag(format)
+            ProofSection("导出") {
+                SettingsRow("格式") {
+                    Picker("格式", selection: exportFormat) {
+                        ForEach(ExportFormat.allCases, id: \.self) { format in
+                            Text(format.rawValue.uppercased()).tag(format)
+                        }
                     }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
                 }
-                .pickerStyle(.segmented)
 
                 if exportFormatRaw == ExportFormat.jpeg.rawValue {
-                    Slider(value: $exportQuality, in: 0.1...1.0, step: 0.05) {
-                        Text("质量：\(Int(exportQuality * 100))%")
+                    VStack(spacing: 6) {
+                        SettingsSliderRow(label: "质量", value: "\(Int(exportQuality * 100))%")
+                        Slider(value: $exportQuality, in: 0.1...1.0, step: 0.05)
+                            .controlSize(.small)
                     }
                 }
 
-                // M2 自动命名保存：文件名格式选择
-                Picker("文件命名", selection: Binding(
-                    get: { FileNameFormat(rawValue: fileNameFormatRaw) ?? .systemStyle },
-                    set: { fileNameFormatRaw = $0.rawValue }
-                )) {
-                    ForEach(FileNameFormat.allCases, id: \.self) { fmt in
-                        Text(fmt.label).tag(fmt)
+                SettingsRow("文件命名") {
+                    Picker("文件命名", selection: Binding(
+                        get: { FileNameFormat(rawValue: fileNameFormatRaw) ?? .systemStyle },
+                        set: { fileNameFormatRaw = $0.rawValue }
+                    )) {
+                        ForEach(FileNameFormat.allCases, id: \.self) { fmt in
+                            Text(fmt.label).tag(fmt)
+                        }
                     }
+                    .labelsHidden()
                 }
             }
 
-            Section {
-                Button("恢复全部通用设置") {
+            HStack {
+                Spacer()
+                ResetButton("恢复全部通用设置", isDestructive: true) {
                     appAppearanceRaw = AppAppearance.system.rawValue
                     AppPreferences.applyAppearance()
                     saveDir = NSHomeDirectory() + "/Desktop"
@@ -268,23 +422,13 @@ struct GeneralSettingsTab: View {
                     defaultConfig = .default
                     AppPreferences.defaultBeautifierConfig = .default
                 }
-                .controlSize(.small)
-                .foregroundStyle(.red)
             }
         }
-        .formStyle(.grouped)
     }
 
     private func defaultSlider(label: String, value: Binding<CGFloat>, range: ClosedRange<CGFloat>, format: @escaping (CGFloat) -> String) -> some View {
-        VStack(spacing: 4) {
-            HStack {
-                Text(label)
-                    .font(RuneFont.caption)
-                Spacer()
-                Text(format(value.wrappedValue))
-                    .font(RuneFont.caption)
-                    .foregroundStyle(.secondary)
-            }
+        VStack(spacing: 6) {
+            SettingsSliderRow(label: label, value: format(value.wrappedValue))
             Slider(value: value, in: range)
                 .controlSize(.small)
         }
@@ -345,12 +489,12 @@ private struct DefaultBackgroundPicker: View {
                     path.move(to: CGPoint(x: 22, y: 2))
                     path.addLine(to: CGPoint(x: 2, y: 22))
                 }
-                .stroke(Color.red.opacity(0.6), lineWidth: 1.5)
+                .stroke(RuneTheme.signal.opacity(0.6), lineWidth: 1.5)
             }
             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .strokeBorder(selectedStyle == .none ? Color.accentColor : Color.primary.opacity(0.12), lineWidth: selectedStyle == .none ? 2 : 0.5)
+                    .strokeBorder(selectedStyle == .none ? RuneTheme.accent : Color.primary.opacity(0.12), lineWidth: selectedStyle == .none ? 2 : 0.5)
             )
         }
         .buttonStyle(.plain)
@@ -371,7 +515,7 @@ private struct DefaultBackgroundPicker: View {
                 .frame(width: 24, height: 24)
                 .overlay(
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .strokeBorder(isSelected ? Color.accentColor : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
+                        .strokeBorder(isSelected ? RuneTheme.accent : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
                 )
         }
         .buttonStyle(.plain)
@@ -392,7 +536,7 @@ private struct DefaultBackgroundPicker: View {
                 .frame(width: 24, height: 24)
                 .overlay(
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .strokeBorder(isSelected ? Color.accentColor : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
+                        .strokeBorder(isSelected ? RuneTheme.accent : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
                 )
         }
         .buttonStyle(.plain)
@@ -421,7 +565,7 @@ private struct DefaultBackgroundPicker: View {
             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .strokeBorder(isSelected ? Color.accentColor : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
+                    .strokeBorder(isSelected ? RuneTheme.accent : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
             )
         }
         .buttonStyle(.plain)
@@ -439,12 +583,12 @@ private struct DefaultBackgroundPicker: View {
                         .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .strokeBorder(Color.accentColor, lineWidth: 2)
+                                .strokeBorder(RuneTheme.accent, lineWidth: 2)
                         )
                 }
                 Text(URL(fileURLWithPath: source.path).lastPathComponent)
                     .font(RuneFont.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(RuneTheme.textSecondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer()
@@ -644,34 +788,36 @@ struct CaptureSettingsTab: View {
     }
 
     var body: some View {
-        Form {
-            Section("延时截图") {
-                Picker("延时", selection: selfTimerDelay) {
-                    ForEach(SelfTimerDelay.allCases, id: \.self) { delay in
-                        Text(delay.label).tag(delay)
+        SettingsScroll {
+            ProofSection("延时截图") {
+                SettingsRow("启动延时") {
+                    Picker("延时", selection: selfTimerDelay) {
+                        ForEach(SelfTimerDelay.allCases, id: \.self) { delay in
+                            Text(delay.label).tag(delay)
+                        }
                     }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
                 }
-                .pickerStyle(.segmented)
             }
 
-            Section("截图预览") {
-                Picker("位置", selection: overlayPosition) {
-                    Text("右下角").tag(OverlayPosition.bottomRight)
-                    Text("左下角").tag(OverlayPosition.bottomLeft)
+            ProofSection("截图预览") {
+                SettingsRow("位置") {
+                    Picker("位置", selection: overlayPosition) {
+                        Text("右下角").tag(OverlayPosition.bottomRight)
+                        Text("左下角").tag(OverlayPosition.bottomLeft)
+                    }
+                    .labelsHidden()
                 }
 
-                HStack {
-                    Text("自动关闭时间")
-                    Spacer()
-                    Text("\(Int(overlayDismissDelay)) 秒")
-                        .font(RuneFont.caption)
-                        .foregroundStyle(.secondary)
+                VStack(spacing: 6) {
+                    SettingsSliderRow(label: "自动关闭时间", value: "\(Int(overlayDismissDelay)) 秒")
+                    Slider(value: $overlayDismissDelay, in: 2...15, step: 1)
+                        .controlSize(.small)
                 }
-                Slider(value: $overlayDismissDelay, in: 2...15, step: 1)
-                    .controlSize(.small)
             }
 
-            Section("键盘快捷键") {
+            ProofSection("键盘快捷键") {
                 VStack(alignment: .leading, spacing: 8) {
                     ShortcutRow(label: "全局截图", action: .main)
                     ShortcutRow(label: "连拍", action: .burst)
@@ -680,30 +826,33 @@ struct CaptureSettingsTab: View {
                 }
                 .id(shortcutResetID)
 
-                Button("恢复默认快捷键") {
-                    for action in ShortcutService.Action.allCases {
-                        let def: ShortcutService.Shortcut? = switch action {
-                        case .region: .defaultRegion
-                        case .main: .defaultMain
-                        case .fullscreen: .defaultFullscreen
-                        case .ocr: .defaultOCR
-                        case .colorPicker: .defaultColorPicker
-                        case .recording: .defaultRecording
-                        case .window: .defaultWindow
-                        case .burst: .defaultBurst
+                HStack {
+                    Spacer()
+                    ResetButton("恢复默认快捷键") {
+                        for action in ShortcutService.Action.allCases {
+                            let def: ShortcutService.Shortcut? = switch action {
+                            case .region: .defaultRegion
+                            case .main: .defaultMain
+                            case .fullscreen: .defaultFullscreen
+                            case .ocr: .defaultOCR
+                            case .colorPicker: .defaultColorPicker
+                            case .recording: .defaultRecording
+                            case .window: .defaultWindow
+                            case .burst: .defaultBurst
+                            }
+                            if let def {
+                                ShortcutService.shared.saveShortcut(def, for: action)
+                            }
                         }
-                        if let def {
-                            ShortcutService.shared.saveShortcut(def, for: action)
-                        }
+                        ShortcutService.shared.registerAll()
+                        shortcutResetID = UUID()
                     }
-                    ShortcutService.shared.registerAll()
-                    shortcutResetID = UUID()
                 }
-                .controlSize(.small)
             }
 
-            Section {
-                Button("恢复全部截图设置") {
+            HStack {
+                Spacer()
+                ResetButton("恢复全部截图设置", isDestructive: true) {
                     selfTimerRaw = 0
                     overlayPositionRaw = OverlayPosition.bottomRight.rawValue
                     overlayDismissDelay = 5.0
@@ -725,11 +874,8 @@ struct CaptureSettingsTab: View {
                     ShortcutService.shared.registerAll()
                     shortcutResetID = UUID()
                 }
-                .controlSize(.small)
-                .foregroundStyle(.red)
             }
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -741,44 +887,51 @@ struct RecordingSettingsTab: View {
     @AppStorage("bs_recordingCaptureAudio") private var captureAudio: Bool = false
 
     var body: some View {
-        Form {
-            Section("画质") {
-                Picker("帧率", selection: $recordingFPS) {
-                    Text("24 帧/秒").tag(24)
-                    Text("30 帧/秒").tag(30)
-                    Text("60 帧/秒").tag(60)
+        SettingsScroll {
+            ProofSection("画质") {
+                SettingsRow("帧率") {
+                    Picker("帧率", selection: $recordingFPS) {
+                        Text("24 帧/秒").tag(24)
+                        Text("30 帧/秒").tag(30)
+                        Text("60 帧/秒").tag(60)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
                 }
-                .pickerStyle(.segmented)
 
-                Text("帧率越高，视频越流畅，但文件也会更大。")
-                    .font(RuneFont.caption)
-                    .foregroundStyle(.secondary)
+                ProofFootnote("帧率越高，视频越流畅，但文件也会更大。")
             }
 
-            Section("录制内容") {
-                Toggle("录制鼠标指针", isOn: $showCursor)
-                Toggle("录制系统声音", isOn: $captureAudio)
+            ProofSection("录制内容") {
+                SettingsRow("录制鼠标指针") {
+                    Toggle("录制鼠标指针", isOn: $showCursor)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
+                SettingsRow("录制系统声音") {
+                    Toggle("录制系统声音", isOn: $captureAudio)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
             }
 
-            Section("录制完成后") {
-                Label("先显示轻量结果卡", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(RuneTheme.accent)
-                Text("你可以从结果卡直接剪辑，也可以拖到其他应用或在访达中查看。")
-                    .font(RuneFont.caption)
-                    .foregroundStyle(.secondary)
+            ProofSection("录制完成后") {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(RuneTheme.accent)
+                    ProofFootnote("先显示轻量结果卡：你可以从结果卡直接剪辑，也可以拖到其他应用或在访达中查看。")
+                }
             }
 
-            Section {
-                Button("恢复全部录屏设置") {
+            HStack {
+                Spacer()
+                ResetButton("恢复全部录屏设置", isDestructive: true) {
                     recordingFPS = 30
                     showCursor = true
                     captureAudio = false
                 }
-                .controlSize(.small)
-                .foregroundStyle(.red)
             }
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -792,7 +945,10 @@ struct ShortcutRow: View {
     var body: some View {
         HStack {
             Text(label)
-                .frame(width: 100, alignment: .leading)
+                .font(RuneFont.swiftUI(size: 13))
+                .foregroundStyle(RuneTheme.textPrimary)
+
+            Spacer()
 
             Toggle("", isOn: Binding(
                 get: { shortcut?.enabled ?? false },
@@ -806,8 +962,6 @@ struct ShortcutRow: View {
             ))
             .toggleStyle(.switch)
             .labelsHidden()
-
-            Spacer()
 
             if isRecording {
                 ShortcutRecorderView { keyCode, modifiers in
@@ -830,17 +984,18 @@ struct ShortcutRow: View {
                     isRecording = true
                 } label: {
                     Text(shortcutDisplayString)
-                        .font(RuneFont.caption)
+                        .font(RuneFont.mono(size: 11, weight: .medium))
+                        .foregroundStyle(RuneTheme.textPrimary)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .frame(minWidth: 60)
+                        .frame(minWidth: 64)
                         .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color(nsColor: .controlBackgroundColor))
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(RuneTheme.card)
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+                            RoundedRectangle(cornerRadius: 5)
+                                .strokeBorder(RuneTheme.separator, lineWidth: 1)
                         )
                 }
                 .buttonStyle(.plain)
@@ -949,17 +1104,17 @@ final class ShortcutRecorderNSView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 4, yRadius: 4)
-        NSColor.controlAccentColor.withAlphaComponent(0.15).setFill()
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 5, yRadius: 5)
+        NSColor(RuneTheme.accent).withAlphaComponent(0.12).setFill()
         path.fill()
-        NSColor.controlAccentColor.setStroke()
+        NSColor(RuneTheme.accent).setStroke()
         path.lineWidth = 1.5
         path.stroke()
 
         let text = "请按下快捷键…" as NSString
         let attrs: [NSAttributedString.Key: Any] = [
             .font: RuneFont.appKit(size: 11, weight: .medium),
-            .foregroundColor: NSColor.controlAccentColor,
+            .foregroundColor: NSColor(RuneTheme.accent),
         ]
         let size = text.size(withAttributes: attrs)
         let point = NSPoint(
@@ -1008,120 +1163,24 @@ struct HistoryTab: View {
             VStack(spacing: 0) {
                 HStack {
                     Spacer()
-                    Button(role: .destructive) {
+                    ResetButton("全部移到废纸篓", isDestructive: true) {
                         confirmsMovingAllToTrash = true
-                    } label: {
-                        Label("全部移到废纸篓", systemImage: "trash")
-                            .font(RuneFont.caption)
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.red)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
                     .help("把全部截图移到废纸篓，可恢复")
                 }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 12)
 
                 List {
                     ForEach(screenshots) { record in
-                        HStack(spacing: 12) {
-                            if let thumb = thumbnails[record.id.uuidString] {
-                                Image(nsImage: thumb)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: 64, height: 48)
-                                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                            } else {
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(.quaternary)
-                                    .frame(width: 64, height: 48)
-                                    .onAppear {
-                                        loadThumbnail(for: record)
-                                    }
-                            }
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(record.filename)
-                                    .font(RuneFont.caption.weight(.medium))
-                                    .lineLimit(1)
-                                Text("\(record.pixelWidth) × \(record.pixelHeight)")
-                                    .font(RuneFont.caption2)
-                                    .foregroundStyle(.secondary)
-                                Text(record.createdAt, style: .relative)
-                                    .font(RuneFont.caption2)
-                                    .foregroundStyle(.tertiary)
-                            }
-
-                            Spacer()
-
-                            Button {
-                                let url = HistoryStore.shared.displayURLForRecord(record)
-                                PreviewOverlay.shared.show(url: url)
-                            } label: {
-                                Image(systemName: "eye")
-                                    .font(RuneFont.caption)
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
-                            .help("预览")
-
-                            Button {
-                                copyRecordToPasteboard(record)
-                                markCopied(record)
-                            } label: {
-                                Image(systemName: copiedRecordID == record.id ? "checkmark" : "doc.on.doc")
-                                    .font(RuneFont.caption)
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(copiedRecordID == record.id ? Color.accentColor : Color.secondary)
-                            .help("复制到剪贴板")
-
-                            Button {
-                                EditorWindowController.shared.open(url: HistoryStore.shared.displayURLForRecord(record))
-                            } label: {
-                                Image(systemName: "pencil")
-                                    .font(RuneFont.caption)
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
-                            .help("在编辑器中打开")
-
-                            Button {
-                                PinnedScreenshotController.shared.pin(
-                                    url: HistoryStore.shared.displayURLForRecord(record),
-                                    placement: .bottomRight
-                                )
-                            } label: {
-                                Image(systemName: "pin")
-                                    .font(RuneFont.caption)
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
-                            .help("贴到屏幕右下角")
-
-                            Button {
-                                NSWorkspace.shared.activateFileViewerSelecting([HistoryStore.shared.displayURLForRecord(record)])
-                            } label: {
-                                Image(systemName: "folder")
-                                    .font(RuneFont.caption)
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
-                            .help("在访达中显示")
-
-                            Button {
-                                thumbnails.removeValue(forKey: record.id.uuidString)
-                                HistoryStore.shared.deleteRecord(record)
-                            } label: {
-                                Image(systemName: "trash")
-                                    .font(RuneFont.caption)
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
-                            .help("移到废纸篓，可恢复")
-                        }
-                        .padding(.vertical, 2)
+                        historyRow(record)
                     }
+                    .listRowBackground(Color.clear)
+                    .listRowSeparatorTint(RuneTheme.separator)
+                    .padding(.horizontal, 8)
                 }
+                .scrollContentBackground(.hidden)
+                .background(RuneTheme.background)
             }
             .alert("把全部截图移到废纸篓？", isPresented: $confirmsMovingAllToTrash) {
                 Button("移到废纸篓", role: .destructive) {
@@ -1133,6 +1192,126 @@ struct HistoryTab: View {
                 Text("之后仍可以从废纸篓恢复。")
             }
         }
+    }
+
+    @ViewBuilder
+    private func historyRow(_ record: CaptureRecord) -> some View {
+        HStack(spacing: 12) {
+            if let thumb = thumbnails[record.id.uuidString] {
+                Image(nsImage: thumb)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 64, height: 48)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+            } else {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(.quaternary)
+                    .frame(width: 64, height: 48)
+                    .onAppear {
+                        loadThumbnail(for: record)
+                    }
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(record.filename)
+                    .font(RuneFont.caption.weight(.medium))
+                    .lineLimit(1)
+                Text("\(record.pixelWidth) × \(record.pixelHeight)")
+                    .font(RuneFont.mono(size: 10))
+                    .foregroundStyle(RuneTheme.textSecondary)
+                Text(record.createdAt, style: .relative)
+                    .font(RuneFont.caption2)
+                    .foregroundStyle(RuneTheme.textMuted)
+            }
+
+            Spacer()
+
+            recordActions(record, kind: .screenshot)
+        }
+        .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
+    private func recordActions(_ record: CaptureRecord, kind: CaptureKind) -> some View {
+        Button {
+            let url = HistoryStore.shared.displayURLForRecord(record)
+            PreviewOverlay.shared.show(url: url)
+        } label: {
+            Image(systemName: "eye")
+                .font(RuneFont.caption)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(RuneTheme.textSecondary)
+        .help("预览")
+
+        Button {
+            copyRecordToPasteboard(record)
+            markCopied(record)
+        } label: {
+            Image(systemName: copiedRecordID == record.id ? "checkmark" : "doc.on.doc")
+                .font(RuneFont.caption)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(copiedRecordID == record.id ? RuneTheme.accent : RuneTheme.textSecondary)
+        .help("复制到剪贴板")
+
+        if kind == .recording {
+            Button {
+                VideoEditorWindowController.shared.open(url: HistoryStore.shared.urlForRecord(record))
+            } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .font(RuneFont.caption)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(RuneTheme.textSecondary)
+            .help("在编辑器中打开")
+        } else {
+            Button {
+                EditorWindowController.shared.open(url: HistoryStore.shared.displayURLForRecord(record))
+            } label: {
+                Image(systemName: "pencil")
+                    .font(RuneFont.caption)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(RuneTheme.textSecondary)
+            .help("在编辑器中打开")
+        }
+
+        if kind == .screenshot {
+            Button {
+                PinnedScreenshotController.shared.pin(
+                    url: HistoryStore.shared.displayURLForRecord(record),
+                    placement: .bottomRight
+                )
+            } label: {
+                Image(systemName: "pin")
+                    .font(RuneFont.caption)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(RuneTheme.textSecondary)
+            .help("贴到屏幕右下角")
+        }
+
+        Button {
+            NSWorkspace.shared.activateFileViewerSelecting([HistoryStore.shared.displayURLForRecord(record)])
+        } label: {
+            Image(systemName: "folder")
+                .font(RuneFont.caption)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(RuneTheme.textSecondary)
+        .help("在访达中显示")
+
+        Button {
+            thumbnails.removeValue(forKey: record.id.uuidString)
+            HistoryStore.shared.deleteRecord(record)
+        } label: {
+            Image(systemName: "trash")
+                .font(RuneFont.caption)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(RuneTheme.textSecondary)
+        .help("移到废纸篓，可恢复")
     }
 
     private func markCopied(_ record: CaptureRecord) {
@@ -1200,18 +1379,13 @@ struct VideosTab: View {
             VStack(spacing: 0) {
                 HStack {
                     Spacer()
-                    Button(role: .destructive) {
+                    ResetButton("全部移到废纸篓", isDestructive: true) {
                         confirmsMovingAllToTrash = true
-                    } label: {
-                        Label("全部移到废纸篓", systemImage: "trash")
-                            .font(RuneFont.caption)
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.red)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
                     .help("把全部录屏移到废纸篓，可恢复")
                 }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 12)
 
                 List {
                     ForEach(recordings) { record in
@@ -1238,14 +1412,14 @@ struct VideosTab: View {
                                         .lineLimit(1)
                                     Image(systemName: "video.fill")
                                         .font(RuneFont.swiftUI(size: 8))
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(RuneTheme.textSecondary)
                                 }
                                 Text("\(record.pixelWidth) × \(record.pixelHeight)")
-                                    .font(RuneFont.caption2)
-                                    .foregroundStyle(.secondary)
+                                    .font(RuneFont.mono(size: 10))
+                                    .foregroundStyle(RuneTheme.textSecondary)
                                 Text(record.createdAt, style: .relative)
                                     .font(RuneFont.caption2)
-                                    .foregroundStyle(.tertiary)
+                                    .foregroundStyle(RuneTheme.textMuted)
                             }
 
                             Spacer()
@@ -1258,7 +1432,7 @@ struct VideosTab: View {
                                     .font(RuneFont.caption)
                             }
                             .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(RuneTheme.textSecondary)
                             .help("在编辑器中打开")
 
                             Button {
@@ -1275,7 +1449,7 @@ struct VideosTab: View {
                                     .font(RuneFont.caption)
                             }
                             .buttonStyle(.plain)
-                            .foregroundStyle(copiedRecordID == record.id ? Color.accentColor : Color.secondary)
+                            .foregroundStyle(copiedRecordID == record.id ? RuneTheme.accent : RuneTheme.textSecondary)
                             .help("复制文件到剪贴板")
 
                             Button {
@@ -1285,7 +1459,7 @@ struct VideosTab: View {
                                     .font(RuneFont.caption)
                             }
                             .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(RuneTheme.textSecondary)
                             .help("在访达中显示")
 
                             Button {
@@ -1296,12 +1470,17 @@ struct VideosTab: View {
                                     .font(RuneFont.caption)
                             }
                             .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(RuneTheme.textSecondary)
                             .help("移到废纸篓，可恢复")
                         }
                         .padding(.vertical, 2)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparatorTint(RuneTheme.separator)
                     }
+                    .padding(.horizontal, 8)
                 }
+                .scrollContentBackground(.hidden)
+                .background(RuneTheme.background)
             }
             .alert("把全部录屏移到废纸篓？", isPresented: $confirmsMovingAllToTrash) {
                 Button("移到废纸篓", role: .destructive) {
@@ -1356,65 +1535,66 @@ struct AboutTab: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                // Header: icon + name
-                HStack(spacing: 14) {
-                    if let icon = appIcon {
-                        Image(nsImage: icon)
-                            .resizable()
-                            .interpolation(.high)
-                            .frame(width: 64, height: 64)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Rune")
-                            .font(RuneFont.swiftUI(size: 20, weight: .bold))
-
-                        Text("版本 \(version)（构建 \(build)）")
-                            .font(RuneFont.swiftUI(size: 12))
-                            .foregroundStyle(.secondary)
-
-                        Text("轻量、原生、中文的 macOS 截图工具。")
-                            .font(RuneFont.swiftUI(size: 12))
-                            .foregroundStyle(.tertiary)
-                    }
+        SettingsScroll {
+            // 头牌校样：裁切角线框住的应用身份块
+            HStack(spacing: 16) {
+                if let icon = appIcon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 64, height: 64)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
-                .padding(.bottom, 20)
 
-                aboutSection("软件更新") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("发现新版本后会自动下载并完成安装，更新完自动重启，全程不需要手动操作。检查时只读版本号，不上传截图或使用数据。")
-                            .font(RuneFont.swiftUI(size: 12))
-                            .foregroundStyle(.secondary)
-                            .lineSpacing(2)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Rune")
+                        .font(RuneFont.swiftUI(size: 22, weight: .bold))
+                        .foregroundStyle(RuneTheme.ink)
 
-                        Toggle("启动后自动检查更新（每天最多一次）", isOn: $automaticallyChecksForUpdates)
-                            .font(RuneFont.swiftUI(size: 12))
+                    Text("版本 \(version)（构建 \(build)）")
+                        .font(RuneFont.mono(size: 11))
+                        .foregroundStyle(RuneTheme.textSecondary)
 
-                        HStack(spacing: 10) {
-                            Button(updateState.isChecking ? "正在检查…" : "检查更新") {
-                                checkForUpdates()
-                            }
-                            .disabled(updateState.isChecking)
+                    Text("轻量、原生、中文的 macOS 截图工具。")
+                        .font(RuneFont.swiftUI(size: 12))
+                        .foregroundStyle(RuneTheme.textMuted)
+                }
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RuneTheme.card)
+            .overlay(
+                RoundedRectangle(cornerRadius: 0, style: .continuous)
+                    .strokeBorder(Color.clear, lineWidth: 0)
+            )
+            .cropMarks(color: RuneTheme.textMuted.opacity(0.9), lineWidth: 1.2)
+            .padding(10)
 
-                            updateStatusView
+            ProofSection("软件更新") {
+                VStack(alignment: .leading, spacing: 10) {
+                    ProofFootnote("发现新版本后会自动下载并完成安装，更新完自动重启，全程不需要手动操作。检查时只读版本号，不上传截图或使用数据。")
+
+                    Toggle("启动后自动检查更新（每天最多一次）", isOn: $automaticallyChecksForUpdates)
+                        .font(RuneFont.swiftUI(size: 12))
+
+                    HStack(spacing: 10) {
+                        Button(updateState.isChecking ? "正在检查…" : "检查更新") {
+                            checkForUpdates()
                         }
-                    }
-                }
+                        .disabled(updateState.isChecking)
 
-                aboutSection("开源致谢") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("本软件基于 BetterShot 开源项目独立改造，原项目采用 BSD-3-Clause 许可证。版权说明保留在软件包的 LICENSE 文件中。")
-                            .font(RuneFont.swiftUI(size: 12))
-                            .foregroundStyle(.secondary)
+                        updateStatusView
                     }
                 }
             }
-            .padding(24)
+
+            ProofSection("开源致谢") {
+                VStack(alignment: .leading, spacing: 8) {
+                    ProofFootnote("本软件基于 BetterShot 开源项目独立改造，原项目采用 BSD-3-Clause 许可证。版权说明保留在软件包的 LICENSE 文件中。")
+                    ProofFootnote("界面字体 Space Grotesk 与 Space Mono 采用 SIL Open Font License 1.1 授权，随软件附带的 Fonts 目录中保留完整协议文本。")
+                }
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     @ViewBuilder
@@ -1424,7 +1604,7 @@ struct AboutTab: View {
             EmptyView()
         case let .upToDate(latestVersion):
             Label("已是最新版 \(latestVersion)", systemImage: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+                .foregroundStyle(RuneTheme.accent)
                 .font(RuneFont.swiftUI(size: 12))
         case let .available(update):
             Button("下载 Rune \(update.version)") {
@@ -1433,7 +1613,7 @@ struct AboutTab: View {
             .font(RuneFont.swiftUI(size: 12, weight: .semibold))
         case let .failed(message):
             Label(message, systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(RuneTheme.textSecondary)
                 .font(RuneFont.swiftUI(size: 12))
         }
     }
@@ -1456,19 +1636,6 @@ struct AboutTab: View {
             }
         }
     }
-
-    private func aboutSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(title)
-                .font(RuneFont.swiftUI(size: 13, weight: .bold))
-                .padding(.bottom, 10)
-
-            content()
-                .padding(.leading, 2)
-                .padding(.bottom, 20)
-        }
-    }
-
 }
 
 private enum UpdateViewState {

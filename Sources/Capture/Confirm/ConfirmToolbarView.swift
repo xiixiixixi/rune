@@ -79,7 +79,7 @@ struct ConfirmToolbarView: View {
                 title: "连拍",
                 help: "沿用当前选区，连续、定数或延时拍摄",
                 icon: "square.stack.3d.up.fill",
-                tint: RuneTheme.accent
+                tint: RuneTheme.chromeBlue
             ) {
                 controller.requestBurstCapture()
             }
@@ -118,11 +118,6 @@ struct ConfirmToolbarView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(FreezeToolbarBackground())
-        .fixedSize(horizontal: true, vertical: true)
-        .scaleEffect(appeared || reduceMotion ? 1 : 0.975)
-        .offset(y: appeared || reduceMotion ? 0 : -5)
-        .opacity(appeared ? 1 : 0)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: appeared)
         .background(
             GeometryReader { geometry in
                 Color.clear
@@ -132,6 +127,17 @@ struct ConfirmToolbarView: View {
                     }
             }
         )
+        // 签名记号：裁切角线落在工具条四角外侧——一个裁图工具，身上带着裁切标记
+        .padding(13)
+        .overlay(
+            CropMarks(armLength: 11, gap: 3)
+                .stroke(RuneTheme.chromeMuted.opacity(0.6), lineWidth: 1.2)
+        )
+        .fixedSize(horizontal: true, vertical: true)
+        .scaleEffect(appeared || reduceMotion ? 1 : 0.975)
+        .offset(y: appeared || reduceMotion ? 0 : -5)
+        .opacity(appeared ? 1 : 0)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: appeared)
         .runeTypography()
         .onAppear {
             canUndo = canvas?.canUndo ?? false
@@ -259,10 +265,10 @@ struct ConfirmToolbarView: View {
         .frame(height: 46)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.055))
+                .fill(RuneTheme.chromeElevated.opacity(0.72))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                        .strokeBorder(RuneTheme.chromeLine, lineWidth: 1)
                 )
         )
     }
@@ -284,21 +290,21 @@ struct ConfirmToolbarView: View {
 
 private struct FreezeToolbarBackground: View {
     var body: some View {
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .fill(Color(red: 0.055, green: 0.060, blue: 0.075).opacity(0.96))
+        // 石墨机身：印刷车间里压在纸上的深色工具台
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .fill(RuneTheme.chromeBase.opacity(0.97))
             .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .strokeBorder(
                         LinearGradient(
-                            colors: [Color.white.opacity(0.24), Color.white.opacity(0.07)],
+                            colors: [RuneTheme.chromeText.opacity(0.14), RuneTheme.chromeLine],
                             startPoint: .top,
                             endPoint: .bottom
                         ),
-                        lineWidth: 0.8
+                        lineWidth: 1
                     )
             )
-            .shadow(color: .black.opacity(0.38), radius: 28, y: 12)
-            .shadow(color: RuneTheme.accent.opacity(0.10), radius: 18, y: 4)
+            .shadow(color: .black.opacity(0.35), radius: 24, y: 10)
     }
 }
 
@@ -336,7 +342,7 @@ private struct FreezeToolButton: View {
                 RoundedRectangle(cornerRadius: 11, style: .continuous)
                     .strokeBorder(border, lineWidth: isActive ? 0.8 : 0.5)
             )
-            .shadow(color: isActive ? RuneTheme.accent.opacity(0.22) : .clear, radius: 8, y: 2)
+            .shadow(color: isActive ? RuneTheme.chromeBlue.opacity(0.18) : .clear, radius: 8, y: 2)
             .scaleEffect(isHovered && isEnabled && !reduceMotion ? 1.035 : 1)
             .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovered)
@@ -351,22 +357,22 @@ private struct FreezeToolButton: View {
     }
 
     private var foreground: Color {
-        if !isEnabled { return .white.opacity(0.24) }
-        if isActive { return tint ?? RuneTheme.accent }
+        if !isEnabled { return RuneTheme.chromeText.opacity(0.24) }
+        if isActive { return tint ?? RuneTheme.chromeBlue }
         if let tint { return tint.opacity(isHovered ? 1 : 0.88) }
-        return .white.opacity(isHovered ? 1 : 0.80)
+        return RuneTheme.chromeText.opacity(isHovered ? 1 : 0.80)
     }
 
     private var background: Color {
         if !isEnabled { return .white.opacity(0.018) }
-        if isActive { return RuneTheme.accent.opacity(0.17) }
-        return isHovered ? .white.opacity(0.105) : .clear
+        if isActive { return RuneTheme.chromeBlue.opacity(0.16) }
+        return isHovered ? .white.opacity(0.09) : .clear
     }
 
     private var border: Color {
-        if !isEnabled { return .white.opacity(0.025) }
-        if isActive { return RuneTheme.accent.opacity(0.48) }
-        return isHovered ? .white.opacity(0.15) : .clear
+        if !isEnabled { return RuneTheme.chromeLine.opacity(0.4) }
+        if isActive { return RuneTheme.chromeBlue.opacity(0.45) }
+        return isHovered ? .white.opacity(0.14) : .clear
     }
 }
 
@@ -386,27 +392,27 @@ private struct FreezeEndButton: View {
                 Text(title)
                     .font(RuneFont.swiftUI(size: 11, weight: .semibold))
             }
-            .foregroundStyle(isPrimary ? Color.white : Color.white.opacity(isHovered ? 1 : 0.82))
+            .foregroundStyle(isPrimary ? Color.white : RuneTheme.chromeText.opacity(isHovered ? 1 : 0.82))
             .padding(.horizontal, isPrimary ? 13 : 10)
             .frame(height: 38)
             .background(
                 Capsule()
                     .fill(
                         isPrimary
-                            ? RuneTheme.accent
+                            ? RuneTheme.chromeBlueFill
                             : Color.white.opacity(isHovered ? 0.12 : 0.065)
                     )
             )
             .overlay(
                 Capsule()
                     .strokeBorder(
-                        isPrimary ? Color.white.opacity(0.16) : Color.white.opacity(0.10),
-                        lineWidth: 0.7
+                        isPrimary ? Color.white.opacity(0.18) : RuneTheme.chromeLine,
+                        lineWidth: 1
                     )
             )
             .shadow(
-                color: isPrimary ? RuneTheme.accent.opacity(isHovered ? 0.46 : 0.30) : .clear,
-                radius: isHovered ? 11 : 7,
+                color: isPrimary ? RuneTheme.chromeBlueFill.opacity(isHovered ? 0.40 : 0.24) : .clear,
+                radius: isHovered ? 10 : 6,
                 y: 3
             )
         }

@@ -53,6 +53,7 @@ struct VideoEditorView: View {
                     .padding(.vertical, 10)
             }
         }
+        .toolbarBackgroundHiddenIfAvailable()
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Spacer()
@@ -67,7 +68,7 @@ struct VideoEditorView: View {
                     confirmsMovingRecordingToTrash = true
                 } label: {
                     Label("删除", systemImage: "trash")
-                        .foregroundStyle(.red)
+                        .foregroundStyle(RuneTheme.signal)
                 }
 
                 Button {
@@ -89,10 +90,11 @@ struct VideoEditorView: View {
             if let message = model.toastMessage {
                 Text(message)
                     .font(RuneFont.swiftUI(size: 13, weight: .medium))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(RuneTheme.chromeText)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(.black.opacity(0.75), in: Capsule())
+                    .background(RuneTheme.chromeBase.opacity(0.92), in: Capsule())
+                    .overlay(Capsule().strokeBorder(RuneTheme.chromeLine, lineWidth: 1))
                     .padding(.bottom, 60)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .onAppear {

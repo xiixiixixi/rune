@@ -27,6 +27,8 @@ final class VideoEditorWindowController: NSObject, NSWindowDelegate {
         )
         win.title = "视频编辑器"
         win.contentView = hostingView
+        win.titlebarAppearsTransparent = true
+        win.backgroundColor = NSColor(RuneTheme.background)
         win.isReleasedWhenClosed = false
         win.minSize = NSSize(width: 780, height: 520)
         win.delegate = self

@@ -284,15 +284,15 @@ final class BurstLiveBarController {
 
         let background = NSView(frame: NSRect(origin: .zero, size: panelSize))
         background.wantsLayer = true
-        background.layer?.backgroundColor = NSColor(calibratedWhite: 0.10, alpha: 0.96).cgColor
+        background.layer?.backgroundColor = NSColor(RuneTheme.chromeBase).withAlphaComponent(0.96).cgColor
         background.layer?.cornerRadius = 15
-        background.layer?.borderWidth = 0.5
-        background.layer?.borderColor = NSColor.white.withAlphaComponent(0.12).cgColor
+        background.layer?.borderWidth = 1
+        background.layer?.borderColor = NSColor(RuneTheme.chromeLine).cgColor
         panel.contentView = background
 
         let dot = NSView(frame: NSRect(x: 18, y: 26, width: 9, height: 9))
         dot.wantsLayer = true
-        dot.layer?.backgroundColor = NSColor.systemRed.cgColor
+        dot.layer?.backgroundColor = NSColor(RuneTheme.signal).cgColor
         dot.layer?.cornerRadius = 4.5
         background.addSubview(dot)
 
@@ -565,13 +565,13 @@ private func makePanelButton(
     button.wantsLayer = true
     button.layer?.cornerRadius = 8
     button.layer?.backgroundColor = accent
-        ? NSColor.systemRed.cgColor
-        : NSColor.labelColor.withAlphaComponent(0.08).cgColor
+        ? NSColor(RuneTheme.chromeBlueFill).cgColor
+        : NSColor.white.withAlphaComponent(0.10).cgColor
     button.attributedTitle = NSAttributedString(
         string: title,
         attributes: [
             .font: RuneFont.appKit(size: 12, weight: .semibold),
-            .foregroundColor: accent ? NSColor.white : NSColor.labelColor,
+            .foregroundColor: accent ? NSColor.white : NSColor.white.withAlphaComponent(0.92),
         ]
     )
     return button
@@ -580,7 +580,7 @@ private func makePanelButton(
 @MainActor
 private func setPanelButtonTitle(_ button: NSButton, title: String, accent: Bool) {
     button.layer?.backgroundColor = accent
-        ? NSColor.systemRed.cgColor
+        ? NSColor(RuneTheme.chromeBlueFill).cgColor
         : NSColor.white.withAlphaComponent(0.10).cgColor
     button.attributedTitle = NSAttributedString(
         string: title,

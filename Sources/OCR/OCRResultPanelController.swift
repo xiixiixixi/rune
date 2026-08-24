@@ -100,7 +100,7 @@ private struct OCRResultCardView: View {
             Divider().overlay(RuneTheme.separator)
 
             TextEditor(text: $text)
-                .font(RuneFont.swiftUI(size: 13, design: .monospaced))
+                .font(RuneFont.mono(size: 12))
                 .scrollContentBackground(.hidden)
                 .padding(10)
                 .background(
@@ -140,7 +140,7 @@ private struct OCRResultCardView: View {
                     .font(RuneFont.swiftUI(size: 15, weight: .semibold))
                 Text(barcodeCount > 0 ? "包含 \(barcodeCount) 个二维码或条码" : "可以先修正，再复制")
                     .font(RuneFont.swiftUI(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(RuneTheme.textSecondary)
             }
 
             Spacer()

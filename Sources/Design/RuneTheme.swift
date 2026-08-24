@@ -1,50 +1,76 @@
 import SwiftUI
 
-/// Rune 设计系统（与 Mana 同源：极客终端风）。
+/// Rune 设计系统——「校样台 Proof Desk」。
 ///
-/// 从 mana 界面原样迁移的 token：
-/// - 暖白底 #FAFAFA + 纯白卡片 + 1px #E5E5E5 细边框，小圆角（3-10pt）
-/// - 近黑 #111 主文字、#666 次要、#999 弱化
-/// - 橙红 #FF3B00 只做激活态与点缀；主按钮是黑底白字（墨色反转）
-/// - Space Mono 等宽字体（见 RuneFont）
+/// 概念：Rune 是一间数字校样台，截图即校样。界面是车间的纸、墨与工具：
+/// - **纸** 冷瓷白（刻意避开暖奶油色），让截图内容成为主角；
+/// - **墨** 蓝黑墨线承载文字与描边；
+/// - **制图蓝** 唯一主色——校对笔的蓝，只给主按钮、选中态、激活态；
+/// - **信号橘** 只出现在录制与危险操作上，像车间的警示灯；
+/// - **石墨** 暗色家族给悬浮在画面上的深色表面（确认条、Toast、状态条）；
+/// - **裁切角线**（CropMarks）是签名记号：一个裁图工具，身上带着裁切标记。
+///
+/// 字体见 RuneFont：界面声部 Space Grotesk，数据声部 Space Mono。
 enum RuneTheme {
-    // MARK: - 色板（与 mana :root 一一对应）
+    // MARK: - 色板（纸面）
 
-    /// 点缀橙红（激活态、选中态、错误提示）：mana --accent
-    static let accent = Color(red: 1.0, green: 0.231, blue: 0.0)        // #FF3B00
-    /// hover 深一档
-    static let accentPressed = Color(red: 0.878, green: 0.204, blue: 0.0)  // #E03400
-    /// 主按钮墨色（黑底白字）：mana --ink
-    static let ink = Color(red: 0.067, green: 0.067, blue: 0.067)       // #111111
-    /// 主文字（近黑）：mana --ink
-    static let textPrimary = Color(red: 0.067, green: 0.067, blue: 0.067)   // #111111
-    /// 次要文字：mana --gray
-    static let textSecondary = Color(red: 0.4, green: 0.4, blue: 0.4)       // #666666
-    /// 弱化文字：mana --muted
-    static let textMuted = Color(red: 0.6, green: 0.6, blue: 0.6)           // #999999
-    /// 细边框 / 分隔线：mana --border
-    static let separator = Color(red: 0.898, green: 0.898, blue: 0.898)     // #E5E5E5
-    /// 页面底（暖白）：mana --bg
-    static let background = Color(red: 0.98, green: 0.98, blue: 0.98)       // #FAFAFA
-    /// 卡片底（纯白）：mana --card
+    /// 制图蓝（主按钮、选中态、激活工具）：校对笔的蓝
+    static let accent = Color(red: 0.18, green: 0.294, blue: 0.843)          // #2E4BD7
+    /// 制图蓝按压态（深一档）
+    static let accentPressed = Color(red: 0.141, green: 0.235, blue: 0.729) // #243CBA
+    /// 主文字（蓝黑墨）：标题与正文
+    static let ink = Color(red: 0.102, green: 0.106, blue: 0.118)            // #1A1B1E
+    /// 主文字（同 ink，语义别名）
+    static let textPrimary = Color(red: 0.102, green: 0.106, blue: 0.118)    // #1A1B1E
+    /// 次要文字
+    static let textSecondary = Color(red: 0.361, green: 0.373, blue: 0.4)    // #5C5F66
+    /// 弱化文字
+    static let textMuted = Color(red: 0.557, green: 0.569, blue: 0.596)      // #8E9198
+    /// 纸面细线 / 分隔线
+    static let separator = Color(red: 0.894, green: 0.894, blue: 0.871)      // #E4E4DE
+    /// 页面底（冷瓷白）
+    static let background = Color(red: 0.965, green: 0.965, blue: 0.953)     // #F6F6F3
+    /// 卡面（纯白）
     static let card = Color.white
-    /// 强调色的 8% 底（错误提示条、激活底）：mana --accent-dim
-    static let accentDim = Color(red: 1.0, green: 0.231, blue: 0.0).opacity(0.08)
+    /// 制图蓝 8% 底（激活底、错误底）
+    static let accentDim = Color(red: 0.18, green: 0.294, blue: 0.843).opacity(0.08)
+
+    /// 信号橘：只给录制圆点与危险操作，像车间的警示灯
+    static let signal = Color(red: 0.91, green: 0.286, blue: 0.165)          // #E8492A
+
+    // MARK: - 色板（石墨暗面）
+
+    /// 石墨底：悬浮在画面上的深色表面（确认条、Toast、录制状态）
+    static let chromeBase = Color(red: 0.114, green: 0.118, blue: 0.133)     // #1D1E22
+    /// 石墨浮起面
+    static let chromeElevated = Color(red: 0.149, green: 0.153, blue: 0.173) // #26272C
+    /// 石墨描边
+    static let chromeLine = Color(red: 0.231, green: 0.239, blue: 0.271)     // #3B3D45
+    /// 石墨上的主文字
+    static let chromeText = Color(red: 0.929, green: 0.933, blue: 0.941)     // #EDEEF0
+    /// 石墨上的次要文字
+    static let chromeMuted = Color(red: 0.651, green: 0.659, blue: 0.686)    // #A6A8AF
+    /// 制图蓝·亮（石墨上的激活态、选中工具）
+    static let chromeBlue = Color(red: 0.549, green: 0.608, blue: 1.0)       // #8C9BFF
+    /// 制图蓝·按钮（石墨上的主按钮底色）
+    static let chromeBlueFill = Color(red: 0.302, green: 0.388, blue: 0.965) // #4D63F6
 
     // MARK: - 尺寸
 
     /// 悬浮条标准高度
     static let barHeight: CGFloat = 56
-    /// 悬浮条圆角（mana 的窗体圆角 10）
-    static let barCorner: CGFloat = 10
-    /// 按钮/卡片小圆角（mana .btn 为 3px）
-    static let buttonCorner: CGFloat = 3
+    /// 悬浮条圆角
+    static let barCorner: CGFloat = 14
+    /// 控件圆角（按钮、输入）
+    static let buttonCorner: CGFloat = 6
+    /// 卡片圆角
+    static let cardCorner: CGFloat = 10
     /// 图标按钮尺寸
     static let iconButtonSize: CGFloat = 38
 
     // MARK: - 组件样式
 
-    /// 悬浮条底：纯白卡 + 细边框 + 轻投影（mana 卡片风）
+    /// 悬浮条底：白卡 + 细边框 + 轻投影
     static var barBackground: some View {
         RoundedRectangle(cornerRadius: barCorner, style: .continuous)
             .fill(card)
@@ -52,10 +78,10 @@ enum RuneTheme {
                 RoundedRectangle(cornerRadius: barCorner, style: .continuous)
                     .strokeBorder(separator, lineWidth: 1)
             )
-            .shadow(color: .black.opacity(0.08), radius: 16, x: 0, y: 4)
+            .shadow(color: .black.opacity(0.07), radius: 14, x: 0, y: 4)
     }
 
-    /// 主按钮（保存/导出）：墨色底白字，mana 的 btn-primary（黑底白字小方角）
+    /// 主按钮（保存/导出/开始）：制图蓝底白字
     static func primaryButtonLabel(_ text: String, systemImage: String? = nil) -> some View {
         Group {
             if let systemImage {
@@ -64,17 +90,17 @@ enum RuneTheme {
                 Text(text)
             }
         }
-        .font(RuneFont.swiftUI(size: 13, weight: .bold))
-            .foregroundStyle(Color(red: 0.98, green: 0.98, blue: 0.98))
+        .font(RuneFont.swiftUI(size: 13, weight: .semibold))
+            .foregroundStyle(Color.white)
             .padding(.horizontal, 16)
             .frame(height: 32)
             .background(
                 RoundedRectangle(cornerRadius: buttonCorner, style: .continuous)
-                    .fill(ink)
+                    .fill(accent)
             )
     }
 
-    /// 次按钮（取消/复制）：透明底 + 1px 细边框 + 小方角，mana 的 .btn
+    /// 次按钮（取消/复制）：白底 + 墨色细边框
     static func secondaryButtonLabel(_ text: String, systemImage: String? = nil) -> some View {
         Group {
             if let systemImage {
@@ -83,21 +109,21 @@ enum RuneTheme {
                 Text(text)
             }
         }
-        .font(RuneFont.swiftUI(size: 13, weight: .bold))
+        .font(RuneFont.swiftUI(size: 13, weight: .medium))
             .foregroundStyle(textPrimary)
             .padding(.horizontal, 12)
             .frame(height: 32)
             .background(
                 RoundedRectangle(cornerRadius: buttonCorner, style: .continuous)
-                    .fill(Color.clear)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: buttonCorner, style: .continuous)
-                            .strokeBorder(separator, lineWidth: 1)
-                    )
+                    .fill(card)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: buttonCorner, style: .continuous)
+                    .strokeBorder(separator, lineWidth: 1)
             )
     }
 
-    /// 工具图标：18pt medium；默认灰墨，激活=橙红图标 + 橙红 8% 小圆角底
+    /// 工具图标：默认灰墨，激活 = 制图蓝图标 + 蓝 8% 底
     static func toolIcon(_ systemImage: String, active: Bool) -> some View {
         Image(systemName: systemImage)
             .font(RuneFont.swiftUI(size: 18, weight: .medium))
@@ -132,30 +158,116 @@ enum RuneTheme {
         }
     }
 
-    /// 快捷键徽章：白底细边小方角
+    /// 快捷键徽章：Space Mono 数据声部 + 白底细边——校样单上的打字机读数
     static func shortcutBadge(_ text: String) -> some View {
         Text(text)
-            .font(RuneFont.swiftUI(size: 11, weight: .medium))
+            .font(RuneFont.mono(size: 10, weight: .medium))
             .foregroundStyle(textSecondary)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(
-                RoundedRectangle(cornerRadius: buttonCorner, style: .continuous)
-                    .fill(Color.white.opacity(0.9))
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(Color.white.opacity(0.92))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: buttonCorner, style: .continuous)
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .strokeBorder(separator, lineWidth: 1)
             )
     }
 
-    /// 卡片底：纯白 + 1px 细边框（mana .card），供各页面分区使用
+    /// 卡片底：纯白 + 1px 细边框，供各页面分区使用
     static var cardBackground: some View {
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
+        RoundedRectangle(cornerRadius: cardCorner, style: .continuous)
             .fill(card)
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: cardCorner, style: .continuous)
                     .strokeBorder(separator, lineWidth: 1)
             )
+    }
+
+    /// 校样卡片：白卡 + 细边 + 可选裁切角线（签名记号，只给重点卡用）
+    static func proofCardBackground(showingCropMarks: Bool = false) -> some View {
+        cardBackground
+            .shadow(color: .black.opacity(0.035), radius: 8, x: 0, y: 2)
+            .overlay {
+                if showingCropMarks {
+                    CropMarks()
+                        .stroke(textMuted.opacity(0.85), lineWidth: 1)
+                }
+            }
+    }
+
+    /// 区块图章标签：Space Mono 小号 + 宽字距，像盖在校样上的工序章
+    static func stampLabel(_ text: String) -> some View {
+        Text(text)
+            .font(RuneFont.mono(size: 10, weight: .medium))
+            .foregroundStyle(textMuted)
+            .tracking(1.6)
+    }
+}
+
+// MARK: - 裁切角线（签名记号）
+
+/// 印刷校样四角的裁切标记：每角两段短线，分别是卡片两条边的延长线，
+/// 与角留出缺口。画在 rect 边界之外，调用处需外留约 12pt 空隙。
+/// 一个裁图工具，身上带着裁切标记——这是 Rune 的身份记号。
+struct CropMarks: Shape {
+    /// 角线臂长
+    var armLength: CGFloat = 10
+    /// 角线与卡片的间隙
+    var gap: CGFloat = 4
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let xs: [(CGFloat, CGFloat)] = [
+            (rect.minX - gap, rect.minX - gap - armLength),   // 左侧竖臂区间
+            (rect.maxX + gap, rect.maxX + gap + armLength),   // 右侧竖臂区间
+        ]
+        let ys: [(CGFloat, CGFloat)] = [
+            (rect.minY - gap, rect.minY - gap - armLength),   // 上方横臂区间
+            (rect.maxY + gap, rect.maxY + gap + armLength),   // 下方横臂区间
+        ]
+
+        // 横臂：与上下边齐平的延长线
+        for y in [rect.minY, rect.maxY] {
+            for (x0, x1) in xs {
+                path.move(to: CGPoint(x: x0, y: y))
+                path.addLine(to: CGPoint(x: x1, y: y))
+            }
+        }
+        // 竖臂：与左右边齐平的延长线
+        for x in [rect.minX, rect.maxX] {
+            for (y0, y1) in ys {
+                path.move(to: CGPoint(x: x, y: y0))
+                path.addLine(to: CGPoint(x: x, y: y1))
+            }
+        }
+        return path
+    }
+}
+
+extension View {
+    /// 给内容四角加裁切角线（画在内容边界外，需要外层留出约 12pt 空隙）。
+    func cropMarks(color: Color = RuneTheme.textMuted, lineWidth: CGFloat = 1) -> some View {
+        overlay(
+            CropMarks()
+                .stroke(color, lineWidth: lineWidth)
+        )
+    }
+
+    /// macOS 15+ 会给窗口工具栏自动铺一层玻璃材质，盖住自定义底色；
+    /// 这里把它关掉，让纸面透出来（macOS 14 本就没有这层）。
+    func toolbarBackgroundHiddenIfAvailable() -> some View {
+        modifier(ToolbarBackgroundHider())
+    }
+}
+
+private struct ToolbarBackgroundHider: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 15.0, *) {
+            content.toolbarBackground(.hidden, for: .windowToolbar)
+        } else {
+            content
+        }
     }
 }

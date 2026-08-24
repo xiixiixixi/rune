@@ -29,6 +29,8 @@ final class UpdateWindowController {
         )
         window.title = "软件更新"
         window.contentView = hosting
+        window.titlebarAppearsTransparent = true
+        window.backgroundColor = NSColor(RuneTheme.background)
         window.isReleasedWhenClosed = false
         window.center()
         self.window = window
@@ -69,8 +71,8 @@ struct UpdateWindowView: View {
                         .font(RuneFont.swiftUI(size: 17, weight: .bold))
 
                     Text("当前版本 \(currentVersion) · 更新自动完成，无需手动安装")
-                        .font(RuneFont.swiftUI(size: 11))
-                        .foregroundStyle(.secondary)
+                        .font(RuneFont.mono(size: 10))
+                        .foregroundStyle(RuneTheme.textSecondary)
                         .lineSpacing(2)
                 }
             }
@@ -95,8 +97,8 @@ struct UpdateWindowView: View {
                         .progressViewStyle(.linear)
 
                     Text("正在下载 \(Int(progress * 100))%…")
-                        .font(RuneFont.swiftUI(size: 11))
-                        .foregroundStyle(.secondary)
+                        .font(RuneFont.mono(size: 10))
+                        .foregroundStyle(RuneTheme.textSecondary)
                 }
                 .padding(.top, 14)
             } else if phase == .installing {
@@ -112,7 +114,7 @@ struct UpdateWindowView: View {
             } else if phase == .failed, let errorMessage {
                 Text(errorMessage)
                     .font(RuneFont.swiftUI(size: 11))
-                    .foregroundStyle(.red.opacity(0.85))
+                    .foregroundStyle(RuneTheme.signal.opacity(0.9))
                     .padding(.top, 14)
             }
 
@@ -136,7 +138,7 @@ struct UpdateWindowView: View {
                     }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
-                    .tint(RuneTheme.ink)
+                    .tint(RuneTheme.accent)
                     .disabled(update.downloadURL == nil)
                 }
             }
