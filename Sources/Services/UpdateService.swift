@@ -167,7 +167,7 @@ enum UpdateService {
 
     /// 解压并校验更新包：必须确实是 Rune、版本比当前新。返回新版 app 的 URL。
     /// 体检（--audit-update-flow）也走这里，但不会执行后续的替换重启。
-    static func extractAndValidate(zipURL: URL) throws -> URL {
+    static func extractAndValidate(zipURL: URL, currentVersion: String? = nil) throws -> URL {
         let staging = FileManager.default.temporaryDirectory
             .appendingPathComponent("rune-update-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
@@ -182,7 +182,7 @@ enum UpdateService {
         }
 
         let newApp = staging.appendingPathComponent("Rune.app")
-        let currentVersion = Bundle.main.object(
+        let runningVersion = currentVersion ?? Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
         ) as? String ?? "0"
         guard let plist = NSDictionary(
@@ -190,7 +190,7 @@ enum UpdateService {
         ), let bundleID = plist["CFBundleIdentifier"] as? String,
             bundleID == Bundle.main.bundleIdentifier,
             let newVersion = plist["CFBundleShortVersionString"] as? String,
-            compareVersions(newVersion, currentVersion) == .orderedDescending else {
+            compareVersions(newVersion, runningVersion) == .orderedDescending else {
             try? FileManager.default.removeItem(at: staging)
             throw RuneUpdateError.packageRejected
         }
@@ -258,8 +258,8 @@ enum UpdateService {
             )
             do {
                 let localZip = try await download(forced) { _ in }
-                // 3. 解压 + 校验（dry-run，不替换）
-                let newApp = try extractAndValidate(zipURL: localZip)
+                // 3. 解压 + 校验（模拟旧版本用户 dry-run，不替换）
+                let newApp = try extractAndValidate(zipURL: localZip, currentVersion: "0.0.1")
                 let plist = NSDictionary(contentsOf: newApp.appendingPathComponent("Contents/Info.plist"))
                 let newVersion = plist?["CFBundleShortVersionString"] as? String ?? "?"
                 try? FileManager.default.removeItem(at: localZip)
