@@ -94,7 +94,7 @@ final class ToastWindow {
         effect.addSubview(iconView)
 
         let titleField = NSTextField(labelWithString: title)
-        titleField.font = .systemFont(ofSize: 13, weight: .semibold)
+        titleField.font = RuneFont.appKit(size: 13, weight: .semibold)
         titleField.textColor = .labelColor
         titleField.lineBreakMode = .byTruncatingTail
         titleField.frame = NSRect(
@@ -106,7 +106,7 @@ final class ToastWindow {
         effect.addSubview(titleField)
 
         let msgField = NSTextField(labelWithString: message)
-        msgField.font = .systemFont(ofSize: 11)
+        msgField.font = RuneFont.appKit(size: 11)
         msgField.textColor = .secondaryLabelColor
         msgField.lineBreakMode = .byCharWrapping
         msgField.maximumNumberOfLines = 2

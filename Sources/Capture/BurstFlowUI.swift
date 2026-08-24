@@ -56,13 +56,13 @@ final class BurstSetupPanelController {
         effect.addSubview(icon)
 
         let title = NSTextField(labelWithString: "准备连拍")
-        title.font = .systemFont(ofSize: 15, weight: .semibold)
+        title.font = RuneFont.appKit(size: 15, weight: .semibold)
         title.textColor = .labelColor
         title.frame = NSRect(x: 48, y: 112, width: 180, height: 20)
         effect.addSubview(title)
 
         let region = NSTextField(labelWithString: "区域 \(regionSizeText)")
-        region.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+        region.font = RuneFont.appKit(size: 11, weight: .medium)
         region.textColor = .secondaryLabelColor
         region.alignment = .right
         region.frame = NSRect(x: 322, y: 113, width: 180, height: 18)
@@ -70,7 +70,7 @@ final class BurstSetupPanelController {
         effect.addSubview(region)
 
         let subtitle = NSTextField(labelWithString: "选一种拍法；开始后会一直显示张数，并可暂停或结束")
-        subtitle.font = .systemFont(ofSize: 11)
+        subtitle.font = RuneFont.appKit(size: 11)
         subtitle.textColor = .secondaryLabelColor
         subtitle.frame = NSRect(x: 18, y: 88, width: 484, height: 17)
         effect.addSubview(subtitle)
@@ -82,14 +82,14 @@ final class BurstSetupPanelController {
             action: #selector(modeChanged(_:))
         )
         segments.selectedSegment = presetMode.segmentIndex
-        segments.font = .systemFont(ofSize: 12, weight: .medium)
+        segments.font = RuneFont.appKit(size: 12, weight: .medium)
         segments.frame = NSRect(x: 18, y: 46, width: 246, height: 30)
         segments.setAccessibilityLabel("连拍拍摄方式")
         effect.addSubview(segments)
         modeControl = segments
 
         let value = NSTextField(labelWithString: "10")
-        value.font = .monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
+        value.font = RuneFont.appKit(size: 13, weight: .semibold)
         value.textColor = .labelColor
         value.alignment = .right
         value.frame = NSRect(x: 18, y: 17, width: 38, height: 20)
@@ -106,7 +106,7 @@ final class BurstSetupPanelController {
         valueStepper = stepper
 
         let detail = NSTextField(labelWithString: "")
-        detail.font = .systemFont(ofSize: 11)
+        detail.font = RuneFont.appKit(size: 11)
         detail.textColor = .secondaryLabelColor
         detail.frame = NSRect(x: 90, y: 18, width: 236, height: 18)
         effect.addSubview(detail)
@@ -297,21 +297,21 @@ final class BurstLiveBarController {
         background.addSubview(dot)
 
         let status = NSTextField(labelWithString: mode.liveTitle)
-        status.font = .systemFont(ofSize: 12, weight: .semibold)
+        status.font = RuneFont.appKit(size: 12, weight: .semibold)
         status.textColor = .white
         status.frame = NSRect(x: 36, y: 32, width: 126, height: 17)
         background.addSubview(status)
         statusField = status
 
         let modeDetail = NSTextField(labelWithString: mode.liveDetail)
-        modeDetail.font = .systemFont(ofSize: 10)
+        modeDetail.font = RuneFont.appKit(size: 10)
         modeDetail.textColor = NSColor.white.withAlphaComponent(0.62)
         modeDetail.frame = NSRect(x: 36, y: 13, width: 152, height: 15)
         background.addSubview(modeDetail)
         detailField = modeDetail
 
         let count = NSTextField(labelWithString: "0 张")
-        count.font = .monospacedDigitSystemFont(ofSize: 19, weight: .semibold)
+        count.font = RuneFont.appKit(size: 19, weight: .semibold)
         count.textColor = .white
         count.alignment = .right
         count.frame = NSRect(x: 178, y: 18, width: 104, height: 25)
