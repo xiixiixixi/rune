@@ -40,30 +40,30 @@ final class BurstSetupPanelController {
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
-        let effect = NSVisualEffectView(frame: NSRect(origin: .zero, size: panelSize))
-        effect.material = .popover
-        effect.blendingMode = .behindWindow
-        effect.state = .active
+        // mana 风格：准备面板是模态窗口类界面——暖白底、细边框、小圆角
+        // （拍摄时的深色悬浮条是屏幕叠加层，保持深色，见下方另一套按钮工厂）
+        let effect = NSView(frame: NSRect(origin: .zero, size: panelSize))
         effect.wantsLayer = true
-        effect.layer?.cornerRadius = 16
-        effect.layer?.borderWidth = 0.5
-        effect.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.55).cgColor
+        effect.layer?.backgroundColor = NSColor(srgbRed: 0.98, green: 0.98, blue: 0.98, alpha: 1).cgColor
+        effect.layer?.cornerRadius = 10
+        effect.layer?.borderWidth = 1
+        effect.layer?.borderColor = NSColor(srgbRed: 0.898, green: 0.898, blue: 0.898, alpha: 1).cgColor
         panel.contentView = effect
 
         let icon = NSImageView(frame: NSRect(x: 18, y: 110, width: 22, height: 22))
         icon.image = NSImage(systemSymbolName: "camera.fill", accessibilityDescription: "连拍")
-        icon.contentTintColor = .systemRed
+        icon.contentTintColor = NSColor(srgbRed: 1.0, green: 0.231, blue: 0.0, alpha: 1)
         effect.addSubview(icon)
 
         let title = NSTextField(labelWithString: "准备连拍")
         title.font = RuneFont.appKit(size: 15, weight: .semibold)
-        title.textColor = .labelColor
+        title.textColor = NSColor(srgbRed: 0.067, green: 0.067, blue: 0.067, alpha: 1)
         title.frame = NSRect(x: 48, y: 112, width: 180, height: 20)
         effect.addSubview(title)
 
         let region = NSTextField(labelWithString: "区域 \(regionSizeText)")
         region.font = RuneFont.appKit(size: 11, weight: .medium)
-        region.textColor = .secondaryLabelColor
+        region.textColor = NSColor(srgbRed: 0.4, green: 0.4, blue: 0.4, alpha: 1)
         region.alignment = .right
         region.frame = NSRect(x: 322, y: 113, width: 180, height: 18)
         region.setAccessibilityLabel("连拍区域尺寸 \(regionSizeText)")
@@ -71,7 +71,7 @@ final class BurstSetupPanelController {
 
         let subtitle = NSTextField(labelWithString: "选一种拍法；开始后会一直显示张数，并可暂停或结束")
         subtitle.font = RuneFont.appKit(size: 11)
-        subtitle.textColor = .secondaryLabelColor
+        subtitle.textColor = NSColor(srgbRed: 0.4, green: 0.4, blue: 0.4, alpha: 1)
         subtitle.frame = NSRect(x: 18, y: 88, width: 484, height: 17)
         effect.addSubview(subtitle)
 
@@ -112,7 +112,7 @@ final class BurstSetupPanelController {
         effect.addSubview(detail)
         detailField = detail
 
-        let cancel = makePanelButton(
+        let cancel = makePrepButton(
             title: "取消",
             frame: NSRect(x: 352, y: 17, width: 64, height: 34),
             accent: false,
@@ -122,7 +122,7 @@ final class BurstSetupPanelController {
         cancel.setAccessibilityLabel("取消连拍")
         effect.addSubview(cancel)
 
-        let begin = makePanelButton(
+        let begin = makePrepButton(
             title: "开始",
             frame: NSRect(x: 424, y: 17, width: 78, height: 34),
             accent: true,
@@ -517,6 +517,38 @@ private extension BurstMode {
         }
         return "\(count) / \(limit) 张"
     }
+}
+
+@MainActor
+/// mana 风格按钮（仅准备面板用）：主=墨底白字、次=白底细边框、小方角。
+/// 拍摄悬浮条是深色叠加层，继续用上面的 makePanelButton。
+private func makePrepButton(
+    title: String,
+    frame: NSRect,
+    accent: Bool,
+    target: AnyObject,
+    action: Selector
+) -> NSButton {
+    let ink = NSColor(srgbRed: 0.067, green: 0.067, blue: 0.067, alpha: 1)
+    let border = NSColor(srgbRed: 0.898, green: 0.898, blue: 0.898, alpha: 1)
+    let button = NSButton(title: title, target: target, action: action)
+    button.frame = frame
+    button.isBordered = false
+    button.wantsLayer = true
+    button.layer?.cornerRadius = 3
+    button.layer?.backgroundColor = accent ? ink.cgColor : NSColor.white.cgColor
+    button.layer?.borderWidth = accent ? 0 : 1
+    button.layer?.borderColor = border.cgColor
+    button.attributedTitle = NSAttributedString(
+        string: title,
+        attributes: [
+            .font: RuneFont.appKit(size: 12, weight: .bold),
+            .foregroundColor: accent
+                ? NSColor(srgbRed: 0.98, green: 0.98, blue: 0.98, alpha: 1)
+                : ink,
+        ]
+    )
+    return button
 }
 
 @MainActor

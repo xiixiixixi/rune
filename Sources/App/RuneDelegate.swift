@@ -17,7 +17,19 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
         CaptureOrchestrator.shared.prewarm()
 
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--audit-menu-style") {
+        if ProcessInfo.processInfo.arguments.contains("--audit-ocr-style") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                OCRResultPanelController.shared.show(
+                    result: OCRResult(text: "识别结果视觉自检：Rune 0.5.6\nMana 风格白卡片 + 细边框 + 橙红点缀。", barcodes: [])
+                )
+                DebugAuditSnapshot.captureAfter("ocr-style.png", delay: 1.2)
+            }
+        } else if ProcessInfo.processInfo.arguments.contains("--audit-burst-style") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                BurstSetupPanelController.shared.show(regionSizeText: "1280×720", presetMode: .fixedCount) { _ in }
+                DebugAuditSnapshot.captureAfter("burst-style.png", delay: 1.2)
+            }
+        } else if ProcessInfo.processInfo.arguments.contains("--audit-menu-style") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 MenuBarPopoverController.shared.openPopover()
                 DebugAuditSnapshot.captureAfter("menu-style.png", delay: 1.2)

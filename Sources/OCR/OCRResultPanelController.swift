@@ -97,29 +97,31 @@ private struct OCRResultCardView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
+            Divider().overlay(RuneTheme.separator)
 
             TextEditor(text: $text)
                 .font(RuneFont.swiftUI(size: 13, design: .monospaced))
                 .scrollContentBackground(.hidden)
                 .padding(10)
-                .background(Color.primary.opacity(0.035))
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(RuneTheme.card)
+                )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(RuneTheme.separator, lineWidth: 1)
                 )
                 .padding(16)
                 .accessibilityLabel("识别到的文字，可编辑")
 
-            Divider()
+            Divider().overlay(RuneTheme.separator)
             footer
         }
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(RuneTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(RuneTheme.separator, lineWidth: 1)
         )
         .tint(RuneTheme.accent)
         .onExitCommand(perform: onClose)
@@ -131,7 +133,7 @@ private struct OCRResultCardView: View {
                 .font(RuneFont.swiftUI(size: 17, weight: .semibold))
                 .foregroundStyle(RuneTheme.accent)
                 .frame(width: 32, height: 32)
-                .background(RuneTheme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+                .background(RuneTheme.accentDim, in: RoundedRectangle(cornerRadius: 6))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("识别结果")
@@ -143,18 +145,33 @@ private struct OCRResultCardView: View {
 
             Spacer()
 
-            Label("完全在本机处理", systemImage: "lock.fill")
+            Label("完全在本地处理", systemImage: "lock.fill")
                 .font(RuneFont.swiftUI(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(RuneTheme.textSecondary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
-                .background(Color.primary.opacity(0.055), in: Capsule())
+                .background(
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(Color.white.opacity(0.9))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .strokeBorder(RuneTheme.separator, lineWidth: 1)
+                )
 
             Button(action: onClose) {
                 Image(systemName: "xmark")
                     .font(RuneFont.swiftUI(size: 11, weight: .semibold))
+                    .foregroundStyle(RuneTheme.textSecondary)
                     .frame(width: 26, height: 26)
-                    .background(Color.primary.opacity(0.055), in: Circle())
+                    .background(
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(Color.white.opacity(0.9))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .strokeBorder(RuneTheme.separator, lineWidth: 1)
+                    )
             }
             .buttonStyle(.plain)
             .help("关闭（Esc）")
@@ -178,7 +195,12 @@ private struct OCRResultCardView: View {
 
             Spacer()
 
-            Button("关闭", action: onClose)
+            Button {
+                onClose()
+            } label: {
+                RuneTheme.secondaryButtonLabel("关闭")
+            }
+            .buttonStyle(RuneTheme.RunePressStyle())
 
             Button {
                 let pasteboard = NSPasteboard.general
