@@ -8,6 +8,7 @@ struct RuneApp: App {
         Settings {
             PreferencesView()
                 .runeTypography()
+                .tint(RuneTheme.accent)
         }
     }
 }

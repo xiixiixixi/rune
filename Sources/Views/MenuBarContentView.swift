@@ -15,15 +15,15 @@ struct MenuBarPanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             PopoverArrow()
-                .fill(Color(nsColor: .windowBackgroundColor))
+                .fill(RuneTheme.background)
                 .frame(width: arrowWidth, height: arrowHeight)
 
             MenuBarContentView(dismissPopover: dismissPopover)
-                .background(Color(nsColor: .windowBackgroundColor))
+                .background(RuneTheme.background)
                 .clipShape(RoundedRectangle(cornerRadius: panelRadius, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: panelRadius, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.09), lineWidth: 0.5)
+                        .strokeBorder(RuneTheme.separator, lineWidth: 1)
                 )
         }
         .shadow(color: .black.opacity(0.18), radius: 20, y: 8)
@@ -325,14 +325,19 @@ private struct TrayFeatureButton: View {
             .padding(12)
             .frame(maxWidth: .infinity, minHeight: 84, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .fill(isHovered ? Color.primary.opacity(0.10) : Color.primary.opacity(0.055))
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(RuneTheme.card)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .strokeBorder(isAccent ? RuneTheme.accent.opacity(0.22) : Color.primary.opacity(0.06), lineWidth: 0.5)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(
+                        isAccent
+                            ? RuneTheme.accent.opacity(0.35)
+                            : (isHovered ? RuneTheme.textMuted : RuneTheme.separator),
+                        lineWidth: 1
+                    )
             )
-            .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(RuneTheme.RunePressStyle())
         .onHover { isHovered = $0 }
@@ -386,10 +391,14 @@ private struct TrayActionLabel: View {
         .padding(.horizontal, 10)
         .frame(maxWidth: .infinity, minHeight: 38)
         .background(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(isHovered ? Color.primary.opacity(0.10) : Color.primary.opacity(0.055))
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(RuneTheme.card)
         )
-        .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .strokeBorder(isHovered ? RuneTheme.textMuted : RuneTheme.separator, lineWidth: 1)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 }
 
@@ -482,7 +491,7 @@ private struct RecentCaptureSection: View {
                 }
                 .padding(.horizontal, 10)
                 .frame(height: 46)
-                .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 9))
+                .background(RuneTheme.cardBackground)
             } else {
                 HStack(spacing: 8) {
                     ForEach(records) { record in
@@ -501,7 +510,7 @@ private struct RecentCaptureSection: View {
                 onOpen(record)
             } label: {
                 ZStack {
-                    Color.primary.opacity(0.045)
+                    RuneTheme.card
 
                     if let thumbnail = thumbnails[record.id] {
                         Image(nsImage: thumbnail)
@@ -525,7 +534,7 @@ private struct RecentCaptureSection: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.09), lineWidth: 0.5)
+                        .strokeBorder(RuneTheme.separator, lineWidth: 1)
                 )
                 .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }

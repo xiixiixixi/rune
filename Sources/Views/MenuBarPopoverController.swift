@@ -45,7 +45,8 @@ final class MenuBarPopoverController: NSObject {
         }
     }
 
-    private func openPopover() {
+    /// 打开菜单弹窗（供视觉自检 --audit-menu-style 调用）。
+    func openPopover() {
         guard let button = statusItem?.button,
               let buttonWindow = button.window else { return }
 

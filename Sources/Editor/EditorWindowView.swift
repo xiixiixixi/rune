@@ -132,7 +132,7 @@ struct EditorWindowView: View {
                     Label("导出", systemImage: "square.and.arrow.down")
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(RuneTheme.accent)
+                .tint(RuneTheme.ink)
                 .keyboardShortcut("s", modifiers: .command)
             }
         }

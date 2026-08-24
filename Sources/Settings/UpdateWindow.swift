@@ -136,7 +136,7 @@ struct UpdateWindowView: View {
                     }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
-                    .tint(RuneTheme.accent)
+                    .tint(RuneTheme.ink)
                     .disabled(update.downloadURL == nil)
                 }
             }
@@ -144,7 +144,7 @@ struct UpdateWindowView: View {
         }
         .padding(20)
         .frame(width: 380, height: 480)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(RuneTheme.background)
     }
 
     private func startUpdate() {

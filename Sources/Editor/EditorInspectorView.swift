@@ -149,7 +149,7 @@ struct EditorInspectorView: View {
             }
             .scrollContentBackground(.hidden)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(RuneTheme.background)
     }
 }
 
@@ -244,7 +244,7 @@ private struct AnnotationInspectorToolGrid: View {
         .padding(4)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+                .fill(RuneTheme.card)
         )
     }
 
@@ -334,7 +334,7 @@ private struct AnnotationColorMenu: View {
             .frame(height: 26)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+                    .fill(RuneTheme.card)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -457,7 +457,7 @@ private struct AnnotationStrokeMenu: View {
             .frame(height: 26)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+                    .fill(RuneTheme.card)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -585,7 +585,7 @@ private struct AnnotationTextStyleControls: View {
             .frame(height: 26)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+                    .fill(RuneTheme.card)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -622,7 +622,7 @@ private struct AnnotationTextStyleControls: View {
         .frame(height: 26)
         .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+                .fill(RuneTheme.card)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -644,7 +644,7 @@ private struct AnnotationTextStyleControls: View {
         }
         .padding(3)
         .frame(height: 34)
-        .background(Capsule().fill(Color(nsColor: .controlBackgroundColor).opacity(0.65)))
+        .background(Capsule().fill(RuneTheme.card))
         .overlay(Capsule().stroke(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 0.5))
     }
 
@@ -671,7 +671,7 @@ private struct AnnotationTextStyleControls: View {
         }
         .padding(3)
         .frame(height: 34)
-        .background(Capsule().fill(Color(nsColor: .controlBackgroundColor).opacity(0.65)))
+        .background(Capsule().fill(RuneTheme.card))
         .overlay(Capsule().stroke(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 0.5))
     }
 
@@ -793,7 +793,7 @@ private struct LayoutSection: View {
                     .frame(height: 26)
                     .background(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+                            .fill(RuneTheme.card)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -862,7 +862,7 @@ private struct AlignmentGridPicker: View {
         .padding(3)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+                .fill(RuneTheme.card)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)

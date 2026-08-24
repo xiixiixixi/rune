@@ -17,7 +17,12 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
         CaptureOrchestrator.shared.prewarm()
 
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--audit-font") {
+        if ProcessInfo.processInfo.arguments.contains("--audit-menu-style") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                MenuBarPopoverController.shared.openPopover()
+                DebugAuditSnapshot.captureAfter("menu-style.png", delay: 1.2)
+            }
+        } else if ProcessInfo.processInfo.arguments.contains("--audit-font") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 RuneFont.runFontSelfTest()
             }

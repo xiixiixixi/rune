@@ -1,6 +1,6 @@
 {
-  "version": "0.5.4",
-  "build": 19,
-  "notes": "连拍界面与提示条统一使用 Space Mono 字体，全应用字体风格一致。",
+  "version": "0.5.5",
+  "build": 20,
+  "notes": "界面全面迁移 Mana 风格：暖白底、白卡片、细边框、橙红点缀；\n主按钮改为墨色底白字（Mana 的 btn-primary）；\n设置窗控件强调色统一为橙红。",
   "minimumOS": "14.0"
 }
