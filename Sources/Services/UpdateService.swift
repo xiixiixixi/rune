@@ -44,51 +44,48 @@ enum RuneUpdateError: LocalizedError {
 }
 
 enum UpdateService {
-    private static let latestReleaseAPI = URL(
-        string: "https://api.github.com/repos/xiixiixixi/rune/releases/latest"
+    /// 版本探测与更新包都走"不计 API 限额"的通道：
+    /// - 版本：仓库 main 分支的 version.json（raw 直链，几 KB）
+    /// - 更新包：latest release 的固定名资产 Rune-latest.zip（下载走 CDN）
+    /// GitHub 匿名 API 每小时只有 60 次/共享 IP，实测常被挤占，不可用。
+    private static let remoteVersionURL = URL(
+        string: "https://raw.githubusercontent.com/xiixiixixi/rune/main/version.json"
+    )!
+    private static let latestDownloadURL = URL(
+        string: "https://github.com/xiixiixixi/rune/releases/latest/download/Rune-latest.zip"
+    )!
+    private static let releasesPageURL = URL(
+        string: "https://github.com/xiixiixixi/rune/releases/latest"
     )!
 
     static func check(currentVersion: String) async throws -> RuneUpdateCheckResult {
-        var request = URLRequest(url: latestReleaseAPI)
+        var request = URLRequest(url: remoteVersionURL)
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.timeoutInterval = 15
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("Rune/\(currentVersion)", forHTTPHeaderField: "User-Agent")
-        request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw RuneUpdateError.invalidResponse
-        }
-        guard (200..<300).contains(httpResponse.statusCode) else {
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200..<300).contains(httpResponse.statusCode) else {
             throw RuneUpdateError.unavailable
         }
 
-        let release = try JSONDecoder().decode(GitHubRelease.self, from: data)
-        let latestVersion = normalizedVersion(release.tagName)
-        guard !latestVersion.isEmpty,
-              let releasePageURL = URL(string: release.htmlURL) else {
+        let remote = try JSONDecoder().decode(RemoteVersion.self, from: data)
+        let latestVersion = normalizedVersion(remote.version)
+        guard !latestVersion.isEmpty else {
             throw RuneUpdateError.invalidResponse
         }
 
-        let comparison = compareVersions(latestVersion, currentVersion)
-        guard comparison == .orderedDescending else {
-            let displayedVersion = comparison == .orderedAscending
-                ? normalizedVersion(currentVersion)
-                : latestVersion
-            return .upToDate(latestVersion: displayedVersion)
+        guard compareVersions(latestVersion, currentVersion) == .orderedDescending else {
+            return .upToDate(latestVersion: latestVersion)
         }
 
-        // 自动更新只认 zip 包（程序化安装）；没有 zip 时弹窗里给手动下载链接
-        let downloadURL = release.assets
-            .first { $0.name.lowercased().hasSuffix(".zip") }
-            .flatMap { URL(string: $0.browserDownloadURL) }
         return .updateAvailable(
             RuneUpdate(
                 version: latestVersion,
-                notes: plainText(fromMarkdown: release.body),
-                releasePageURL: releasePageURL,
-                downloadURL: downloadURL
+                notes: remote.notes ?? "",
+                releasePageURL: releasesPageURL,
+                downloadURL: latestDownloadURL
             )
         )
     }
@@ -302,43 +299,11 @@ enum UpdateService {
         }
         return .orderedSame
     }
-
-    /// Release 说明（Markdown）→ 弹窗可读的纯文本，取前 14 行。
-    private static func plainText(fromMarkdown markdown: String) -> String {
-        markdown
-            .replacingOccurrences(of: "###", with: "")
-            .replacingOccurrences(of: "##", with: "")
-            .replacingOccurrences(of: "#", with: "")
-            .replacingOccurrences(of: "**", with: "")
-            .replacingOccurrences(of: "`", with: "")
-            .split(separator: "\n")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-            .prefix(14)
-            .joined(separator: "\n")
-    }
 }
 
-private struct GitHubRelease: Decodable, Sendable {
-    let tagName: String
-    let htmlURL: String
-    let body: String
-    let assets: [GitHubReleaseAsset]
-
-    enum CodingKeys: String, CodingKey {
-        case tagName = "tag_name"
-        case htmlURL = "html_url"
-        case body
-        case assets
-    }
-}
-
-private struct GitHubReleaseAsset: Decodable, Sendable {
-    let name: String
-    let browserDownloadURL: String
-
-    enum CodingKeys: String, CodingKey {
-        case name
-        case browserDownloadURL = "browser_download_url"
-    }
+/// 远端 version.json 的结构（发版时随仓库提交，含更新说明）。
+private struct RemoteVersion: Decodable, Sendable {
+    let version: String
+    let build: Int?
+    let notes: String?
 }
