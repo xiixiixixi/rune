@@ -17,7 +17,11 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
         CaptureOrchestrator.shared.prewarm()
 
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--audit-update-e2e") {
+        if ProcessInfo.processInfo.arguments.contains("--audit-font") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                RuneFont.runFontSelfTest()
+            }
+        } else if ProcessInfo.processInfo.arguments.contains("--audit-update-e2e") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 UpdateService.runEndToEndUpdate()
             }

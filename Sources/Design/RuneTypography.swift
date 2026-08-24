@@ -64,6 +64,23 @@ enum RuneFont {
         return NSFont(name: postScriptName, size: size)
             ?? NSFont.monospacedSystemFont(ofSize: size, weight: weight)
     }
+
+    /// 字体自检（--audit-font）：确认 Space Mono 已注册且实际取到的是它而非回退。
+    /// 结果写 /tmp/rune-font-result.txt。
+    @MainActor
+    static func runFontSelfTest() {
+        registerBundledFonts()
+
+        // NSFont 按名字能取到，即说明注册成功且实际可用
+        let regular = appKit(size: 13)
+        let bold = appKit(size: 13, weight: .bold)
+        let report = """
+        常规: \(regular.fontName == regularPostScriptName ? "PASS ✅" : "FAIL ❌") \(regular.fontName)
+        粗体: \(bold.fontName == boldPostScriptName ? "PASS ✅" : "FAIL ❌") \(bold.fontName)
+        """
+        try? report.write(toFile: "/tmp/rune-font-result.txt", atomically: true, encoding: .utf8)
+        print("[字体自测]\n" + report)
+    }
 }
 
 private struct RuneTypographyModifier: ViewModifier {
