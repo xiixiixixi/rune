@@ -17,7 +17,11 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
         CaptureOrchestrator.shared.prewarm()
 
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--audit-pin-drag") {
+        if ProcessInfo.processInfo.arguments.contains("--audit-update-flow") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                UpdateService.runUpdateFlowSelfTest()
+            }
+        } else if ProcessInfo.processInfo.arguments.contains("--audit-pin-drag") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 PinnedScreenshotController.shared.runPinDragSelfTest()
             }

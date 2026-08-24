@@ -59,6 +59,7 @@
 		D1A6A9A58CEB18336C9EB75F /* EditorModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BE869366D04F8A5497A5885 /* EditorModel.swift */; };
 		D3F78183EAF835F8FE5060D1 /* OCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31D834FAE408A78942FC67AE /* OCRService.swift */; };
 		D6014D28303CB122E8D066DD /* CaptureRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 178647994A81C7A1F7379D40 /* CaptureRecord.swift */; };
+		D6524D0F11F0BAE0CB5EBFD0 /* UpdateWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 542E0F3BE51FD6FF0FB36FD6 /* UpdateWindow.swift */; };
 		DC38EF3A9B20AFBEFBBBB756 /* MenuBarPopoverController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EE1408151CE4CC49F736DC3 /* MenuBarPopoverController.swift */; };
 		E0B09A4ED48E873C2C401C5E /* BeautifierRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D36E351585CDF38115D98933 /* BeautifierRenderer.swift */; };
 		E2CB64A849E59F64FC35E104 /* ShortcutService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4685E47145BCA592EB81115 /* ShortcutService.swift */; };
@@ -93,6 +94,7 @@
 		43B55A13EC0A7524A8832ABE /* BackgroundStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundStyle.swift; sourceTree = "<group>"; };
 		4884F3755A3322E2CFEE0F2F /* PreviewOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewOverlay.swift; sourceTree = "<group>"; };
 		4B1CAD9A5A6184536266A3F9 /* RuneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuneDelegate.swift; sourceTree = "<group>"; };
+		542E0F3BE51FD6FF0FB36FD6 /* UpdateWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateWindow.swift; sourceTree = "<group>"; };
 		54F17EA97B02FB0B141944ED /* AnnotationItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationItem.swift; sourceTree = "<group>"; };
 		56522B0EE33188B7E6F3D53E /* AnnotationRedactionImageProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationRedactionImageProcessor.swift; sourceTree = "<group>"; };
 		5A563FA4711F8AE1E6829F1B /* RuneTypography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuneTypography.swift; sourceTree = "<group>"; };
@@ -216,6 +218,7 @@
 			children = (
 				841E8B1EC4238DF253B1472C /* PreferencesView.swift */,
 				115684E2C4D24EC0B20540AE /* SettingsWindowController.swift */,
+				542E0F3BE51FD6FF0FB36FD6 /* UpdateWindow.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -480,6 +483,7 @@
 				E2CB64A849E59F64FC35E104 /* ShortcutService.swift in Sources */,
 				BE4EB0EEB75F19FB0C6FB166 /* ToastWindow.swift in Sources */,
 				51425E7845A0F8E356F803A0 /* UpdateService.swift in Sources */,
+				D6524D0F11F0BAE0CB5EBFD0 /* UpdateWindow.swift in Sources */,
 				F9BB03CFCC770B7E5285BA05 /* VideoEditorModel.swift in Sources */,
 				9559D5D13ADDC286CA5F684E /* VideoEditorView.swift in Sources */,
 				AAA83DBCCF6F2760A095E54E /* VideoEditorWindowController.swift in Sources */,

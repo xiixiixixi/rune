@@ -1337,7 +1337,7 @@ struct VideosTab: View {
 
 struct AboutTab: View {
     @AppStorage("rune_automaticallyChecksForUpdates")
-    private var automaticallyChecksForUpdates = false
+    private var automaticallyChecksForUpdates = true
 
     @State private var updateState: UpdateViewState = .idle
 
@@ -1385,7 +1385,7 @@ struct AboutTab: View {
 
                 aboutSection("软件更新") {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("只连接 Rune 自己的 GitHub Release，不使用 BetterShot 的更新服务。检查时只查询版本号，不会上传截图或使用数据。")
+                        Text("发现新版本后会自动下载并完成安装，更新完自动重启，全程不需要手动操作。检查时只读版本号，不上传截图或使用数据。")
                             .font(RuneFont.swiftUI(size: 12))
                             .foregroundStyle(.secondary)
                             .lineSpacing(2)
@@ -1446,7 +1446,8 @@ struct AboutTab: View {
                 case let .upToDate(latestVersion):
                     updateState = .upToDate(latestVersion: latestVersion)
                 case let .updateAvailable(update):
-                    updateState = .available(update)
+                    updateState = .idle
+                    UpdateWindowController.shared.present(update, currentVersion: version)
                 }
             } catch {
                 updateState = .failed(

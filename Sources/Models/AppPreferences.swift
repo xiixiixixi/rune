@@ -89,9 +89,14 @@ enum AppPreferences {
 
     // MARK: - Updates
 
-    /// 默认关闭，保持 Rune 的“默认不联网”承诺；用户可在“关于”页主动开启。
+    /// 默认开启（用户要求的自动更新）；只在检查时读版本号，不上传任何数据。
     static var automaticallyChecksForUpdates: Bool {
-        get { UserDefaults.standard.bool(forKey: automaticallyChecksForUpdatesKey) }
+        get {
+            if UserDefaults.standard.object(forKey: automaticallyChecksForUpdatesKey) == nil {
+                return true
+            }
+            return UserDefaults.standard.bool(forKey: automaticallyChecksForUpdatesKey)
+        }
         set { UserDefaults.standard.set(newValue, forKey: automaticallyChecksForUpdatesKey) }
     }
 

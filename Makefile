@@ -87,7 +87,7 @@ run: build ## 编译并启动调试版
 	@echo "==> 正在启动 Rune…"
 	@open "$(APP_DEBUG)"
 
-dmg: release ## 创建本地安装包
+dmg: release ## 创建本地安装包 + 自动更新包
 	@echo "==> 正在创建 Rune 安装包…"
 	@mkdir -p $(DMG_DIR)/staging
 	@cp -R "$(APP_RELEASE)" $(DMG_DIR)/staging/
@@ -99,6 +99,9 @@ dmg: release ## 创建本地安装包
 		"$(DMG_DIR)/$(DMG_NAME)" 2>/dev/null
 	@rm -rf $(DMG_DIR)/staging
 	@echo "==> $(DMG_DIR)/$(DMG_NAME)"
+	@echo "==> 正在创建自动更新包（zip）…"
+	@ditto -c -k --keepParent "$(APP_RELEASE)" "$(DMG_DIR)/Rune-$(VERSION).zip"
+	@echo "==> $(DMG_DIR)/Rune-$(VERSION).zip"
 
 clean: ## Remove build artifacts
 	@echo "==> Cleaning..."
