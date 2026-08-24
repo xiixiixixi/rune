@@ -30,12 +30,16 @@ ifeq ($(strip $(LOCAL_SIGN_IDENTITY)),-)
 LOCAL_SIGN_REQUIREMENTS = --requirements '=designated => identifier "com.tc.rune"'
 endif
 
-.PHONY: build release run dmg clean lint test-build version ship help
+.PHONY: build release run dmg clean lint test-build version ship help sync-version
+
+sync-version: ## 从 version.json 同步版本号进工程（单一版本源头）
+	@python3 -c 'import json, re; v = json.load(open("version.json")); y = open("project.yml").read(); y = re.sub("MARKETING_VERSION: \"[^\"]*\"", "MARKETING_VERSION: " + chr(34) + v["version"] + chr(34), y); y = re.sub("CURRENT_PROJECT_VERSION: \"[^\"]*\"", "CURRENT_PROJECT_VERSION: " + chr(34) + str(v["build"]) + chr(34), y); open("project.yml", "w").write(y); print("==> 版本同步: " + v["version"] + " (build " + str(v["build"]) + ")")'
+	@xcodegen generate >/dev/null 2>&1
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
-build: ## 编译调试版并固定签名
+build: sync-version ## 编译调试版并固定签名
 	@echo "==> 正在编译 Rune（调试版）…"
 	@xcodebuild -project $(PROJECT) \
 		-scheme $(SCHEME) \
@@ -62,7 +66,7 @@ build: ## 编译调试版并固定签名
 	@codesign --verify --deep --strict "$(APP_DEBUG)"
 	@echo "==> $(APP_DEBUG)"
 
-release: ## 编译双架构正式版并完成本地签名
+release: sync-version ## 编译双架构正式版并完成本地签名
 	@echo "==> 正在编译 Rune（双架构正式版）…"
 	@xcodebuild -project $(PROJECT) \
 		-scheme $(SCHEME) \
