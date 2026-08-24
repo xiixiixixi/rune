@@ -232,6 +232,34 @@ enum UpdateService {
     }
 
     #if DEBUG
+    /// 端到端验证（--audit-update-e2e）：走与用户点"立即更新"完全相同的路径——
+    /// 检查 → 下载 → 真实 installAndRelaunch（替换 app + 自动重启），不做 dry-run。
+    static func runEndToEndUpdate() {
+        Task { @MainActor in
+            func fail(_ reason: String) {
+                let text = "E2E FAIL ❌ " + reason
+                try? text.write(toFile: "/tmp/rune-update-e2e-result.txt", atomically: true, encoding: .utf8)
+                print("[更新E2E] " + text)
+            }
+
+            let current = Bundle.main.object(
+                forInfoDictionaryKey: "CFBundleShortVersionString"
+            ) as? String ?? "0"
+            do {
+                guard case let .updateAvailable(update) = try await check(currentVersion: current) else {
+                    fail("未发现新版本（当前 \(current)，远端应更新）")
+                    return
+                }
+                let zip = try await download(update) { _ in }
+                // 真实安装：成功则本进程退出、新版本自动启动
+                try installAndRelaunch(zipURL: zip)
+                fail("installAndRelaunch 未触发退出（不应到达这里）")
+            } catch {
+                fail((error as? LocalizedError)?.errorDescription ?? "\(error)")
+            }
+        }
+    }
+
     /// 无人值守体检（--audit-update-flow）：真实调用 GitHub API 检查更新、
     /// 真实下载 zip、真实解压校验；不执行替换重启。结果写
     /// /tmp/rune-update-flow-result.txt。

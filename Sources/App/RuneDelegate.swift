@@ -17,7 +17,11 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
         CaptureOrchestrator.shared.prewarm()
 
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--audit-update-flow") {
+        if ProcessInfo.processInfo.arguments.contains("--audit-update-e2e") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                UpdateService.runEndToEndUpdate()
+            }
+        } else if ProcessInfo.processInfo.arguments.contains("--audit-update-flow") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 UpdateService.runUpdateFlowSelfTest()
             }
