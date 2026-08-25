@@ -270,6 +270,7 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
         } else if ProcessInfo.processInfo.arguments.contains("--audit-settings") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 SettingsWindowController.shared.open(on: NSScreen.main)
+                DebugAuditSnapshot.captureAfter("settings-redesign-final.png", delay: 1.2)
             }
         } else if ProcessInfo.processInfo.arguments.contains("--audit-confirm") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
@@ -343,6 +344,7 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                     subdirectory: "Backgrounds/mac"
                 ) else { return }
                 EditorWindowController.shared.open(url: url, on: NSScreen.main)
+                DebugAuditSnapshot.captureAfter("editor-redesign-final.png", delay: 1.2)
             }
         } else if ProcessInfo.processInfo.arguments.contains("--audit-burst-setup") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {

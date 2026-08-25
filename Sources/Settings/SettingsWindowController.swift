@@ -12,9 +12,11 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     func open(on screen: NSScreen? = nil, section: SettingsSection? = nil) {
         if let existing = window, existing.isVisible {
             if let section {
-                existing.contentView = NSHostingView(
+                let hostingView = NSHostingView(
                     rootView: PreferencesView(initialSection: section).runeTypography()
                 )
+                hostingView.appearance = NSAppearance(named: .aqua)
+                existing.contentView = hostingView
             }
             existing.orderFrontRegardless()
             NSApp.activate(ignoringOtherApps: true)
@@ -25,17 +27,20 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         let hostingView = NSHostingView(
             rootView: PreferencesView(initialSection: section ?? .general).runeTypography()
         )
+        hostingView.appearance = NSAppearance(named: .aqua)
 
         let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 680, height: 560),
+            contentRect: NSRect(x: 0, y: 0, width: 1120, height: 820),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         win.contentView = hostingView
-        win.title = "Rune设置"
+        win.title = "Rune 设置"
         win.titlebarAppearsTransparent = true
-        win.backgroundColor = RuneTheme.nsBackground
+        win.appearance = NSAppearance(named: .aqua)
+        win.backgroundColor = RuneTheme.nsPaperBackground
+        win.minSize = NSSize(width: 980, height: 700)
         win.isReleasedWhenClosed = false
         win.delegate = self
         win.collectionBehavior = [.transient, .moveToActiveSpace]

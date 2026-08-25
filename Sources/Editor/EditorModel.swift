@@ -30,7 +30,9 @@ final class EditorModel {
     var editingTextItemID: AnnotationItem.ID?
     var isTextPlacementArmed = false
     var selectionRect: CGRect?
-    var selectedTool: AnnotationTool = .select
+    // 截图编辑最常见的第一步是圈出重点；默认直接进入矩形标注，
+    // 也让右侧属性面板打开时就有可调内容，而不是一整块空白。
+    var selectedTool: AnnotationTool = .rectangle
     var selectedSwatch: AnnotationSwatch = .red
     var strokeWidth: CGFloat = 4
     var redactionDensity: CGFloat = 0.55

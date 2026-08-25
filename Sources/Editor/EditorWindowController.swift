@@ -17,11 +17,12 @@ final class EditorWindowController {
         let hostingView = NSHostingView(rootView:
             EditorWindowView(urlHolder: urlHolder)
                 .runeTypography()
-                .frame(minWidth: 800, minHeight: 550)
+                .frame(minWidth: 1040, minHeight: 680)
         )
+        hostingView.appearance = NSAppearance(named: .aqua)
 
         let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1100, height: 760),
+            contentRect: NSRect(x: 0, y: 0, width: 1320, height: 860),
             styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -31,8 +32,9 @@ final class EditorWindowController {
         win.titleVisibility = .hidden
         win.titlebarAppearsTransparent = true
         win.toolbarStyle = .unifiedCompact
-        // macOS 26 关玻璃的第二步：窗口底色给纸面，标题栏才融进来
-        win.backgroundColor = RuneTheme.nsBackground
+        win.appearance = NSAppearance(named: .aqua)
+        win.backgroundColor = RuneTheme.nsPaperBackground
+        win.minSize = NSSize(width: 1040, height: 680)
         win.isReleasedWhenClosed = false
         win.delegate = EditorWindowDelegate.shared
         win.collectionBehavior = [.transient, .moveToActiveSpace]

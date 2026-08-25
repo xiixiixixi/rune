@@ -21,6 +21,10 @@ final class PinnedScreenshotController {
         !sessions.isEmpty
     }
 
+    var pinnedCount: Int {
+        sessions.count
+    }
+
     var hasPassthroughWindows: Bool {
         sessions.contains { $0.interaction.clickThrough }
     }

@@ -9,19 +9,31 @@ struct EditorWindowView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            if showsInspector {
-                EditorInspectorView(model: model)
-                    .frame(width: 264)
-                    .transition(.move(edge: .leading).combined(with: .opacity))
+            ZStack(alignment: .bottom) {
+                EditorCanvasView(model: model)
+                    .padding(.horizontal, 32)
+                    .padding(.top, 28)
+                    .padding(.bottom, 112)
+                    .frame(minWidth: 620, minHeight: 470)
 
-                Divider()
+                EditorToolShelf(model: model)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 30)
             }
+            .background(RuneTheme.editorWorkspace)
 
-            EditorCanvasView(model: model)
-                .frame(minWidth: 500, minHeight: 400)
-                .background(RuneTheme.background)
+            if showsInspector {
+                Rectangle()
+                    .fill(RuneTheme.paperSeparator)
+                    .frame(width: 1)
+
+                EditorInspectorView(model: model)
+                    .frame(width: 286)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
         }
-        .tint(RuneTheme.accent)
+        .tint(RuneTheme.paperAccent)
+        .environment(\.colorScheme, .light)
         .overlay(alignment: .bottom) {
             if let message = model.toastMessage {
                 Text(message)
@@ -31,7 +43,7 @@ struct EditorWindowView: View {
                     .padding(.vertical, 8)
                     .background(RuneTheme.chromeBase.opacity(0.92), in: Capsule())
                     .overlay(Capsule().strokeBorder(RuneTheme.chromeLine, lineWidth: 1))
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 104)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .onAppear {
                         Task {
@@ -58,7 +70,10 @@ struct EditorWindowView: View {
                         showsInspector.toggle()
                     }
                 } label: {
-                    Image(systemName: "sidebar.left")
+                    Label(
+                        showsInspector ? "隐藏属性" : "显示属性",
+                        systemImage: "sidebar.right"
+                    )
                 }
                 .help(showsInspector ? "收起工具面板" : "显示工具面板")
                 .accessibilityLabel(showsInspector ? "收起工具面板" : "显示工具面板")
@@ -134,7 +149,7 @@ struct EditorWindowView: View {
                     Label("导出", systemImage: "square.and.arrow.down")
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(RuneTheme.accent)
+                .tint(RuneTheme.paperInk)
                 .keyboardShortcut("s", modifiers: .command)
             }
         }
@@ -225,5 +240,83 @@ struct EditorWindowView: View {
         pb.clearContents()
         pb.writeObjects([nsImage])
         withAnimation { model.toastMessage = "已复制到剪贴板" }
+    }
+}
+
+// MARK: - Floating editor tool shelf
+
+private struct EditorToolShelf: View {
+    @Bindable var model: EditorModel
+
+    private let tools: [AnnotationTool] = [
+        .select, .rectangle, .arrow, .text, .blur, .spotlight,
+        .numberedCircle, .ellipse, .line, .filledRectangle, .freehand,
+    ]
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(Array(tools.enumerated()), id: \.element.id) { index, tool in
+                if index == 7 {
+                    Rectangle()
+                        .fill(RuneTheme.chromeLine)
+                        .frame(width: 1, height: 38)
+                        .padding(.horizontal, 6)
+                }
+
+                EditorToolShelfButton(
+                    tool: tool,
+                    isSelected: model.selectedTool == tool
+                ) {
+                    model.selectTool(tool)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(RuneTheme.barBackground)
+        .fixedSize()
+    }
+}
+
+private struct EditorToolShelfButton: View {
+    let tool: AnnotationTool
+    let isSelected: Bool
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: tool.systemImage)
+                    .font(RuneFont.swiftUI(size: 17, weight: .medium))
+                Text(tool.title)
+                    .font(RuneFont.swiftUI(size: 10, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(isSelected ? RuneTheme.annotationAccent : RuneTheme.chromeText.opacity(isHovered ? 1 : 0.78))
+            .frame(width: 52, height: 52)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(
+                        isSelected
+                            ? RuneTheme.annotationAccent.opacity(0.13)
+                            : (isHovered ? RuneTheme.chromeLine.opacity(0.72) : Color.clear)
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(
+                        isSelected ? RuneTheme.annotationAccent.opacity(0.42) : Color.clear,
+                        lineWidth: 1
+                    )
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(RuneTheme.RunePressStyle())
+        .onHover { isHovered = $0 }
+        .help(tool.title)
+        .accessibilityLabel(tool.title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

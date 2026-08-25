@@ -21,20 +21,22 @@ struct EditorInspectorView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     if panel == .annotation {
-                    // MARK: Tools
-                    VStack(alignment: .leading, spacing: 10) {
-                        InspectorSectionHeader("标注工具")
-                        AnnotationInspectorToolGrid(selectedTool: model.selectedTool) { tool in
-                            model.selectTool(tool)
-                        }
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(model.inspectedTool?.title ?? "选择")
+                            .font(RuneFont.swiftUI(size: 24, weight: .bold))
+                            .foregroundStyle(RuneTheme.paperInk)
 
-                        Text("画好的标注：直接点击选中，拖动移动，Delete 删除。")
-                            .font(RuneFont.caption2)
-                            .foregroundStyle(RuneTheme.textMuted)
+                        Text(
+                            model.selectionCount > 0
+                                ? "正在调整已选标注"
+                                : "工具在画布下方，属性会随选择更新。"
+                        )
+                        .font(RuneFont.swiftUI(size: 11))
+                        .foregroundStyle(RuneTheme.paperTextMuted)
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.top, 14)
-                    .padding(.bottom, 16)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 20)
+                    .padding(.bottom, 14)
 
                     if !model.items.isEmpty {
                         Button(role: .destructive) {
@@ -51,16 +53,14 @@ struct EditorInspectorView: View {
                     }
 
                     if model.inspectedTool != nil {
-                        InspectorDivider()
-
                         // MARK: Style
                         VStack(alignment: .leading, spacing: 10) {
-                            InspectorSectionHeader("样式")
+                            InspectorSectionHeader("属性")
 
                             if model.selectionCount > 1 {
                                 Text("已选择 \(model.selectionCount) 个标注")
                                     .font(RuneFont.caption)
-                                    .foregroundStyle(RuneTheme.textSecondary)
+                                    .foregroundStyle(RuneTheme.paperTextSecondary)
                             }
 
                             InspectorRow(title: "颜色") {
@@ -82,11 +82,11 @@ struct EditorInspectorView: View {
                                     HStack {
                                         Text("密度")
                                             .font(RuneFont.caption2)
-                                            .foregroundStyle(RuneTheme.textMuted)
+                                            .foregroundStyle(RuneTheme.paperTextMuted)
                                         Spacer()
                                         Text("\(Int(model.redactionDensity * 100))%")
                                             .font(RuneFont.caption2)
-                                            .foregroundStyle(RuneTheme.textMuted)
+                                            .foregroundStyle(RuneTheme.paperTextMuted)
                                     }
                                     Slider(
                                         value: Binding(
@@ -99,8 +99,8 @@ struct EditorInspectorView: View {
                                 }
                             }
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 14)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
                     }
 
                     if model.isTextStyleAvailable {
@@ -120,7 +120,7 @@ struct EditorInspectorView: View {
                         InspectorSectionHeader("美化")
                         Text("把截图包装成适合分享的卡片：裁剪画面、加边距圆角阴影、配纯色或渐变背景。")
                             .font(RuneFont.caption2)
-                            .foregroundStyle(RuneTheme.textMuted)
+                            .foregroundStyle(RuneTheme.paperTextMuted)
                     }
                     .padding(.horizontal, 14)
                     .padding(.top, 14)
@@ -149,7 +149,7 @@ struct EditorInspectorView: View {
             }
             .scrollContentBackground(.hidden)
         }
-        .background(RuneTheme.background)
+        .background(RuneTheme.paperBackground)
     }
 }
 
@@ -177,7 +177,7 @@ private struct InspectorSectionHeader: View {
         // 图章：Space Mono 小号 + 宽字距，像盖在校样上的工序章
         Text(title)
             .font(RuneFont.mono(size: 10, weight: .medium))
-            .foregroundStyle(RuneTheme.textMuted)
+            .foregroundStyle(RuneTheme.paperTextMuted)
             .tracking(1.6)
     }
 }
@@ -196,7 +196,7 @@ private struct InspectorRow<Content: View>: View {
         HStack(spacing: 10) {
             Text(title)
                 .font(RuneFont.swiftUI(size: 12))
-                .foregroundStyle(RuneTheme.textSecondary)
+                .foregroundStyle(RuneTheme.paperTextSecondary)
                 .frame(width: 52, alignment: .leading)
             content()
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -234,7 +234,7 @@ private struct AnnotationInspectorToolGrid: View {
             HStack(spacing: 4) {
                 Text("更多")
                     .font(RuneFont.caption2)
-                    .foregroundStyle(RuneTheme.textMuted)
+                    .foregroundStyle(RuneTheme.paperTextMuted)
                     .frame(width: 30, alignment: .leading)
 
                 ForEach(secondaryTools) { tool in
@@ -245,7 +245,7 @@ private struct AnnotationInspectorToolGrid: View {
         .padding(4)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(RuneTheme.card)
+                .fill(RuneTheme.paperCard)
         )
     }
 
@@ -267,15 +267,15 @@ private struct AnnotationInspectorToolGrid: View {
             .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
         .buttonStyle(.plain)
-        .foregroundStyle(selectedTool == tool ? RuneTheme.accent : .primary.opacity(0.72))
+        .foregroundStyle(selectedTool == tool ? RuneTheme.annotationAccent : .primary.opacity(0.72))
         .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(selectedTool == tool ? RuneTheme.accent.opacity(0.15) : .clear)
+                .fill(selectedTool == tool ? RuneTheme.annotationAccent.opacity(0.15) : .clear)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .strokeBorder(
-                    selectedTool == tool ? RuneTheme.accent.opacity(0.35) : .clear,
+                    selectedTool == tool ? RuneTheme.annotationAccent.opacity(0.35) : .clear,
                     lineWidth: 0.8
                 )
         )
@@ -294,10 +294,10 @@ private struct AnnotationInspectorToolGrid: View {
                 .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
         .buttonStyle(.plain)
-        .foregroundStyle(selectedTool == tool ? RuneTheme.accent : .primary.opacity(0.55))
+        .foregroundStyle(selectedTool == tool ? RuneTheme.annotationAccent : .primary.opacity(0.55))
         .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(selectedTool == tool ? RuneTheme.accent.opacity(0.15) : .clear)
+                .fill(selectedTool == tool ? RuneTheme.annotationAccent.opacity(0.15) : .clear)
         )
         .help(tool.title)
         .accessibilityLabel(tool.title)
@@ -323,19 +323,19 @@ private struct AnnotationColorMenu: View {
 
                 Text(selectedSwatch.title)
                     .font(RuneFont.swiftUI(size: 12))
-                    .foregroundStyle(RuneTheme.textPrimary.opacity(0.8))
+                    .foregroundStyle(RuneTheme.paperInk.opacity(0.8))
 
                 Spacer()
 
                 Image(systemName: "chevron.up.chevron.down")
                     .font(RuneFont.swiftUI(size: 8, weight: .semibold))
-                    .foregroundStyle(RuneTheme.textMuted)
+                    .foregroundStyle(RuneTheme.paperTextMuted)
             }
             .padding(.horizontal, 8)
             .frame(height: 26)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(RuneTheme.card)
+                    .fill(RuneTheme.paperCard)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -381,7 +381,7 @@ private struct AnnotationColorPopover: View {
                             .overlay {
                                 if selectedSwatch == swatch {
                                     Circle()
-                                        .stroke(RuneTheme.accent.opacity(0.38), lineWidth: 6)
+                                        .stroke(RuneTheme.annotationAccent.opacity(0.38), lineWidth: 6)
                                         .frame(width: 32, height: 32)
                                 }
                             }
@@ -396,7 +396,7 @@ private struct AnnotationColorPopover: View {
                     .background {
                         if selectedSwatch == swatch {
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(RuneTheme.accent.opacity(0.10))
+                                .fill(RuneTheme.annotationAccent.opacity(0.10))
                         }
                     }
                 }
@@ -445,20 +445,20 @@ private struct AnnotationStrokeMenu: View {
 
                 Text("\(Int(strokeWidth)) 像素")
                     .font(RuneFont.swiftUI(size: 12))
-                    .foregroundStyle(RuneTheme.textPrimary.opacity(0.8))
+                    .foregroundStyle(RuneTheme.paperInk.opacity(0.8))
                     .frame(minWidth: 28, alignment: .leading)
 
                 Spacer(minLength: 10)
 
                 Image(systemName: "chevron.up.chevron.down")
                     .font(RuneFont.swiftUI(size: 8, weight: .semibold))
-                    .foregroundStyle(RuneTheme.textMuted)
+                    .foregroundStyle(RuneTheme.paperTextMuted)
             }
             .padding(.horizontal, 8)
             .frame(height: 26)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(RuneTheme.card)
+                    .fill(RuneTheme.paperCard)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -477,9 +477,9 @@ private struct AnnotationStrokeMenu: View {
                         ZStack {
                             if strokeWidth == width {
                                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .fill(RuneTheme.accent.opacity(0.12))
+                                    .fill(RuneTheme.annotationAccent.opacity(0.12))
                             }
-                            StrokePreview(width: width, color: strokeWidth == width ? RuneTheme.accent : Color.primary.opacity(0.58))
+                            StrokePreview(width: width, color: strokeWidth == width ? RuneTheme.annotationAccent : Color.primary.opacity(0.58))
                                 .frame(width: 48, height: 32)
                         }
                         .frame(maxWidth: .infinity)
@@ -572,24 +572,24 @@ private struct AnnotationTextStyleControls: View {
             HStack(spacing: 6) {
                 Text(model.selectedTextFontName)
                     .font(RuneFont.swiftUI(size: 12))
-                    .foregroundStyle(RuneTheme.textPrimary.opacity(0.8))
+                    .foregroundStyle(RuneTheme.paperInk.opacity(0.8))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
                 Image(systemName: "chevron.up.chevron.down")
                     .font(RuneFont.swiftUI(size: 8, weight: .semibold))
-                    .foregroundStyle(RuneTheme.textMuted)
+                    .foregroundStyle(RuneTheme.paperTextMuted)
             }
             .padding(.horizontal, 8)
             .frame(height: 26)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(RuneTheme.card)
+                    .fill(RuneTheme.paperCard)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke(RuneTheme.separator, lineWidth: 0.5)
+                    .stroke(RuneTheme.paperSeparator, lineWidth: 0.5)
             )
             .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
@@ -599,7 +599,7 @@ private struct AnnotationTextStyleControls: View {
         HStack(spacing: 0) {
             Button { adjustFontSize(by: -1) } label: {
                 Image(systemName: "minus").font(RuneFont.swiftUI(size: 10, weight: .medium)).frame(width: 22, height: 24).contentShape(Rectangle())
-            }.buttonStyle(.plain).foregroundStyle(RuneTheme.textSecondary)
+            }.buttonStyle(.plain).foregroundStyle(RuneTheme.paperTextSecondary)
 
             Divider().frame(height: 14)
 
@@ -615,12 +615,12 @@ private struct AnnotationTextStyleControls: View {
 
             Button { adjustFontSize(by: 1) } label: {
                 Image(systemName: "plus").font(RuneFont.swiftUI(size: 10, weight: .medium)).frame(width: 22, height: 24).contentShape(Rectangle())
-            }.buttonStyle(.plain).foregroundStyle(RuneTheme.textSecondary)
+            }.buttonStyle(.plain).foregroundStyle(RuneTheme.paperTextSecondary)
         }
         .frame(height: 26)
         .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(RuneTheme.card)
+                .fill(RuneTheme.paperCard)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -642,7 +642,7 @@ private struct AnnotationTextStyleControls: View {
         }
         .padding(3)
         .frame(height: 34)
-        .background(Capsule().fill(RuneTheme.card))
+        .background(Capsule().fill(RuneTheme.paperCard))
         .overlay(Capsule().stroke(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 0.5))
     }
 
@@ -657,7 +657,7 @@ private struct AnnotationTextStyleControls: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(isActive ? Color.white : Color.primary)
-        .background { if isActive { Capsule().fill(RuneTheme.accentFill) } }
+        .background { if isActive { Capsule().fill(RuneTheme.paperInk) } }
     }
 
     private var textAlignmentControl: some View {
@@ -669,7 +669,7 @@ private struct AnnotationTextStyleControls: View {
         }
         .padding(3)
         .frame(height: 34)
-        .background(Capsule().fill(RuneTheme.card))
+        .background(Capsule().fill(RuneTheme.paperCard))
         .overlay(Capsule().stroke(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 0.5))
     }
 
@@ -685,8 +685,8 @@ private struct AnnotationTextStyleControls: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(isSelected ? Color.white : RuneTheme.textPrimary)
-        .background { if isSelected { Capsule().fill(RuneTheme.accentFill) } }
+        .foregroundStyle(isSelected ? Color.white : RuneTheme.paperInk)
+        .background { if isSelected { Capsule().fill(RuneTheme.paperInk) } }
         .accessibilityLabel(alignment.accessibilityName)
     }
 
@@ -761,7 +761,7 @@ private struct LayoutSection: View {
             HStack(spacing: 10) {
                 Text("比例")
                     .font(RuneFont.swiftUI(size: 12))
-                    .foregroundStyle(RuneTheme.textSecondary)
+                    .foregroundStyle(RuneTheme.paperTextSecondary)
                     .frame(width: 52, alignment: .leading)
 
                 RuneMenu(
@@ -779,22 +779,22 @@ private struct LayoutSection: View {
                     HStack(spacing: 6) {
                         Text(model.config.aspectRatio.displayName)
                             .font(RuneFont.swiftUI(size: 12))
-                            .foregroundStyle(RuneTheme.textPrimary.opacity(0.8))
+                            .foregroundStyle(RuneTheme.paperInk.opacity(0.8))
                             .frame(maxWidth: .infinity, alignment: .leading)
 
                         Image(systemName: "chevron.up.chevron.down")
                             .font(RuneFont.swiftUI(size: 8, weight: .semibold))
-                            .foregroundStyle(RuneTheme.textMuted)
+                            .foregroundStyle(RuneTheme.paperTextMuted)
                     }
                     .padding(.horizontal, 8)
                     .frame(height: 26)
                     .background(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(RuneTheme.card)
+                            .fill(RuneTheme.paperCard)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .stroke(RuneTheme.separator, lineWidth: 0.5)
+                            .stroke(RuneTheme.paperSeparator, lineWidth: 0.5)
                     )
                     .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 }
@@ -803,7 +803,7 @@ private struct LayoutSection: View {
             HStack(alignment: .top, spacing: 10) {
                 Text("对齐")
                     .font(RuneFont.swiftUI(size: 12))
-                    .foregroundStyle(RuneTheme.textSecondary)
+                    .foregroundStyle(RuneTheme.paperTextSecondary)
                     .frame(width: 52, alignment: .leading)
                     .padding(.top, 6)
 
@@ -837,10 +837,10 @@ private struct AlignmentGridPicker: View {
                         } label: {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                    .fill(selection == alignment ? RuneTheme.accent.opacity(0.12) : .clear)
+                                    .fill(selection == alignment ? RuneTheme.annotationAccent.opacity(0.12) : .clear)
 
                                 Circle()
-                                    .fill(selection == alignment ? RuneTheme.accent : Color.primary.opacity(0.22))
+                                    .fill(selection == alignment ? RuneTheme.annotationAccent : Color.primary.opacity(0.22))
                                     .frame(width: selection == alignment ? 9 : 6, height: selection == alignment ? 9 : 6)
                             }
                             .frame(maxWidth: .infinity)
@@ -857,7 +857,7 @@ private struct AlignmentGridPicker: View {
         .padding(3)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(RuneTheme.card)
+                .fill(RuneTheme.paperCard)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -879,7 +879,7 @@ struct BackgroundPickerSection: View {
 
             Text("纯色")
                 .font(RuneFont.caption2)
-                .foregroundStyle(RuneTheme.textMuted)
+                .foregroundStyle(RuneTheme.paperTextMuted)
 
             LazyVGrid(columns: swatchColumns, spacing: 6) {
                 noneButton
@@ -891,7 +891,7 @@ struct BackgroundPickerSection: View {
 
             Text("渐变")
                 .font(RuneFont.caption2)
-                .foregroundStyle(RuneTheme.textMuted)
+                .foregroundStyle(RuneTheme.paperTextMuted)
 
             LazyVGrid(columns: swatchColumns, spacing: 6) {
                 ForEach(GradientPreset.presets) { preset in
@@ -901,7 +901,7 @@ struct BackgroundPickerSection: View {
 
             Text("macOS")
                 .font(RuneFont.caption2)
-                .foregroundStyle(RuneTheme.textMuted)
+                .foregroundStyle(RuneTheme.paperTextMuted)
 
             LazyVGrid(columns: Array(repeating: GridItem(.fixed(48), spacing: 6), count: 4), spacing: 6) {
                 ForEach(BundledBackgrounds.macAssets) { asset in
@@ -933,7 +933,7 @@ struct BackgroundPickerSection: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .strokeBorder(
-                        model.config.style == .none ? RuneTheme.accent : Color.primary.opacity(0.12),
+                        model.config.style == .none ? RuneTheme.annotationAccent : Color.primary.opacity(0.12),
                         lineWidth: model.config.style == .none ? 2 : 0.5
                     )
             )
@@ -957,7 +957,7 @@ struct BackgroundPickerSection: View {
                 .frame(width: 28, height: 28)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(isSelected ? RuneTheme.accent : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
+                        .strokeBorder(isSelected ? RuneTheme.annotationAccent : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
                 )
         }
         .buttonStyle(.plain)
@@ -979,7 +979,7 @@ struct BackgroundPickerSection: View {
                 .frame(width: 28, height: 28)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(isSelected ? RuneTheme.accent : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
+                        .strokeBorder(isSelected ? RuneTheme.annotationAccent : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
                 )
         }
         .buttonStyle(.plain)
@@ -1009,7 +1009,7 @@ struct BackgroundPickerSection: View {
             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(isSelected ? RuneTheme.accent : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
+                    .strokeBorder(isSelected ? RuneTheme.annotationAccent : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
             )
         }
         .buttonStyle(.plain)
@@ -1028,13 +1028,13 @@ struct BackgroundPickerSection: View {
                         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .strokeBorder(RuneTheme.accent, lineWidth: 2)
+                                .strokeBorder(RuneTheme.annotationAccent, lineWidth: 2)
                         )
                 }
 
                 Text(URL(fileURLWithPath: source.path).lastPathComponent)
                     .font(RuneFont.caption2)
-                    .foregroundStyle(RuneTheme.textSecondary)
+                    .foregroundStyle(RuneTheme.paperTextSecondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
 
@@ -1066,7 +1066,7 @@ struct BackgroundPickerSection: View {
                 )
             }
             .buttonStyle(.plain)
-            .foregroundStyle(RuneTheme.textSecondary)
+            .foregroundStyle(RuneTheme.paperTextSecondary)
         }
     }
 
@@ -1104,10 +1104,10 @@ private struct ImageCropSection: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 6)
-                    .background(model.isCropping ? AnyShapeStyle(RuneTheme.accent.opacity(0.15)) : AnyShapeStyle(.quaternary), in: RoundedRectangle(cornerRadius: 6))
+                    .background(model.isCropping ? AnyShapeStyle(RuneTheme.annotationAccent.opacity(0.15)) : AnyShapeStyle(.quaternary), in: RoundedRectangle(cornerRadius: 6))
                     .overlay(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .strokeBorder(model.isCropping ? RuneTheme.accent : Color.primary.opacity(0.08), lineWidth: model.isCropping ? 1.5 : 0.5)
+                            .strokeBorder(model.isCropping ? RuneTheme.annotationAccent : Color.primary.opacity(0.08), lineWidth: model.isCropping ? 1.5 : 0.5)
                     )
                 }
                 .buttonStyle(.plain)
@@ -1135,7 +1135,7 @@ private struct ImageCropSection: View {
                 let h = Int(CGFloat(model.sourceImage?.height ?? 0) * model.cropRect.height)
                 Text("\(w) × \(h)")
                     .font(RuneFont.caption2)
-                    .foregroundStyle(RuneTheme.textMuted)
+                    .foregroundStyle(RuneTheme.paperTextMuted)
             }
         }
         .padding(.horizontal, 14)
@@ -1205,11 +1205,11 @@ struct LabeledSlider: View {
             HStack {
                 Text(label)
                     .font(RuneFont.caption2)
-                    .foregroundStyle(RuneTheme.textMuted)
+                    .foregroundStyle(RuneTheme.paperTextMuted)
                 Spacer()
                 Text(format(value))
                     .font(RuneFont.caption2)
-                    .foregroundStyle(RuneTheme.textMuted)
+                    .foregroundStyle(RuneTheme.paperTextMuted)
             }
             Slider(value: $value, in: range) { editing in
                 onEditingChanged?(editing)

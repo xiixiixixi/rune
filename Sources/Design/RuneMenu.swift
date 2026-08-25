@@ -121,24 +121,24 @@ struct RunePicker<T: Hashable>: View {
             HStack(spacing: 6) {
                 Text(currentLabel)
                     .font(RuneFont.swiftUI(size: 12))
-                    .foregroundStyle(RuneTheme.textPrimary)
+                    .foregroundStyle(RuneTheme.paperInk)
                     .lineLimit(1)
                     .truncationMode(.tail)
 
                 Image(systemName: "chevron.up.chevron.down")
                     .font(RuneFont.swiftUI(size: 8, weight: .semibold))
-                    .foregroundStyle(RuneTheme.textMuted)
+                    .foregroundStyle(RuneTheme.paperTextMuted)
             }
             .padding(.horizontal, 9)
             .frame(height: 27)
             .frame(minWidth: 128)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(RuneTheme.card)
+                    .fill(RuneTheme.paperCard)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(RuneTheme.separator, lineWidth: 1)
+                    .strokeBorder(RuneTheme.paperSeparator, lineWidth: 1)
             )
             .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
@@ -317,12 +317,12 @@ private struct RuneMenuList: View {
         .fixedSize(horizontal: true, vertical: true)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(surface == .paper ? RuneTheme.card : RuneTheme.chromeElevated)
+                .fill(surface == .paper ? RuneTheme.paperCard : RuneTheme.chromeElevated)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(
-                    surface == .paper ? RuneTheme.separator : RuneTheme.chromeLine,
+                    surface == .paper ? RuneTheme.paperSeparator : RuneTheme.chromeLine,
                     lineWidth: 1
                 )
         )
@@ -340,18 +340,18 @@ private struct RuneMenuRow: View {
 
     private var titleColor: Color {
         if item.isDestructive { return RuneTheme.signal }
-        return surface == .paper ? RuneTheme.textPrimary : RuneTheme.chromeText
+        return surface == .paper ? RuneTheme.paperInk : RuneTheme.chromeText
     }
 
     private var iconColor: Color {
         if item.isDestructive { return RuneTheme.signal }
-        return surface == .paper ? RuneTheme.textSecondary : RuneTheme.chromeMuted
+        return surface == .paper ? RuneTheme.paperTextSecondary : RuneTheme.chromeMuted
     }
 
     private var hoverBackground: Color {
         item.isDestructive
             ? RuneTheme.signal.opacity(0.10)
-            : (surface == .paper ? RuneTheme.accentDim : RuneTheme.chromeBlue.opacity(0.14))
+            : (surface == .paper ? RuneTheme.paperControl : RuneTheme.chromeBlue.opacity(0.14))
     }
 
     var body: some View {
@@ -361,7 +361,7 @@ private struct RuneMenuRow: View {
                 Image(systemName: "checkmark")
                     .font(RuneFont.swiftUI(size: 10, weight: .bold))
                     .foregroundStyle(
-                        surface == .paper ? RuneTheme.accent : RuneTheme.chromeBlue
+                        surface == .paper ? RuneTheme.paperInk : RuneTheme.chromeBlue
                     )
                     .opacity(item.isSelected ? 1 : 0)
                     .frame(width: 22)
@@ -384,7 +384,7 @@ private struct RuneMenuRow: View {
                     Text(shortcut)
                         .font(RuneFont.mono(size: 10, weight: .medium))
                         .foregroundStyle(
-                            surface == .paper ? RuneTheme.textMuted : RuneTheme.chromeMuted
+                            surface == .paper ? RuneTheme.paperTextMuted : RuneTheme.chromeMuted
                         )
                 }
             }
@@ -408,7 +408,7 @@ private struct RuneMenuDivider: View {
 
     var body: some View {
         Rectangle()
-            .fill(surface == .paper ? RuneTheme.separator : RuneTheme.chromeLine)
+            .fill(surface == .paper ? RuneTheme.paperSeparator : RuneTheme.chromeLine)
             .frame(height: 1)
             .padding(.horizontal, 10)
             .padding(.vertical, 4)

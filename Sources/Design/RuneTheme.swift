@@ -53,18 +53,39 @@ enum RuneTheme {
     /// 信号橘：只给录制圆点与危险操作，仪器的警示灯
     static let signal = Color(red: 0.91, green: 0.286, blue: 0.165)          // #E8492A
 
+    // MARK: - 暖白纸面（设置、编辑器属性面板）
+
+    /// 设置与属性面板不再套用整机石墨色。纸面只承载控制，截图内容仍是主角。
+    static let paperBackground = Color(red: 0.973, green: 0.969, blue: 0.953) // #F8F7F3
+    static let paperCard = Color.white
+    static let paperInk = Color(red: 0.075, green: 0.075, blue: 0.071)        // #131312
+    static let paperTextSecondary = Color(red: 0.31, green: 0.306, blue: 0.286)
+    static let paperTextMuted = Color(red: 0.55, green: 0.537, blue: 0.50)
+    static let paperSeparator = Color(red: 0.89, green: 0.878, blue: 0.835)
+    static let paperControl = Color(red: 0.94, green: 0.933, blue: 0.91)
+    static let paperAccent = paperInk
+    static let annotationAccent = Color(red: 1.0, green: 0.35, blue: 0.27)
+    static let editorWorkspace = Color(red: 0.075, green: 0.082, blue: 0.094)
+
+    static let nsPaperBackground = NSColor(
+        calibratedRed: 0.973, green: 0.969, blue: 0.953, alpha: 1
+    )
+    static let nsPaperAccent = NSColor(
+        calibratedRed: 0.075, green: 0.075, blue: 0.071, alpha: 1
+    )
+
     // MARK: - 石墨家族别名
 
     /// 以下别名保留给"悬浮在画面上"的表面（确认条、Toast、录制状态条）。
     /// 重新设计后全机统一石墨声部，别名与主色板同值，
     /// 保留命名是为了让悬浮面代码继续读出"这是压在画面上的面"。
-    static let chromeBase = background        // #1D1E22
-    static let chromeElevated = card          // #26272C
-    static let chromeLine = separator         // #3B3D45
-    static let chromeText = textPrimary       // #EDEEF0
-    static let chromeMuted = textSecondary    // #A6A8AF
-    static let chromeBlue = accent            // #8C9BFF
-    static let chromeBlueFill = accentFill    // #4D63F6
+    static let chromeBase = Color(red: 0.114, green: 0.118, blue: 0.133)      // #1D1E22
+    static let chromeElevated = Color(red: 0.149, green: 0.153, blue: 0.173)  // #26272C
+    static let chromeLine = Color(red: 0.231, green: 0.239, blue: 0.271)      // #3B3D45
+    static let chromeText = Color(red: 0.929, green: 0.933, blue: 0.941)      // #EDEEF0
+    static let chromeMuted = Color(red: 0.651, green: 0.659, blue: 0.686)     // #A6A8AF
+    static let chromeBlue = Color(red: 0.549, green: 0.608, blue: 1.0)        // #8C9BFF
+    static let chromeBlueFill = Color(red: 0.302, green: 0.388, blue: 0.965)  // #4D63F6
 
     // MARK: - 尺寸
 
@@ -282,4 +303,3 @@ private struct ToolbarBackgroundHider: ViewModifier {
         }
     }
 }
-
