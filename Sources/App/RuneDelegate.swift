@@ -53,7 +53,7 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                     subdirectory: "Backgrounds/mac"
                 )
             Task {
-                func report(_ text: String) {
+                @MainActor func report(_ text: String) {
                     try? text.write(
                         toFile: "/tmp/rune-ocr-real.txt",
                         atomically: true,
