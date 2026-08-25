@@ -225,7 +225,7 @@ enum UpdateService {
     ///
     /// 替换由独立 shell 进程完成：等待本进程退出 → 挪走旧版 → 放入新版 →
     /// 重新启动 → 清理，全程无需用户操作。
-    static func installAndRelaunch(zipURL: URL) throws {
+    @MainActor static func installAndRelaunch(zipURL: URL) throws {
         let appURL = Bundle.main.bundleURL
         guard !appURL.path.contains("/.build/") else {
             throw RuneUpdateError.devBuildNotSupported

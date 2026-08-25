@@ -3,6 +3,18 @@ import ScreenCaptureKit
 
 @MainActor
 final class RuneDelegate: NSObject, NSApplicationDelegate {
+    /// SCK 可见内容计数（取证用）：nonisolated 侧完成查询，只把 Int 带回主线程。
+    nonisolated private static func fetchShareableCounts() async -> (displays: Int, windows: Int, apps: Int) {
+        let content = try? await SCShareableContent.excludingDesktopWindows(
+            false, onScreenWindowsOnly: true
+        )
+        return (
+            content?.displays.count ?? -1,
+            content?.windows.count ?? -1,
+            content?.applications.count ?? -1
+        )
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         ExceptionLogger.install()
         RuneFont.registerBundledFonts()
@@ -14,16 +26,10 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
         #if DEBUG
         // 屏幕权限取证：对比 TCC 判定与 SCK 实际可见内容（签名失效时两者会分叉）
         if ProcessInfo.processInfo.arguments.contains("--audit-sck-content") {
-            Task {
-                let content = try? await SCShareableContent.excludingDesktopWindows(
-                    false, onScreenWindowsOnly: true
-                )
-                let report = """
-                preflight=\(CGPreflightScreenCaptureAccess()) \
-                displays=\(content?.displays.count ?? -1) \
-                windows=\(content?.windows.count ?? -1) \
-                apps=\(content?.applications.count ?? -1)
-                """
+            Task { @MainActor in
+                // SCK 对象本身不跨隔离传递，在 nonisolated 侧先折成 Int 计数
+                let counts = await Self.fetchShareableCounts()
+                let report = "preflight=\(CGPreflightScreenCaptureAccess()) displays=\(counts.displays) windows=\(counts.windows) apps=\(counts.apps)"
                 try? report.write(
                     toFile: "/tmp/rune-sck-content.txt",
                     atomically: true,
