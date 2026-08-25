@@ -80,17 +80,23 @@ final class RegionSelectionOverlay {
             }
 
             window.contentView = overlayView
-            window.makeKeyAndOrderFront(nil)
+            // 只前置不出键：窗口立即接收鼠标，但激活/成为 key 会抢走前台的
+            // 焦点、把用户正开着的菜单/弹窗收掉——那必须等静帧抓完再干。
+            window.orderFrontRegardless()
             overlayWindows.append(window)
             views.append((screen, overlayView))
         }
 
-        NSApp.activate(ignoringOtherApps: true)
         crosshair.push()
         crosshair.set()
 
-        // ② 后台补数据：定格帧 + 窗口清单（抓完回填各屏视图）
+        // ② 静帧 + 窗口清单先抓（此刻屏幕状态未被打扰），抓完回填各屏视图
         await fetchOverlayData(for: views)
+
+        // ③ 静帧到手才接管焦点（此刻真菜单即使收起，浮层上显示的仍是
+        // 收起前的定格画面）；激活后 Esc 取消也才可用
+        NSApp.activate(ignoringOtherApps: true)
+        overlayWindows.first?.makeKeyAndOrderFront(nil)
     }
 
     /// 抓定格帧（每屏并行）+ 窗口清单，抓完回填 SelectionView。

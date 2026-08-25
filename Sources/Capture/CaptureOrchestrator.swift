@@ -119,18 +119,25 @@ final class CaptureOrchestrator {
             try? await sckEngine.capture(.display(selection.displayID)).image
         }
 
-        // 2. 走 SCK 引擎：单击命中窗口=整窗捕获（无阴影）；拖拽=区域裁剪
+        // 2. 成图：优先从"按下快门瞬间"的定格帧裁剪——菜单、弹窗、悬停提示
+        //    这类瞬态界面在拖框期间可能已经收起，实拍会错过，定格帧不会。
+        //    定格帧缺失（抓帧失败）才退回松手时实拍。
         let frame: CapturedFrame
-        do {
-            if let windowID = selection.windowID {
-                frame = try await sckEngine.capture(.window(windowID))
-            } else {
-                frame = try await sckEngine.capture(.region(selection.pointsRect))
+        if let frozen = selection.frozenDisplayFrame,
+           let cropped = Self.cropFrozenFrame(frozen, selection: selection) {
+            frame = cropped
+        } else {
+            do {
+                if let windowID = selection.windowID {
+                    frame = try await sckEngine.capture(.window(windowID))
+                } else {
+                    frame = try await sckEngine.capture(.region(selection.pointsRect))
+                }
+            } catch {
+                print("区域截图失败：\(error.localizedDescription)")
+                showCaptureError("截图失败", detail: "选区没有保存，请重新截一次")
+                return
             }
-        } catch {
-            print("区域截图失败：\(error.localizedDescription)")
-            showCaptureError("截图失败", detail: "选区没有保存，请重新截一次")
-            return
         }
 
         ScreenCapture.shared.playShutterSound()
@@ -145,6 +152,40 @@ final class CaptureOrchestrator {
 
     /// M1 第⑤步（续）：窗口截图经应用自己的 WindowPickerOverlay 拿窗口 ID，
     /// 再走 SCK 引擎截取该窗口。不再用 screencapture -w 系统命令。
+    /// 从定格帧按选区裁剪成图。pointsRect 是 CG 全局点坐标（主屏左上原点），
+    /// 定格帧只覆盖 selection.displayID 这块屏，先换算到屏内局部点、再乘
+    /// 图像实际像素比（图像宽 ÷ 显示器点宽，Retina 下为 2）。
+    /// 单击选窗口时 pointsRect 即该窗口全局矩形，同一条路径直接可用。
+    private static func cropFrozenFrame(
+        _ image: CGImage,
+        selection: RegionSelection
+    ) -> CapturedFrame? {
+        let displayBounds = CGDisplayBounds(selection.displayID)
+        let scale = CGFloat(image.width) / max(displayBounds.width, 1)
+        let local = CGRect(
+            x: selection.pointsRect.minX - displayBounds.minX,
+            y: selection.pointsRect.minY - displayBounds.minY,
+            width: selection.pointsRect.width,
+            height: selection.pointsRect.height
+        )
+        let pixelRect = CGRect(
+            x: local.minX * scale,
+            y: local.minY * scale,
+            width: local.width * scale,
+            height: local.height * scale
+        ).integral
+        guard pixelRect.minX >= 0, pixelRect.minY >= 0,
+              pixelRect.maxX <= CGFloat(image.width),
+              pixelRect.maxY <= CGFloat(image.height),
+              pixelRect.width >= 1, pixelRect.height >= 1,
+              let cropped = image.cropping(to: pixelRect) else { return nil }
+        return CapturedFrame(
+            image: cropped,
+            scaleFactor: scale,
+            displayID: selection.displayID
+        )
+    }
+
     /// 后台预热截图引擎（不阻塞当前流程）。
     /// 屏幕清单查询 0.5–1.5s 是截图卡顿的元凶；在 overlay 交互期间提前做完。
     private func prewarmEngineInBackground() {
