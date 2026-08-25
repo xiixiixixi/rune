@@ -282,3 +282,4 @@ private struct ToolbarBackgroundHider: ViewModifier {
         }
     }
 }
+

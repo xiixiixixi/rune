@@ -25,7 +25,9 @@ DMG_NAME     = Rune-$(VERSION).dmg
 DMG_DIR      = release
 # 正式 Apple 证书可通过 LOCAL_SIGN_IDENTITY 覆盖。本地默认使用 ad-hoc 签名，
 # 但显式固定 designated requirement，避免每次编译都因 cdhash 变化而丢失屏幕录制权限。
-LOCAL_SIGN_IDENTITY ?= -
+# 稳定签名身份：所有版本共用这张 Apple Development 证书，
+# 换包/自动更新后 TCC 授权（屏幕录制等）持续有效，无需重新授权。
+LOCAL_SIGN_IDENTITY ?= Apple Development: xiixiixixi@gmail.com (XZTBXM8859)
 ifeq ($(strip $(LOCAL_SIGN_IDENTITY)),-)
 LOCAL_SIGN_REQUIREMENTS = --requirements '=designated => identifier "com.tc.rune"'
 endif
