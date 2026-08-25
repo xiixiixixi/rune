@@ -8,7 +8,7 @@ extension Notification.Name {
 /// 确认模式画布：显示截图 + 就地标注（拖画/选中/移动/删除）。
 ///
 /// 复用 AnnotationItem 模型（0-1 归一化、Y-down）与 AnnotationDrawing 烘焙渲染。
-/// 键盘：Esc=取消（不保存）、Enter/⌘S=保存、⌘Z=撤销、Delete=删除选中。
+/// 键盘：Esc=取消（不保存）、Enter=复制并保存、⌘Z=撤销、Delete=删除选中。
 final class ConfirmCanvasView: NSView {
     private let image: CGImage
     private let backgroundImage: CGImage?
@@ -587,8 +587,8 @@ final class ConfirmCanvasView: NSView {
         switch event.keyCode {
         case 53:   // Esc → 选字模式优先退出选字；否则取消（零残留）
             if ocrMode { exitOCRMode() } else { controller?.cancel() }
-        case 36, 76:  // Enter / 小回车 → 保存
-            controller?.confirm()
+        case 36, 76:  // Enter / 小回车 → 复制 + 保存（默认动作）
+            controller?.copyAndConfirm()
         case 51:   // Delete → 删除选中
             deleteSelected()
         default:

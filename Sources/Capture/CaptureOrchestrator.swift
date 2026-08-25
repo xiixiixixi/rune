@@ -410,7 +410,18 @@ final class CaptureOrchestrator {
 
         let displayURL = savedURL ?? url
 
-        if savedURL != nil {
+        // 回车默认动作（复制+保存）优先提示剪贴板；「保存后复制」偏好次之
+        let copiedDuringConfirm = CaptureConfirmController.shared.copiedDuringConfirm
+        CaptureConfirmController.shared.copiedDuringConfirm = false
+        if savedURL != nil, copiedDuringConfirm {
+            let appIcon = NSImage(named: "AppIcon") ?? NSApp.applicationIconImage
+            ToastWindow.shared.show(
+                title: "已复制到剪贴板",
+                message: "截图已同时保存",
+                icon: appIcon,
+                on: captureScreen
+            )
+        } else if savedURL != nil {
             let appIcon = NSImage(named: "AppIcon") ?? NSApp.applicationIconImage
             ToastWindow.shared.show(
                 message: AppPreferences.copyAfterSave ? "截图已保存并复制！" : "截图已保存！",

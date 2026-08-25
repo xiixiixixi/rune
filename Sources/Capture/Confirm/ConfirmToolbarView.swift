@@ -87,11 +87,11 @@ struct ConfirmToolbarView: View {
             FreezeSeparator()
 
             FreezeToolButton(
-                title: "复制",
-                help: "复制当前截图到剪贴板（⌘C）",
-                icon: "square.on.square"
+                title: "保存",
+                help: "保存截图到文件夹",
+                icon: "square.and.arrow.down"
             ) {
-                canvas?.copyImageToPasteboard()
+                controller.confirm()
             }
 
             FreezeToolButton(
@@ -110,10 +110,10 @@ struct ConfirmToolbarView: View {
             }
             .help("放弃这次截图（Esc）")
 
-            FreezeEndButton(title: "保存", icon: "checkmark", isPrimary: true) {
-                controller.confirm()
+            FreezeEndButton(title: "复制", icon: "square.on.square", isPrimary: true) {
+                controller.copyAndConfirm()
             }
-            .help("保存截图（Enter）")
+            .help("复制到剪贴板并保存（Enter）")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)

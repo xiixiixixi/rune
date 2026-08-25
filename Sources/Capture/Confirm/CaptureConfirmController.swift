@@ -199,6 +199,16 @@ final class CaptureConfirmController: NSObject {
         finish(result: items)
     }
 
+    /// 回车默认动作：复制到剪贴板 + 保存。保存流程读 copiedDuringConfirm
+    /// 决定完成提示文案（"已复制到剪贴板"），读后复位。
+    var copiedDuringConfirm = false
+
+    func copyAndConfirm() {
+        copiedDuringConfirm = true
+        canvas?.copyImageToPasteboard()
+        finish(result: canvas?.annotations ?? [])
+    }
+
     /// 用户点取消/按 Esc。零残留。
     func cancel() {
         finish(result: nil)
