@@ -152,7 +152,7 @@ private struct OCRResultCardView: View {
                 .padding(.vertical, 5)
                 .background(
                     RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .fill(Color.white.opacity(0.9))
+                        .fill(RuneTheme.background.opacity(0.9))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 3, style: .continuous)
@@ -166,7 +166,7 @@ private struct OCRResultCardView: View {
                     .frame(width: 26, height: 26)
                     .background(
                         RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .fill(Color.white.opacity(0.9))
+                            .fill(RuneTheme.background.opacity(0.9))
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 3, style: .continuous)

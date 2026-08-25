@@ -1,4 +1,5 @@
 import AppKit
+import ScreenCaptureKit
 
 @MainActor
 final class RuneDelegate: NSObject, NSApplicationDelegate {
@@ -9,6 +10,68 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
 
         MenuBarPopoverController.shared.setup()
+
+        #if DEBUG
+        // 屏幕权限取证：对比 TCC 判定与 SCK 实际可见内容（签名失效时两者会分叉）
+        if ProcessInfo.processInfo.arguments.contains("--audit-sck-content") {
+            Task {
+                let content = try? await SCShareableContent.excludingDesktopWindows(
+                    false, onScreenWindowsOnly: true
+                )
+                let report = """
+                preflight=\(CGPreflightScreenCaptureAccess()) \
+                displays=\(content?.displays.count ?? -1) \
+                windows=\(content?.windows.count ?? -1) \
+                apps=\(content?.applications.count ?? -1)
+                """
+                try? report.write(
+                    toFile: "/tmp/rune-sck-content.txt",
+                    atomically: true,
+                    encoding: .utf8
+                )
+                NSApp.terminate(nil)
+            }
+            return
+        }
+
+        // Vision OCR 端到端：跑真图、写真结果，验证识别引擎本体。
+        // 可用 --audit-ocr-real=/path/to/img.png 指定带文字的图片
+        if let ocrArg = ProcessInfo.processInfo.arguments.first(
+            where: { $0.hasPrefix("--audit-ocr-real") }
+        ) {
+            let imageURL = ocrArg.hasPrefix("--audit-ocr-real=")
+                ? URL(fileURLWithPath: String(ocrArg.dropFirst("--audit-ocr-real=".count)))
+                : Bundle.main.url(
+                    forResource: "mac-asset-3",
+                    withExtension: "jpg",
+                    subdirectory: "Backgrounds/mac"
+                )
+            Task {
+                func report(_ text: String) {
+                    try? text.write(
+                        toFile: "/tmp/rune-ocr-real.txt",
+                        atomically: true,
+                        encoding: .utf8
+                    )
+                    NSApp.terminate(nil)
+                }
+                guard let imageURL, let image = NSImage(contentsOf: imageURL),
+                      let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+                    report("FAIL: 找不到测试图")
+                    return
+                }
+                do {
+                    let result = try await OCRService.shared.recognize(in: cg)
+                    let text = result.text ?? ""
+                    let sample = text.prefix(80)
+                    report("PASS: 识别 \(text.count) 字符｜\(sample)…")
+                } catch {
+                    report("FAIL: \(error.localizedDescription)")
+                }
+            }
+            return
+        }
+#endif
 
         // M1 §5：改用 Carbon RegisterEventHotKey，不再需要辅助功能权限，直接注册。
         ShortcutService.shared.registerAll()
@@ -128,6 +191,8 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                 Task {
                     await CaptureOrchestrator.shared.performCapture(.main, on: NSScreen.main)
                 }
+                DebugAuditSnapshot.captureWindowLayoutAfter("screenshot-real-layout.txt", delay: 3)
+                DebugAuditSnapshot.captureAfter("screenshot-real.png", delay: 3)
             }
         } else if ProcessInfo.processInfo.arguments.contains("--audit-ocr") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {

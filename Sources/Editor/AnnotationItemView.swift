@@ -667,7 +667,7 @@ private struct CurveControlHandle: View {
 }
 
 private enum AnnotationSelectionStyle {
-    static let color = Color.accentColor.opacity(0.5)
+    static let color = RuneTheme.accent.opacity(0.5)
 }
 
 private struct SpotlightPreview: View {

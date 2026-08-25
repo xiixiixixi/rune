@@ -1,59 +1,70 @@
 import SwiftUI
 
-/// Rune 设计系统——「校样台 Proof Desk」。
+/// Rune 设计系统——「石墨仪器 Graphite Instrument」。
 ///
-/// 概念：Rune 是一间数字校样台，截图即校样。界面是车间的纸、墨与工具：
-/// - **纸** 冷瓷白（刻意避开暖奶油色），让截图内容成为主角；
-/// - **墨** 蓝黑墨线承载文字与描边；
-/// - **制图蓝** 唯一主色——校对笔的蓝，只给主按钮、选中态、激活态；
-/// - **信号橘** 只出现在录制与危险操作上，像车间的警示灯；
-/// - **石墨** 暗色家族给悬浮在画面上的深色表面（确认条、Toast、状态条）；
-/// - **裁切角线**（CropMarks）是签名记号：一个裁图工具，身上带着裁切标记。
+/// 概念：Rune 是一台仪器，不是一叠纸。整机是截后确认条那种石墨机身：
+/// - **机身** 石墨 #1D1E22 是所有窗口与页面的底，发丝机线 #3B3D45 分割功能区；
+/// - **瓷白墨** #EDEEF0 承载文字，次墨与弱墨递减，像刻度盘上的刻字；
+/// - **瓷蓝** 唯一主色——仪器的指示灯：文字与激活态用亮瓷蓝 #8C9BFF，
+///   主按钮底用饱和蓝 #4D63F6（永远配白字）；
+/// - **信号橘** 只出现在录制与危险操作上，是警示灯；
+/// - **裁切角线**（CropMarks）是签名记号：一个裁图工具，身上带着裁切标记；
+/// - 应用内唯一的"纸"是用户的截图本身——深色机身让内容最跳。
+///
+/// 整机钉在深色外观（applyAppearance 恒定 darkAqua）：仪器只有一种机身，
+/// 系统控件与石墨面板永远同声部，外观串色事故从结构上不存在。
 ///
 /// 字体见 RuneFont：界面声部 Space Grotesk，数据声部 Space Mono。
 enum RuneTheme {
-    // MARK: - 色板（纸面）
+    // MARK: - 色板（石墨·单一声部）
 
-    /// 制图蓝（主按钮、选中态、激活工具）：校对笔的蓝
-    static let accent = Color(red: 0.18, green: 0.294, blue: 0.843)          // #2E4BD7
-    /// 制图蓝按压态（深一档）
-    static let accentPressed = Color(red: 0.141, green: 0.235, blue: 0.729) // #243CBA
-    /// 主文字（蓝黑墨）：标题与正文
-    static let ink = Color(red: 0.102, green: 0.106, blue: 0.118)            // #1A1B1E
+    /// 瓷蓝（选中态、激活工具、强调文字）：仪器指示灯的亮色
+    static let accent = Color(red: 0.549, green: 0.608, blue: 1.0)           // #8C9BFF
+    /// 主按钮底色：饱和蓝 + 白字，对比度 ≥4.7:1
+    static let accentFill = Color(red: 0.302, green: 0.388, blue: 0.965)     // #4D63F6
+    /// 主按钮按压态（深一档）
+    static let accentPressed = Color(red: 0.239, green: 0.318, blue: 0.91)   // #3D51E8
+    /// 主文字（瓷白墨）
+    static let ink = Color(red: 0.929, green: 0.933, blue: 0.941)            // #EDEEF0
     /// 主文字（同 ink，语义别名）
-    static let textPrimary = Color(red: 0.102, green: 0.106, blue: 0.118)    // #1A1B1E
-    /// 次要文字
-    static let textSecondary = Color(red: 0.361, green: 0.373, blue: 0.4)    // #5C5F66
-    /// 弱化文字
-    static let textMuted = Color(red: 0.557, green: 0.569, blue: 0.596)      // #8E9198
-    /// 纸面细线 / 分隔线
-    static let separator = Color(red: 0.894, green: 0.894, blue: 0.871)      // #E4E4DE
-    /// 页面底（冷瓷白）
-    static let background = Color(red: 0.965, green: 0.965, blue: 0.953)     // #F6F6F3
-    /// 卡面（纯白）
-    static let card = Color.white
-    /// 制图蓝 8% 底（激活底、错误底）
-    static let accentDim = Color(red: 0.18, green: 0.294, blue: 0.843).opacity(0.08)
+    static let textPrimary = ink
+    /// 次要文字（次墨）
+    static let textSecondary = Color(red: 0.651, green: 0.659, blue: 0.686)  // #A6A8AF
+    /// 弱化文字（弱墨）
+    static let textMuted = Color(red: 0.486, green: 0.498, blue: 0.529)      // #7C7F87
+    /// 细线 / 分隔线（机线）
+    static let separator = Color(red: 0.231, green: 0.239, blue: 0.271)      // #3B3D45
+    /// 页面底（机身）
+    static let background = Color(red: 0.114, green: 0.118, blue: 0.133)     // #1D1E22
+    /// 卡面（浮起面）
+    static let card = Color(red: 0.149, green: 0.153, blue: 0.173)           // #26272C
+    /// 瓷蓝淡底（激活底、错误底）
+    static let accentDim = Color(red: 0.549, green: 0.608, blue: 1.0).opacity(0.14)
 
-    /// 信号橘：只给录制圆点与危险操作，像车间的警示灯
+    /// 窗口底色的原生句柄：NSWindow.backgroundColor 直接用这份。
+    static let nsBackground = NSColor(
+        calibratedRed: 0.114, green: 0.118, blue: 0.133, alpha: 1
+    )
+    /// 强调色的原生句柄（NSView 层 contentTintColor / 手绘用）
+    static let nsAccent = NSColor(
+        calibratedRed: 0.549, green: 0.608, blue: 1.0, alpha: 1
+    )
+
+    /// 信号橘：只给录制圆点与危险操作，仪器的警示灯
     static let signal = Color(red: 0.91, green: 0.286, blue: 0.165)          // #E8492A
 
-    // MARK: - 色板（石墨暗面）
+    // MARK: - 石墨家族别名
 
-    /// 石墨底：悬浮在画面上的深色表面（确认条、Toast、录制状态）
-    static let chromeBase = Color(red: 0.114, green: 0.118, blue: 0.133)     // #1D1E22
-    /// 石墨浮起面
-    static let chromeElevated = Color(red: 0.149, green: 0.153, blue: 0.173) // #26272C
-    /// 石墨描边
-    static let chromeLine = Color(red: 0.231, green: 0.239, blue: 0.271)     // #3B3D45
-    /// 石墨上的主文字
-    static let chromeText = Color(red: 0.929, green: 0.933, blue: 0.941)     // #EDEEF0
-    /// 石墨上的次要文字
-    static let chromeMuted = Color(red: 0.651, green: 0.659, blue: 0.686)    // #A6A8AF
-    /// 制图蓝·亮（石墨上的激活态、选中工具）
-    static let chromeBlue = Color(red: 0.549, green: 0.608, blue: 1.0)       // #8C9BFF
-    /// 制图蓝·按钮（石墨上的主按钮底色）
-    static let chromeBlueFill = Color(red: 0.302, green: 0.388, blue: 0.965) // #4D63F6
+    /// 以下别名保留给"悬浮在画面上"的表面（确认条、Toast、录制状态条）。
+    /// 重新设计后全机统一石墨声部，别名与主色板同值，
+    /// 保留命名是为了让悬浮面代码继续读出"这是压在画面上的面"。
+    static let chromeBase = background        // #1D1E22
+    static let chromeElevated = card          // #26272C
+    static let chromeLine = separator         // #3B3D45
+    static let chromeText = textPrimary       // #EDEEF0
+    static let chromeMuted = textSecondary    // #A6A8AF
+    static let chromeBlue = accent            // #8C9BFF
+    static let chromeBlueFill = accentFill    // #4D63F6
 
     // MARK: - 尺寸
 
@@ -70,7 +81,7 @@ enum RuneTheme {
 
     // MARK: - 组件样式
 
-    /// 悬浮条底：白卡 + 细边框 + 轻投影
+    /// 悬浮条底：石墨浮面 + 机线细边 + 轻投影
     static var barBackground: some View {
         RoundedRectangle(cornerRadius: barCorner, style: .continuous)
             .fill(card)
@@ -81,7 +92,7 @@ enum RuneTheme {
             .shadow(color: .black.opacity(0.07), radius: 14, x: 0, y: 4)
     }
 
-    /// 主按钮（保存/导出/开始）：制图蓝底白字
+    /// 主按钮（保存/导出/开始）：制图蓝底白字（accentFill 两班都保证白字可读）
     static func primaryButtonLabel(_ text: String, systemImage: String? = nil) -> some View {
         Group {
             if let systemImage {
@@ -96,11 +107,11 @@ enum RuneTheme {
             .frame(height: 32)
             .background(
                 RoundedRectangle(cornerRadius: buttonCorner, style: .continuous)
-                    .fill(accent)
+                    .fill(accentFill)
             )
     }
 
-    /// 次按钮（取消/复制）：白底 + 墨色细边框
+    /// 次按钮（取消/复制）：浮面 + 机线细边
     static func secondaryButtonLabel(_ text: String, systemImage: String? = nil) -> some View {
         Group {
             if let systemImage {
@@ -123,7 +134,7 @@ enum RuneTheme {
             )
     }
 
-    /// 工具图标：默认灰墨，激活 = 制图蓝图标 + 蓝 8% 底
+    /// 工具图标：默认次墨，激活 = 瓷蓝图标 + 瓷蓝淡底
     static func toolIcon(_ systemImage: String, active: Bool) -> some View {
         Image(systemName: systemImage)
             .font(RuneFont.swiftUI(size: 18, weight: .medium))
@@ -138,7 +149,7 @@ enum RuneTheme {
     /// 分组竖线：功能区之间的极淡细线（1×22），自带左右各 13pt 呼吸留白
     static var groupSeparator: some View {
         RoundedRectangle(cornerRadius: 0.5)
-            .fill(Color.black.opacity(0.09))
+            .fill(ink.opacity(0.09))
             .frame(width: 1, height: 22)
             .padding(.horizontal, 13)
     }
@@ -158,7 +169,7 @@ enum RuneTheme {
         }
     }
 
-    /// 快捷键徽章：Space Mono 数据声部 + 白底细边——校样单上的打字机读数
+    /// 快捷键徽章：Space Mono 数据声部 + 浮面细边——仪器铭牌上的打字机读数
     static func shortcutBadge(_ text: String) -> some View {
         Text(text)
             .font(RuneFont.mono(size: 10, weight: .medium))
@@ -167,7 +178,7 @@ enum RuneTheme {
             .padding(.vertical, 2)
             .background(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(Color.white.opacity(0.92))
+                    .fill(card.opacity(0.92))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
@@ -175,7 +186,7 @@ enum RuneTheme {
             )
     }
 
-    /// 卡片底：纯白 + 1px 细边框，供各页面分区使用
+    /// 卡片底：石墨浮面 + 1px 机线，供各页面分区使用
     static var cardBackground: some View {
         RoundedRectangle(cornerRadius: cardCorner, style: .continuous)
             .fill(card)
@@ -185,7 +196,7 @@ enum RuneTheme {
             )
     }
 
-    /// 校样卡片：白卡 + 细边 + 可选裁切角线（签名记号，只给重点卡用）
+    /// 面板卡：浮面 + 机线 + 可选裁切角线（签名记号，只给重点卡用）
     static func proofCardBackground(showingCropMarks: Bool = false) -> some View {
         cardBackground
             .shadow(color: .black.opacity(0.035), radius: 8, x: 0, y: 2)
@@ -197,7 +208,7 @@ enum RuneTheme {
             }
     }
 
-    /// 区块图章标签：Space Mono 小号 + 宽字距，像盖在校样上的工序章
+    /// 区块图章标签：Space Mono 小号 + 宽字距，像铭刻在面板上的工序章
     static func stampLabel(_ text: String) -> some View {
         Text(text)
             .font(RuneFont.mono(size: 10, weight: .medium))

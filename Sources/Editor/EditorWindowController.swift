@@ -32,7 +32,7 @@ final class EditorWindowController {
         win.titlebarAppearsTransparent = true
         win.toolbarStyle = .unifiedCompact
         // macOS 26 关玻璃的第二步：窗口底色给纸面，标题栏才融进来
-        win.backgroundColor = NSColor(RuneTheme.background)
+        win.backgroundColor = RuneTheme.nsBackground
         win.isReleasedWhenClosed = false
         win.delegate = EditorWindowDelegate.shared
         win.collectionBehavior = [.transient, .moveToActiveSpace]

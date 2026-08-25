@@ -39,6 +39,7 @@ final class ScreenCapturePermissionController: NSObject, NSWindowDelegate {
     private var model: ScreenCapturePermissionGuideModel?
     private var continuations: [CheckedContinuation<Bool, Never>] = []
     private var activationObserver: NSObjectProtocol?
+    private var grantPollTimer: Timer?
     private var requestedSystemPromptThisLaunch = false
     private var systemRequestReportedGranted = false
     private var openedSystemSettings = false
@@ -137,7 +138,7 @@ final class ScreenCapturePermissionController: NSObject, NSWindowDelegate {
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
-        window.backgroundColor = .windowBackgroundColor
+        window.backgroundColor = RuneTheme.nsBackground
         window.contentView = hostingView
         window.delegate = self
         window.collectionBehavior = [.moveToActiveSpace]
@@ -155,6 +156,34 @@ final class ScreenCapturePermissionController: NSObject, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         installActivationObserver()
+        installGrantPolling()
+    }
+
+    /// 授权后自动感知：不再只依赖"点回 Rune 窗口"触发激活复查——
+    /// 用户在系统设置里打开开关后，即使一直停在系统设置，这里也能在
+    /// 数秒内发现并进入"重启后生效"引导，不会永远停在"等待"。
+    private func installGrantPolling() {
+        if let grantPollTimer, grantPollTimer.isValid { return }
+        grantPollTimer = Timer.scheduledTimer(
+            withTimeInterval: 2,
+            repeats: true
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.window?.isVisible == true else {
+                    self?.stopGrantPolling()
+                    return
+                }
+                if CGPreflightScreenCaptureAccess() {
+                    self.recheckPermission(autoTriggered: true)
+                    self.stopGrantPolling()
+                }
+            }
+        }
+    }
+
+    private func stopGrantPolling() {
+        grantPollTimer?.invalidate()
+        grantPollTimer = nil
     }
 
     private func openSystemSettings() {
@@ -244,6 +273,7 @@ final class ScreenCapturePermissionController: NSObject, NSWindowDelegate {
     }
 
     private func dismissWindowOnly() {
+        stopGrantPolling()
         if let activationObserver {
             NotificationCenter.default.removeObserver(activationObserver)
         }
@@ -380,7 +410,7 @@ private struct ScreenCapturePermissionGuideView: View {
                 .font(RuneFont.swiftUI(size: 11, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .frame(width: 24, height: 24)
-                .background(Circle().fill(RuneTheme.accent))
+                .background(Circle().fill(RuneTheme.accentFill))
             Text(title)
                 .font(RuneFont.swiftUI(size: 11, weight: .medium))
                 .foregroundStyle(RuneTheme.textPrimary)

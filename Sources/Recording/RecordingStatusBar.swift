@@ -56,19 +56,24 @@ struct RecordingStatusBarView: View {
             .buttonStyle(RecordingControlButtonStyle())
             .accessibilityLabel(isPaused ? "继续录屏" : "暂停录屏")
 
-            Menu {
-                Button("放弃这段录屏", systemImage: "trash", role: .destructive) {
-                    RecordingStatusBarController.shared.confirmAndCancel()
+            RuneMenu(
+                surface: .chrome,
+                entries: {
+                    [
+                        .item(
+                            RuneMenuItem("放弃这段录屏", systemImage: "trash", isDestructive: true) {
+                                RecordingStatusBarController.shared.confirmAndCancel()
+                            }
+                        ),
+                    ]
                 }
-            } label: {
+            ) {
                 Image(systemName: "ellipsis")
                     .font(RuneFont.swiftUI(size: 12, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.82))
                     .frame(width: 30, height: 30)
                     .background(Color.white.opacity(0.09), in: Circle())
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
             .help("更多录屏操作")
             .accessibilityLabel("更多录屏操作")
 

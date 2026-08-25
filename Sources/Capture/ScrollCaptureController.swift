@@ -325,19 +325,23 @@ private struct ScrollCaptureStatusBarView: View {
                 .monospacedDigit()
                 .frame(minWidth: 42, alignment: .trailing)
 
-            Menu {
-                Button("放弃这次长图…", systemImage: "trash", role: .destructive) {
-                    ScrollCaptureStatusBarController.shared.confirmAndCancel()
+            RuneMenu(
+                surface: .chrome,
+                entries: {
+                    [
+                        .item(
+                            RuneMenuItem("放弃这次长图…", systemImage: "trash", isDestructive: true) {
+                                ScrollCaptureStatusBarController.shared.confirmAndCancel()
+                            }
+                        ),
+                    ]
                 }
-            } label: {
+            ) {
                 Image(systemName: "ellipsis.circle")
                     .font(RuneFont.swiftUI(size: 15))
                     .foregroundStyle(.secondary)
                     .frame(width: 28, height: 28)
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
             .help("更多滚动截图操作")
 
             Spacer()

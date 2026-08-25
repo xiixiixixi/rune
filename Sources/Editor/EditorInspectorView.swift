@@ -267,15 +267,15 @@ private struct AnnotationInspectorToolGrid: View {
             .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
         .buttonStyle(.plain)
-        .foregroundStyle(selectedTool == tool ? Color.accentColor : .primary.opacity(0.72))
+        .foregroundStyle(selectedTool == tool ? RuneTheme.accent : .primary.opacity(0.72))
         .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(selectedTool == tool ? Color.accentColor.opacity(0.15) : .clear)
+                .fill(selectedTool == tool ? RuneTheme.accent.opacity(0.15) : .clear)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .strokeBorder(
-                    selectedTool == tool ? Color.accentColor.opacity(0.35) : .clear,
+                    selectedTool == tool ? RuneTheme.accent.opacity(0.35) : .clear,
                     lineWidth: 0.8
                 )
         )
@@ -294,10 +294,10 @@ private struct AnnotationInspectorToolGrid: View {
                 .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
         .buttonStyle(.plain)
-        .foregroundStyle(selectedTool == tool ? Color.accentColor : .primary.opacity(0.55))
+        .foregroundStyle(selectedTool == tool ? RuneTheme.accent : .primary.opacity(0.55))
         .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(selectedTool == tool ? Color.accentColor.opacity(0.15) : .clear)
+                .fill(selectedTool == tool ? RuneTheme.accent.opacity(0.15) : .clear)
         )
         .help(tool.title)
         .accessibilityLabel(tool.title)
@@ -381,7 +381,7 @@ private struct AnnotationColorPopover: View {
                             .overlay {
                                 if selectedSwatch == swatch {
                                     Circle()
-                                        .stroke(Color.accentColor.opacity(0.38), lineWidth: 6)
+                                        .stroke(RuneTheme.accent.opacity(0.38), lineWidth: 6)
                                         .frame(width: 32, height: 32)
                                 }
                             }
@@ -396,7 +396,7 @@ private struct AnnotationColorPopover: View {
                     .background {
                         if selectedSwatch == swatch {
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(Color.accentColor.opacity(0.10))
+                                .fill(RuneTheme.accent.opacity(0.10))
                         }
                     }
                 }
@@ -477,9 +477,9 @@ private struct AnnotationStrokeMenu: View {
                         ZStack {
                             if strokeWidth == width {
                                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .fill(Color.accentColor.opacity(0.12))
+                                    .fill(RuneTheme.accent.opacity(0.12))
                             }
-                            StrokePreview(width: width, color: strokeWidth == width ? Color.accentColor : Color.primary.opacity(0.58))
+                            StrokePreview(width: width, color: strokeWidth == width ? RuneTheme.accent : Color.primary.opacity(0.58))
                                 .frame(width: 48, height: 32)
                         }
                         .frame(maxWidth: .infinity)
@@ -557,19 +557,18 @@ private struct AnnotationTextStyleControls: View {
     }
 
     private var fontFamilyMenu: some View {
-        Menu {
-            ForEach(Self.fontFamilies, id: \.self) { family in
-                Button {
-                    model.selectedTextFontName = family
-                } label: {
-                    if model.selectedTextFontName == family {
-                        Label(family, systemImage: "checkmark")
-                    } else {
-                        Text(family)
-                    }
+        RuneMenu(
+            menuWidth: 230,
+            entries: {
+                Self.fontFamilies.map { family in
+                    .item(
+                        RuneMenuItem(family, isSelected: model.selectedTextFontName == family) {
+                            model.selectedTextFontName = family
+                        }
+                    )
                 }
             }
-        } label: {
+        ) {
             HStack(spacing: 6) {
                 Text(model.selectedTextFontName)
                     .font(RuneFont.swiftUI(size: 12))
@@ -590,12 +589,10 @@ private struct AnnotationTextStyleControls: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.5)
+                    .stroke(RuneTheme.separator, lineWidth: 0.5)
             )
             .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
     }
 
     private var fontSizeStepper: some View {
@@ -660,7 +657,7 @@ private struct AnnotationTextStyleControls: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(isActive ? Color.white : Color.primary)
-        .background { if isActive { Capsule().fill(Color.accentColor) } }
+        .background { if isActive { Capsule().fill(RuneTheme.accentFill) } }
     }
 
     private var textAlignmentControl: some View {
@@ -689,7 +686,7 @@ private struct AnnotationTextStyleControls: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(isSelected ? Color.white : RuneTheme.textPrimary)
-        .background { if isSelected { Capsule().fill(Color.accentColor) } }
+        .background { if isSelected { Capsule().fill(RuneTheme.accentFill) } }
         .accessibilityLabel(alignment.accessibilityName)
     }
 
@@ -767,19 +764,18 @@ private struct LayoutSection: View {
                     .foregroundStyle(RuneTheme.textSecondary)
                     .frame(width: 52, alignment: .leading)
 
-                Menu {
-                    ForEach(CanvasAspectRatio.allCases, id: \.self) { ratio in
-                        Button {
-                            model.updateConfig { $0.aspectRatio = ratio }
-                        } label: {
-                            if model.config.aspectRatio == ratio {
-                                Label(ratio.displayName, systemImage: "checkmark")
-                            } else {
-                                Text(ratio.displayName)
-                            }
+                RuneMenu(
+                    menuWidth: 180,
+                    entries: {
+                        CanvasAspectRatio.allCases.map { ratio in
+                            .item(
+                                RuneMenuItem(ratio.displayName, isSelected: model.config.aspectRatio == ratio) {
+                                    model.updateConfig { $0.aspectRatio = ratio }
+                                }
+                            )
                         }
                     }
-                } label: {
+                ) {
                     HStack(spacing: 6) {
                         Text(model.config.aspectRatio.displayName)
                             .font(RuneFont.swiftUI(size: 12))
@@ -798,12 +794,10 @@ private struct LayoutSection: View {
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.5)
+                            .stroke(RuneTheme.separator, lineWidth: 0.5)
                     )
                     .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 }
-                .menuStyle(.button)
-                .buttonStyle(.plain)
             }
 
             HStack(alignment: .top, spacing: 10) {
@@ -843,10 +837,10 @@ private struct AlignmentGridPicker: View {
                         } label: {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                    .fill(selection == alignment ? Color.accentColor.opacity(0.12) : .clear)
+                                    .fill(selection == alignment ? RuneTheme.accent.opacity(0.12) : .clear)
 
                                 Circle()
-                                    .fill(selection == alignment ? Color.accentColor : Color.primary.opacity(0.22))
+                                    .fill(selection == alignment ? RuneTheme.accent : Color.primary.opacity(0.22))
                                     .frame(width: selection == alignment ? 9 : 6, height: selection == alignment ? 9 : 6)
                             }
                             .frame(maxWidth: .infinity)
@@ -939,7 +933,7 @@ struct BackgroundPickerSection: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .strokeBorder(
-                        model.config.style == .none ? Color.accentColor : Color.primary.opacity(0.12),
+                        model.config.style == .none ? RuneTheme.accent : Color.primary.opacity(0.12),
                         lineWidth: model.config.style == .none ? 2 : 0.5
                     )
             )
@@ -963,7 +957,7 @@ struct BackgroundPickerSection: View {
                 .frame(width: 28, height: 28)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(isSelected ? Color.accentColor : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
+                        .strokeBorder(isSelected ? RuneTheme.accent : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
                 )
         }
         .buttonStyle(.plain)
@@ -985,7 +979,7 @@ struct BackgroundPickerSection: View {
                 .frame(width: 28, height: 28)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(isSelected ? Color.accentColor : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
+                        .strokeBorder(isSelected ? RuneTheme.accent : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
                 )
         }
         .buttonStyle(.plain)
@@ -1015,7 +1009,7 @@ struct BackgroundPickerSection: View {
             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(isSelected ? Color.accentColor : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
+                    .strokeBorder(isSelected ? RuneTheme.accent : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
             )
         }
         .buttonStyle(.plain)
@@ -1034,7 +1028,7 @@ struct BackgroundPickerSection: View {
                         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .strokeBorder(Color.accentColor, lineWidth: 2)
+                                .strokeBorder(RuneTheme.accent, lineWidth: 2)
                         )
                 }
 
@@ -1110,10 +1104,10 @@ private struct ImageCropSection: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 6)
-                    .background(model.isCropping ? AnyShapeStyle(Color.accentColor.opacity(0.15)) : AnyShapeStyle(.quaternary), in: RoundedRectangle(cornerRadius: 6))
+                    .background(model.isCropping ? AnyShapeStyle(RuneTheme.accent.opacity(0.15)) : AnyShapeStyle(.quaternary), in: RoundedRectangle(cornerRadius: 6))
                     .overlay(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .strokeBorder(model.isCropping ? Color.accentColor : Color.primary.opacity(0.08), lineWidth: model.isCropping ? 1.5 : 0.5)
+                            .strokeBorder(model.isCropping ? RuneTheme.accent : Color.primary.opacity(0.08), lineWidth: model.isCropping ? 1.5 : 0.5)
                     )
                 }
                 .buttonStyle(.plain)

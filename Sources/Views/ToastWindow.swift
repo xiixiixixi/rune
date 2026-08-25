@@ -90,7 +90,7 @@ final class ToastWindow {
             x: pad, y: (panelH - iconSize) / 2, width: iconSize, height: iconSize
         ))
         iconView.image = iconImage
-        iconView.contentTintColor = NSColor(RuneTheme.accent)
+        iconView.contentTintColor = RuneTheme.nsAccent
         effect.addSubview(iconView)
 
         let titleField = NSTextField(labelWithString: title)

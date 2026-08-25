@@ -6,10 +6,6 @@ struct RuneUpdate: Equatable, Sendable {
     let notes: String
     let releasePageURL: URL
     let downloadURL: URL?
-
-    var preferredURL: URL {
-        downloadURL ?? releasePageURL
-    }
 }
 
 enum RuneUpdateCheckResult: Equatable, Sendable {
@@ -90,24 +86,51 @@ enum UpdateService {
         )
     }
 
-    static func scheduleAutomaticCheckIfNeeded() {
-        guard AppPreferences.automaticallyChecksForUpdates else { return }
+    /// 自动检查策略：启动时立即查一次；运行期间每小时核对一次到期时间
+    /// （Rune 常驻菜单栏，可能连续运行数天不重启，只在启动时查会永远错过新版）。
+    /// 真正发起检查仍受"每天最多一次"限制；检查失败不占当天额度，下个小时整点重试。
+    @MainActor private static var periodicCheckTimer: Timer?
+    @MainActor private static var isAutomaticCheckInFlight = false
+    private static let automaticCheckInterval: TimeInterval = 24 * 60 * 60
+    private static let periodicTickInterval: TimeInterval = 60 * 60
 
-        let now = Date()
-        guard now.timeIntervalSince(AppPreferences.lastAutomaticUpdateCheck) >= 24 * 60 * 60 else {
-            return
+    @MainActor static func scheduleAutomaticCheckIfNeeded() {
+        performAutomaticCheckIfDue()
+
+        guard periodicCheckTimer == nil else { return }
+        periodicCheckTimer = Timer.scheduledTimer(
+            withTimeInterval: periodicTickInterval,
+            repeats: true
+        ) { _ in
+            Task { @MainActor in
+                performAutomaticCheckIfDue()
+            }
         }
-        AppPreferences.lastAutomaticUpdateCheck = now
+    }
+
+    @MainActor private static func performAutomaticCheckIfDue() {
+        guard AppPreferences.automaticallyChecksForUpdates else { return }
+        guard !isAutomaticCheckInFlight else { return }
+        guard Date().timeIntervalSince(AppPreferences.lastAutomaticUpdateCheck)
+            >= automaticCheckInterval else { return }
+        isAutomaticCheckInFlight = true
 
         let currentVersion = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
         ) as? String ?? "0"
 
         Task {
-            guard case let .updateAvailable(update) = try? await check(
-                currentVersion: currentVersion
-            ) else { return }
-            await UpdateWindowController.shared.present(update, currentVersion: currentVersion)
+            defer { isAutomaticCheckInFlight = false }
+            do {
+                let result = try await check(currentVersion: currentVersion)
+                // 只有拿到明确结论（有新版或已是最新）才记入当天额度；
+                // 网络失败不记，等下一个整点自动重试。
+                AppPreferences.lastAutomaticUpdateCheck = Date()
+                guard case let .updateAvailable(update) = result else { return }
+                await UpdateWindowController.shared.present(update, currentVersion: currentVersion)
+            } catch {
+                // 静默失败：不打扰用户，下个小时再试
+            }
         }
     }
 

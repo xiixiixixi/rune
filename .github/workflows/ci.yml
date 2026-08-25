@@ -43,5 +43,21 @@ jobs:
             -scheme Rune \
             -configuration Debug \
             -destination 'platform=macOS' \
+            -derivedDataPath .build \
             build \
             CODE_SIGNING_ALLOWED=NO
+
+      # 本地无 Xcode 时从这里取可运行的调试包：
+      # 下载后 xattr -cr Rune.app 去隔离，再拖进 /Applications。
+      - name: 打包调试版应用
+        run: |
+          APP=".build/Build/Products/Debug/Rune.app"
+          mkdir -p artifact
+          ditto -c -k --keepParent "$APP" artifact/Rune-debug.zip
+
+      - name: 上传调试版应用
+        uses: actions/upload-artifact@v4
+        with:
+          name: Rune-debug
+          path: artifact/Rune-debug.zip
+          retention-days: 14

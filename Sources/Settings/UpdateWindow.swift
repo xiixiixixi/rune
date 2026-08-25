@@ -4,12 +4,14 @@ import SwiftUI
 /// 自动更新弹窗：检查到新版本后弹出，点一次"立即更新"，
 /// 之后下载、校验、替换、重启全部自动完成。
 @MainActor
-final class UpdateWindowController {
+final class UpdateWindowController: NSObject {
     static let shared = UpdateWindowController()
 
     private var window: NSWindow?
 
-    private init() {}
+    private override init() {
+        super.init()
+    }
 
     func present(_ update: RuneUpdate, currentVersion: String, on screen: NSScreen? = nil) {
         if let window {
@@ -30,12 +32,22 @@ final class UpdateWindowController {
         window.title = "软件更新"
         window.contentView = hosting
         window.titlebarAppearsTransparent = true
-        window.backgroundColor = NSColor(RuneTheme.background)
+        window.backgroundColor = RuneTheme.nsBackground
         window.isReleasedWhenClosed = false
+        window.delegate = self
         window.center()
         self.window = window
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
+/// 关窗（"以后再说"或标题栏关闭）后清掉引用，
+/// 这样下一次检查到更新的版本时能弹出新内容的窗口，
+/// 而不是把旧窗口原样再摆到前面。
+extension UpdateWindowController: NSWindowDelegate {
+    func windowWillClose(_ notification: Notification) {
+        window = nil
     }
 }
 
@@ -138,7 +150,7 @@ struct UpdateWindowView: View {
                     }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
-                    .tint(RuneTheme.accent)
+                    .tint(RuneTheme.accentFill)
                     .disabled(update.downloadURL == nil)
                 }
             }

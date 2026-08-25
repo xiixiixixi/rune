@@ -151,7 +151,7 @@ struct VideoEditorView: View {
             }
             .scrollContentBackground(.hidden)
         }
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(RuneTheme.background)
     }
 
     // MARK: - Video Preview with Effects
@@ -571,7 +571,7 @@ private struct VideoBackgroundSection: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .strokeBorder(
-                        model.config.style == .none ? Color.accentColor : Color.primary.opacity(0.12),
+                        model.config.style == .none ? RuneTheme.accent : Color.primary.opacity(0.12),
                         lineWidth: model.config.style == .none ? 2 : 0.5
                     )
             )
@@ -594,7 +594,7 @@ private struct VideoBackgroundSection: View {
                 .frame(width: 28, height: 28)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(isSelected ? Color.accentColor : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
+                        .strokeBorder(isSelected ? RuneTheme.accent : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
                 )
         }
         .buttonStyle(.plain)
@@ -616,7 +616,7 @@ private struct VideoBackgroundSection: View {
                 .frame(width: 28, height: 28)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(isSelected ? Color.accentColor : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
+                        .strokeBorder(isSelected ? RuneTheme.accent : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
                 )
         }
         .buttonStyle(.plain)
@@ -646,7 +646,7 @@ private struct VideoBackgroundSection: View {
             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(isSelected ? Color.accentColor : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
+                    .strokeBorder(isSelected ? RuneTheme.accent : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
             )
         }
         .buttonStyle(.plain)
@@ -665,7 +665,7 @@ private struct VideoBackgroundSection: View {
                         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .strokeBorder(Color.accentColor, lineWidth: 2)
+                                .strokeBorder(RuneTheme.accent, lineWidth: 2)
                         )
                 }
 
@@ -735,10 +735,10 @@ private struct VideoCropSection: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 6)
-                    .background(model.isCropping ? AnyShapeStyle(Color.accentColor.opacity(0.15)) : AnyShapeStyle(.quaternary), in: RoundedRectangle(cornerRadius: 6))
+                    .background(model.isCropping ? AnyShapeStyle(RuneTheme.accent.opacity(0.15)) : AnyShapeStyle(.quaternary), in: RoundedRectangle(cornerRadius: 6))
                     .overlay(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .strokeBorder(model.isCropping ? Color.accentColor : Color.primary.opacity(0.08), lineWidth: model.isCropping ? 1.5 : 0.5)
+                            .strokeBorder(model.isCropping ? RuneTheme.accent : Color.primary.opacity(0.08), lineWidth: model.isCropping ? 1.5 : 0.5)
                     )
                 }
                 .buttonStyle(.plain)

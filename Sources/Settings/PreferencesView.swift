@@ -101,16 +101,16 @@ private struct SettingsSidebarRow: View {
 
                 Spacer(minLength: 0)
             }
-            .foregroundStyle(isSelected ? Color.white : RuneTheme.textPrimary.opacity(0.78))
+            // 选中态：瓷蓝指示灯亮起——淡蓝底 + 瓷蓝字，与菜单对钩、激活工具同一声部
+            .foregroundStyle(isSelected ? RuneTheme.accent : RuneTheme.textPrimary.opacity(0.78))
             .padding(.horizontal, 10)
             .frame(height: 34)
             .contentShape(Rectangle())
             .background(
                 Group {
                     if isSelected {
-                        // 选中态：墨色胶囊——整间车间里最重的一块墨
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(RuneTheme.ink)
+                            .fill(RuneTheme.accentDim)
                     } else if isHovered {
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .fill(Color.primary.opacity(0.05))
@@ -260,7 +260,6 @@ private struct ResetButton: View {
 // MARK: - General
 
 struct GeneralSettingsTab: View {
-    @AppStorage("bs_appAppearance") private var appAppearanceRaw: String = AppAppearance.system.rawValue
     @AppStorage("bs_saveDirectory") private var saveDir = NSHomeDirectory() + "/Desktop"
     @AppStorage("bs_copyAfterSave") private var copyAfterSave = true
     @AppStorage("bs_playSound") private var playSound = true
@@ -269,16 +268,6 @@ struct GeneralSettingsTab: View {
     @AppStorage("bs_fileNameFormat") private var fileNameFormatRaw: String = FileNameFormat.systemStyle.rawValue
 
     @State private var defaultConfig = AppPreferences.defaultBeautifierConfig
-
-    private var appAppearance: Binding<AppAppearance> {
-        Binding(
-            get: { AppAppearance(rawValue: appAppearanceRaw) ?? .system },
-            set: { newValue in
-                appAppearanceRaw = newValue.rawValue
-                AppPreferences.applyAppearance()
-            }
-        )
-    }
 
     private var exportFormat: Binding<ExportFormat> {
         Binding(
@@ -294,18 +283,6 @@ struct GeneralSettingsTab: View {
 
     var body: some View {
         SettingsScroll {
-            ProofSection("外观") {
-                SettingsRow("模式") {
-                    Picker("模式", selection: appAppearance) {
-                        ForEach(AppAppearance.allCases) { appearance in
-                            Text(appearance.label).tag(appearance)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                }
-            }
-
             ProofSection("保存") {
                 SettingsRow("保存到") {
                     HStack(spacing: 8) {
@@ -396,23 +373,19 @@ struct GeneralSettingsTab: View {
                 }
 
                 SettingsRow("文件命名") {
-                    Picker("文件命名", selection: Binding(
-                        get: { FileNameFormat(rawValue: fileNameFormatRaw) ?? .systemStyle },
-                        set: { fileNameFormatRaw = $0.rawValue }
-                    )) {
-                        ForEach(FileNameFormat.allCases, id: \.self) { fmt in
-                            Text(fmt.label).tag(fmt)
-                        }
-                    }
-                    .labelsHidden()
+                    RunePicker(
+                        options: FileNameFormat.allCases.map { ($0, $0.label) },
+                        selection: Binding(
+                            get: { FileNameFormat(rawValue: fileNameFormatRaw) ?? .systemStyle },
+                            set: { fileNameFormatRaw = $0.rawValue }
+                        )
+                    )
                 }
             }
 
             HStack {
                 Spacer()
                 ResetButton("恢复全部通用设置", isDestructive: true) {
-                    appAppearanceRaw = AppAppearance.system.rawValue
-                    AppPreferences.applyAppearance()
                     saveDir = NSHomeDirectory() + "/Desktop"
                     copyAfterSave = true
                     playSound = true
@@ -803,11 +776,13 @@ struct CaptureSettingsTab: View {
 
             ProofSection("截图预览") {
                 SettingsRow("位置") {
-                    Picker("位置", selection: overlayPosition) {
-                        Text("右下角").tag(OverlayPosition.bottomRight)
-                        Text("左下角").tag(OverlayPosition.bottomLeft)
-                    }
-                    .labelsHidden()
+                    RunePicker(
+                        options: [
+                            (OverlayPosition.bottomRight, "右下角"),
+                            (OverlayPosition.bottomLeft, "左下角"),
+                        ],
+                        selection: overlayPosition
+                    )
                 }
 
                 VStack(spacing: 6) {
@@ -1105,16 +1080,16 @@ final class ShortcutRecorderNSView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 5, yRadius: 5)
-        NSColor(RuneTheme.accent).withAlphaComponent(0.12).setFill()
+        RuneTheme.nsAccent.withAlphaComponent(0.12).setFill()
         path.fill()
-        NSColor(RuneTheme.accent).setStroke()
+        RuneTheme.nsAccent.setStroke()
         path.lineWidth = 1.5
         path.stroke()
 
         let text = "请按下快捷键…" as NSString
         let attrs: [NSAttributedString.Key: Any] = [
             .font: RuneFont.appKit(size: 11, weight: .medium),
-            .foregroundColor: NSColor(RuneTheme.accent),
+            .foregroundColor: RuneTheme.nsAccent,
         ]
         let size = text.size(withAttributes: attrs)
         let point = NSPoint(
@@ -1574,7 +1549,7 @@ struct AboutTab: View {
                 VStack(alignment: .leading, spacing: 10) {
                     ProofFootnote("发现新版本后会自动下载并完成安装，更新完自动重启，全程不需要手动操作。检查时只读版本号，不上传截图或使用数据。")
 
-                    Toggle("启动后自动检查更新（每天最多一次）", isOn: $automaticallyChecksForUpdates)
+                    Toggle("自动检查更新（每天最多提示一次）", isOn: $automaticallyChecksForUpdates)
                         .font(RuneFont.swiftUI(size: 12))
 
                     HStack(spacing: 10) {
@@ -1606,11 +1581,6 @@ struct AboutTab: View {
             Label("已是最新版 \(latestVersion)", systemImage: "checkmark.circle.fill")
                 .foregroundStyle(RuneTheme.accent)
                 .font(RuneFont.swiftUI(size: 12))
-        case let .available(update):
-            Button("下载 Rune \(update.version)") {
-                NSWorkspace.shared.open(update.preferredURL)
-            }
-            .font(RuneFont.swiftUI(size: 12, weight: .semibold))
         case let .failed(message):
             Label(message, systemImage: "exclamationmark.triangle")
                 .foregroundStyle(RuneTheme.textSecondary)
@@ -1642,7 +1612,6 @@ private enum UpdateViewState {
     case idle
     case checking
     case upToDate(latestVersion: String)
-    case available(RuneUpdate)
     case failed(message: String)
 
     var isChecking: Bool {

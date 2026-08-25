@@ -341,7 +341,7 @@ private struct TrayFeatureButton: View {
             .frame(maxWidth: .infinity, minHeight: 84, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: RuneTheme.cardCorner, style: .continuous)
-                    .fill(isAccent ? RuneTheme.accent : RuneTheme.card)
+                    .fill(isAccent ? RuneTheme.accentFill : RuneTheme.card)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: RuneTheme.cardCorner, style: .continuous)
@@ -429,28 +429,21 @@ private struct TrayRecordingMenu: View {
     @State private var isHovered = false
 
     var body: some View {
-        ZStack {
-            // Menu 在 macOS 上会把自定义 label 强制居中。视觉层单独复用同一套
-            // TrayActionLabel，透明 Menu 只负责接收点击，保证和另外三个入口左对齐。
+        RuneMenu(
+            surface: .paper,
+            entries: {
+                [
+                    .item(RuneMenuItem("全屏录制", systemImage: "desktopcomputer", action: onFullScreen)),
+                    .item(RuneMenuItem("区域录制", systemImage: "rectangle.dashed", action: onArea)),
+                ]
+            }
+        ) {
             TrayActionLabel(
                 title: "录屏",
                 icon: "record.circle",
                 showsChevron: true,
                 isHovered: isHovered
             )
-            .allowsHitTesting(false)
-
-            Menu {
-                Button("全屏录制", systemImage: "desktopcomputer", action: onFullScreen)
-                Button("区域录制", systemImage: "rectangle.dashed", action: onArea)
-            } label: {
-                Color.white.opacity(0.001)
-                    .frame(maxWidth: .infinity, minHeight: 38)
-                    .contentShape(Rectangle())
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity, minHeight: 38)
         .onHover { isHovered = $0 }

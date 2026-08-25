@@ -4,7 +4,6 @@ import SwiftUI
 
 enum AppPreferences {
     // MARK: - Keys
-    private static let appearanceKey = "bs_appAppearance"
     private static let saveDirKey = "bs_saveDirectory"
     private static let copyAfterSaveKey = "bs_copyAfterSave"
     private static let playSoundKey = "bs_playSound"
@@ -21,18 +20,12 @@ enum AppPreferences {
     private static let lastAutomaticUpdateCheckKey = "rune_lastAutomaticUpdateCheck"
 
     // MARK: - Appearance
-    static var appearance: AppAppearance {
-        get {
-            guard let raw = UserDefaults.standard.string(forKey: appearanceKey),
-                  let appearance = AppAppearance(rawValue: raw) else { return .system }
-            return appearance
-        }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: appearanceKey) }
-    }
 
+    /// Rune 是一台石墨仪器：整机钉在深色外观，不提供浅色机身。
+    /// 系统控件（开关、分段、菜单）随之永远渲染深色，与石墨面板同声部。
     @MainActor
     static func applyAppearance() {
-        NSApp.appearance = appearance.nsAppearance
+        NSApp.appearance = NSAppearance(named: .darkAqua)
     }
 
     // MARK: - General
@@ -194,30 +187,6 @@ enum AppPreferences {
 }
 
 // MARK: - Enums
-
-enum AppAppearance: String, CaseIterable, Identifiable {
-    case system
-    case light
-    case dark
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .system: return "跟随系统"
-        case .light: return "浅色"
-        case .dark: return "深色"
-        }
-    }
-
-    var nsAppearance: NSAppearance? {
-        switch self {
-        case .system: return nil
-        case .light: return NSAppearance(named: .aqua)
-        case .dark: return NSAppearance(named: .darkAqua)
-        }
-    }
-}
 
 enum OverlayPosition: String, CaseIterable, Codable {
     case bottomRight = "bottomRight"

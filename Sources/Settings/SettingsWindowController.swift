@@ -35,7 +35,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         win.contentView = hostingView
         win.title = "Rune设置"
         win.titlebarAppearsTransparent = true
-        win.backgroundColor = NSColor(RuneTheme.background)
+        win.backgroundColor = RuneTheme.nsBackground
         win.isReleasedWhenClosed = false
         win.delegate = self
         win.collectionBehavior = [.transient, .moveToActiveSpace]

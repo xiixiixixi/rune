@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0129DE19B1D7B79D0FEF5105 /* RuneTypography.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A563FA4711F8AE1E6829F1B /* RuneTypography.swift */; };
+		01A976D33BDBAB8FDA11C8B0 /* RuneMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DDA4C2AAEEA5B01BF022A29 /* RuneMenu.swift */; };
 		0A94CF88DBFEC05ACBFC9DEE /* ColorPickerOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C2C44FBB87ECFB165B9B673 /* ColorPickerOverlay.swift */; };
 		0F5FDF9A93743C3DA0D33DE4 /* EditorWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2733B25C20A07B0E9F07BCB1 /* EditorWindowView.swift */; };
 		175F30B0492B42476C5071DC /* DebugAuditSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA752C566C19DA061089251B /* DebugAuditSnapshot.swift */; };
@@ -73,6 +74,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0DDA4C2AAEEA5B01BF022A29 /* RuneMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuneMenu.swift; sourceTree = "<group>"; };
 		100BEB4210AD9825D2ACDC7D /* RecordingStatusBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStatusBar.swift; sourceTree = "<group>"; };
 		112F75E5041E36D972603516 /* RuneTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuneTheme.swift; sourceTree = "<group>"; };
 		115684E2C4D24EC0B20540AE /* SettingsWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowController.swift; sourceTree = "<group>"; };
@@ -328,6 +330,7 @@
 		D01B096501F86D35189EA1EC /* Design */ = {
 			isa = PBXGroup;
 			children = (
+				0DDA4C2AAEEA5B01BF022A29 /* RuneMenu.swift */,
 				112F75E5041E36D972603516 /* RuneTheme.swift */,
 				5A563FA4711F8AE1E6829F1B /* RuneTypography.swift */,
 			);
@@ -473,6 +476,7 @@
 				777FDA7E0931BC7DDFA109D7 /* RegionSelectionOverlay.swift in Sources */,
 				86655064AB31C019C0BFED31 /* RuneApp.swift in Sources */,
 				CAE08A3A25471D92F8EC71EB /* RuneDelegate.swift in Sources */,
+				01A976D33BDBAB8FDA11C8B0 /* RuneMenu.swift in Sources */,
 				ED43EF380B681CA9DFA3EF71 /* RuneTheme.swift in Sources */,
 				0129DE19B1D7B79D0FEF5105 /* RuneTypography.swift in Sources */,
 				2C9766AEF9CCF301B76F3D44 /* ScreenCapture.swift in Sources */,
@@ -505,13 +509,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Resources/Rune.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 0.6.0;
+				MARKETING_VERSION = 0.7.0;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = com.tc.rune;
 				PRODUCT_NAME = Rune;
@@ -659,13 +663,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Resources/Rune.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 0.6.0;
+				MARKETING_VERSION = 0.7.0;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = com.tc.rune;
 				PRODUCT_NAME = Rune;

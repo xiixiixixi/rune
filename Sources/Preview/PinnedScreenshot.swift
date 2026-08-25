@@ -568,29 +568,42 @@ private struct PinnedScreenshotView: View {
                 }
                 .help("关闭贴图")
 
-                Menu {
-                    ForEach([0.5, 0.75, 1.0, 1.5, 2.0], id: \.self) { value in
-                        Button("大小 \(Int(value * 100))%") {
-                            interaction.scaleFactor = value
+                RuneMenu(
+                    surface: .chrome,
+                    entries: {
+                        var list: [RuneMenuEntry] = [0.5, 0.75, 1.0, 1.5, 2.0].map { value in
+                            .item(
+                                RuneMenuItem(
+                                    "大小 \(Int(value * 100))%",
+                                    isSelected: abs(interaction.scaleFactor - value) < 0.01
+                                ) {
+                                    interaction.scaleFactor = value
+                                }
+                            )
                         }
+                        list.append(.divider)
+                        list.append(contentsOf: [0.3, 0.6, 1.0].map { value in
+                            .item(
+                                RuneMenuItem(
+                                    "透明度 \(Int(value * 100))%",
+                                    isSelected: abs(interaction.opacity - value) < 0.01
+                                ) {
+                                    interaction.opacity = value
+                                }
+                            )
+                        })
+                        list.append(.divider)
+                        list.append(
+                            .item(RuneMenuItem("开启鼠标穿透", systemImage: "arrow.pointer.forward") {
+                                interaction.clickThrough = true
+                            })
+                        )
+                        return list
                     }
-                    Divider()
-                    ForEach([0.3, 0.6, 1.0], id: \.self) { value in
-                        Button("透明度 \(Int(value * 100))%") {
-                            interaction.opacity = value
-                        }
-                    }
-                    Divider()
-                    Button("开启鼠标穿透") {
-                        interaction.clickThrough = true
-                    }
-                } label: {
+                ) {
                     Image(systemName: "ellipsis")
                         .frame(width: 24, height: 24)
                 }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
                 .help("更多操作")
             } else {
                 Divider()
@@ -605,19 +618,26 @@ private struct PinnedScreenshotView: View {
                     .controlSize(.mini)
                     .help("透明度 \(Int(interaction.opacity * 100))%")
 
-                Menu {
-                    ForEach([0.5, 0.75, 1.0, 1.5, 2.0], id: \.self) { value in
-                        Button("\(Int(value * 100))%") {
-                            interaction.scaleFactor = value
+                RuneMenu(
+                    surface: .chrome,
+                    menuWidth: 120,
+                    entries: {
+                        [0.5, 0.75, 1.0, 1.5, 2.0].map { value in
+                            .item(
+                                RuneMenuItem(
+                                    "\(Int(value * 100))%",
+                                    isSelected: abs(interaction.scaleFactor - value) < 0.01
+                                ) {
+                                    interaction.scaleFactor = value
+                                }
+                            )
                         }
                     }
-                } label: {
+                ) {
                     Text("\(Int(interaction.scaleFactor * 100))%")
-                        .font(RuneFont.swiftUI(size: 10, weight: .medium, design: .monospaced))
+                        .font(RuneFont.swiftUI(size: 10, weight: .medium))
                         .frame(minWidth: 34)
                 }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
                 .help("贴图大小")
 
                 Button {
