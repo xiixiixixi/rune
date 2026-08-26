@@ -44,6 +44,7 @@ struct ConfirmToolbarView: View {
                 icon: "arrow.uturn.backward",
                 isEnabled: canUndo
             ) {
+                canvas?.finishTextEditing()
                 canvas?.undo()
                 canUndo = canvas?.canUndo ?? false
             }
@@ -274,6 +275,7 @@ struct ConfirmToolbarView: View {
     }
 
     private func activate(_ tool: AnnotationTool) {
+        canvas?.finishTextEditing()
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.14)) {
             activeTool = tool
         }

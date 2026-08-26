@@ -237,7 +237,7 @@ enum AnnotationDrawing {
         let font = item.resolvedFont(size: fontSize)
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = item.textAlignment
-        paragraphStyle.lineBreakMode = .byClipping
+        paragraphStyle.lineBreakMode = .byWordWrapping
 
         var attributes: [NSAttributedString.Key: Any] = [
             .font: font,

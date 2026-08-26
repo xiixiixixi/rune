@@ -197,6 +197,7 @@ final class CaptureConfirmController: NSObject {
 
     /// 用户点保存/按 Enter。
     func confirm() {
+        canvas?.finishTextEditing()
         let items = canvas?.annotations ?? []
         finish(result: items)
     }
@@ -207,6 +208,7 @@ final class CaptureConfirmController: NSObject {
 
     func copyAndConfirm() {
         copiedDuringConfirm = true
+        canvas?.finishTextEditing()
         canvas?.copyImageToPasteboard()
         finish(result: canvas?.annotations ?? [])
     }

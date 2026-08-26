@@ -8,7 +8,7 @@ extension Notification.Name {
 /// 确认模式画布：显示截图 + 就地标注（拖画/选中/移动/删除）。
 ///
 /// 复用 AnnotationItem 模型（0-1 归一化、Y-down）与 AnnotationDrawing 烘焙渲染。
-/// 键盘：Esc=取消（不保存）、Enter=复制并保存、⌘Z=撤销、Delete=删除选中。
+/// 键盘（没有编辑文字时）：Esc=取消、Enter=复制并保存、⌘Z=撤销、Delete=删除选中。
 final class ConfirmCanvasView: NSView {
     private let image: CGImage
     private let backgroundImage: CGImage?
@@ -440,6 +440,9 @@ final class ConfirmCanvasView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         let loc = convert(event.locationInWindow, from: nil)
+        // 点到文字框以外时，先结束上一段文字：空内容丢弃，有内容保留。
+        // 这样保持文字工具连续放置时，也不会残留一个失去焦点的输入框。
+        finishTextEditing()
         // 暗场只是“时间冻结”的背景，不是可编辑画布；标注只发生在截中的亮区。
         guard imageDrawRect.contains(loc) else { return }
 
@@ -502,7 +505,7 @@ final class ConfirmCanvasView: NSView {
             return
         }
 
-        // 文字：点击放置 + 就地输入（回车确认；留空=不放置）
+        // 文字：点击放置 + 就地输入（回车换行；切换工具时智能收尾）
         if selectedTool == .text {
             beginTextPlacement(at: loc)
             return
@@ -586,11 +589,19 @@ final class ConfirmCanvasView: NSView {
 
     // MARK: - 文字就地输入
 
-    private var editingTextField: NSTextField?
+    private var editingTextView: NSTextView?
+    private var editingTextScrollView: NSScrollView?
     private var editingItemID: AnnotationItem.ID?
+    private var editingTextTopY: CGFloat = 0
+    private var editingTextMinimumHeight: CGFloat = 48
 
     /// 供控制器的焦点守护判断：文字输入期间必须保留系统 field editor 的焦点。
-    var isEditingText: Bool { editingTextField != nil }
+    var isEditingText: Bool { editingTextView != nil }
+
+    /// 切换工具、保存或复制前统一收尾：空内容取消，有内容确认。
+    func finishTextEditing() {
+        endTextEditing(commit: true)
+    }
 
     private func beginTextPlacement(at viewPoint: CGPoint) {
         let n = normalizedPoint(viewPoint)
@@ -619,48 +630,159 @@ final class ConfirmCanvasView: NSView {
     }
     #endif
 
-    /// 在点击位置弹一个输入框，回车/点别处确认；留空则放弃放置。
+    /// 在点击位置弹出多行输入框。回车换行，⌘↩ 或切换工具完成；留空则放弃放置。
     private func beginTextEditing(item: AnnotationItem, at viewPoint: CGPoint) {
         endTextEditing(commit: true)
-        let tf = NSTextField(frame: NSRect(x: viewPoint.x, y: viewPoint.y - 14, width: 180, height: 28))
-        tf.font = .systemFont(ofSize: 15)
-        tf.placeholderString = "输入文字，回车确认"
-        tf.focusRingType = .none
-        tf.bezelStyle = .roundedBezel
-        tf.backgroundColor = .white
-        tf.delegate = self
-        tf.target = self
-        tf.action = #selector(textFieldCommit(_:))
-        addSubview(tf)
-        editingTextField = tf
-        editingItemID = item.id
-        window?.makeFirstResponder(tf)
-    }
 
-    @objc private func textFieldCommit(_ sender: NSTextField) {
-        endTextEditing(commit: true)
+        let imageRect = imageDrawRect.insetBy(dx: 8, dy: 8)
+        let maximumWidth = max(1, imageRect.width)
+        let minimumWidth = min(280, maximumWidth)
+        let editorWidth = min(max(minimumWidth, imageRect.width * 0.72), min(720, maximumWidth))
+        let editorX = min(max(viewPoint.x, imageRect.minX), max(imageRect.minX, imageRect.maxX - editorWidth))
+        let fontSize = AnnotationTextMetrics.viewFontSize(
+            lineHeight: item.textLineHeight,
+            imageFrameHeight: imageDrawRect.height
+        )
+        let font = item.resolvedFont(size: fontSize)
+        let minimumHeight = min(max(52, ceil(fontSize * 1.8)), max(1, imageRect.height))
+        let topY = min(
+            max(viewPoint.y + fontSize * 0.55, imageRect.minY + minimumHeight),
+            imageRect.maxY
+        )
+
+        let scrollView = NSScrollView(frame: NSRect(
+            x: editorX,
+            y: topY - minimumHeight,
+            width: editorWidth,
+            height: minimumHeight
+        ))
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = true
+        scrollView.backgroundColor = .white
+        scrollView.hasHorizontalScroller = false
+        scrollView.hasVerticalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.wantsLayer = true
+        scrollView.layer?.cornerRadius = 7
+        scrollView.layer?.borderWidth = 1
+        scrollView.layer?.borderColor = NSColor.black.withAlphaComponent(0.22).cgColor
+        scrollView.layer?.masksToBounds = true
+
+        let textView = ConfirmMultilineTextView(frame: scrollView.contentView.bounds)
+        textView.delegate = self
+        textView.font = font
+        textView.textColor = .black
+        textView.insertionPointColor = .systemBlue
+        textView.drawsBackground = false
+        textView.isRichText = false
+        textView.importsGraphics = false
+        textView.allowsUndo = true
+        textView.isHorizontallyResizable = false
+        textView.isVerticallyResizable = true
+        textView.autoresizingMask = [.width]
+        textView.textContainerInset = NSSize(width: 9, height: 8)
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.heightTracksTextView = false
+        textView.textContainer?.lineBreakMode = .byWordWrapping
+        textView.placeholderString = "输入文字 · 回车换行 · ⌘↩ 完成"
+        textView.onFinish = { [weak self] in self?.finishTextEditing() }
+        textView.setAccessibilityLabel("截图文字输入")
+        textView.setAccessibilityIdentifier("RuneConfirmTextEditor")
+
+        scrollView.documentView = textView
+        addSubview(scrollView)
+        editingTextView = textView
+        editingTextScrollView = scrollView
+        editingItemID = item.id
+        editingTextTopY = topY
+        editingTextMinimumHeight = minimumHeight
+        updateEditingTextLayout()
+        window?.makeFirstResponder(textView)
     }
 
     private func endTextEditing(commit: Bool) {
-        guard let tf = editingTextField else { return }
+        guard let textView = editingTextView else { return }
+        let scrollView = editingTextScrollView
         let id = editingItemID
-        editingTextField = nil
+        let rawText = textView.string
+        let contentSize = measuredEditingTextSize(textView)
+        let textOriginX = (scrollView?.frame.minX ?? imageDrawRect.minX) + textView.textContainerInset.width
+        let textTopY = editingTextTopY - textView.textContainerInset.height
+
+        editingTextView = nil
+        editingTextScrollView = nil
         editingItemID = nil
 
         if commit, let id,
            let idx = annotations.firstIndex(where: { $0.id == id }) {
-            let text = tf.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            if text.isEmpty {
+            let meaningfulText = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if meaningfulText.isEmpty {
                 annotations.remove(at: idx)
                 if selectedID == id { selectedID = nil }
             } else {
+                let text = rawText.trimmingCharacters(in: .newlines)
+                let imageRect = imageDrawRect
+                let width = min(max(contentSize.width + 2, 1), max(1, imageRect.maxX - textOriginX))
+                let height = min(max(contentSize.height + 2, 1), max(1, textTopY - imageRect.minY))
                 annotations[idx].text = text
+                annotations[idx].rect = CGRect(
+                    x: min(max((textOriginX - imageRect.minX) / max(imageRect.width, 1), 0), 1),
+                    y: min(max((imageRect.maxY - textTopY) / max(imageRect.height, 1), 0), 1),
+                    width: min(width / max(imageRect.width, 1), 1),
+                    height: min(height / max(imageRect.height, 1), 1)
+                )
                 selectedID = id
             }
         }
-        tf.removeFromSuperview()
+        scrollView?.removeFromSuperview()
         window?.makeFirstResponder(self)
         needsDisplay = true
+    }
+
+    private func updateEditingTextLayout() {
+        guard let textView = editingTextView,
+              let scrollView = editingTextScrollView else { return }
+
+        let contentSize = measuredEditingTextSize(textView)
+        let desiredHeight = max(editingTextMinimumHeight, ceil(contentSize.height + textView.textContainerInset.height * 2))
+        let imageRect = imageDrawRect.insetBy(dx: 8, dy: 8)
+        // 从点击位置先向下长；下方放不下时再把顶部往上推，直到用满整块截图。
+        // 只有内容超过整张截图高度时才出现滚动条，避免“能输入但成品尾部被截断”。
+        let requiredTopY = imageRect.minY + desiredHeight
+        if requiredTopY > editingTextTopY {
+            editingTextTopY = min(requiredTopY, imageRect.maxY)
+        }
+        let maximumHeight = max(editingTextMinimumHeight, editingTextTopY - imageRect.minY)
+        let visibleHeight = min(desiredHeight, maximumHeight)
+
+        var frame = scrollView.frame
+        frame.origin.y = editingTextTopY - visibleHeight
+        frame.size.height = visibleHeight
+        scrollView.frame = frame
+
+        let documentHeight = max(visibleHeight, desiredHeight)
+        textView.frame = CGRect(
+            origin: .zero,
+            size: CGSize(width: scrollView.contentSize.width, height: documentHeight)
+        )
+        scrollView.hasVerticalScroller = desiredHeight > visibleHeight + 1
+        textView.scrollRangeToVisible(textView.selectedRange())
+    }
+
+    private func measuredEditingTextSize(_ textView: NSTextView) -> CGSize {
+        guard let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer else {
+            return CGSize(width: 1, height: editingTextMinimumHeight)
+        }
+        layoutManager.ensureLayout(for: textContainer)
+        let usedRect = layoutManager.usedRect(for: textContainer)
+        let font = textView.font ?? NSFont.systemFont(ofSize: AnnotationTextMetrics.minimumFontSize)
+        let lineHeight = ceil(font.ascender - font.descender + font.leading)
+        return CGSize(
+            width: max(ceil(usedRect.width), font.pointSize * 0.6),
+            height: max(ceil(usedRect.height), lineHeight)
+        )
     }
 
     // MARK: - 草稿构建
@@ -718,6 +840,7 @@ final class ConfirmCanvasView: NSView {
     /// 「识别文字」→ 选字模式：识别出带位置的文字块，点选/划选复制（钉钉式）。
     /// 再次调用或 Esc 退出选字，回到标注模式。
     func toggleOCRMode(onDone: @escaping (String) -> Void) {
+        finishTextEditing()
         if ocrMode {
             exitOCRMode()
             return
@@ -839,6 +962,7 @@ final class ConfirmCanvasView: NSView {
     /// 渲染"截图+标注"成品（复用 BeautifierRenderer 的标注烘焙）。
     /// 用用户设置的美化配置（与保存链一致——此前写死默认值，贴图/复制会和保存效果不一致）。
     func renderedImage() -> CGImage? {
+        finishTextEditing()
         let config = AppPreferences.defaultBeautifierConfig
         return BeautifierRenderer.render(image: image, config: config, annotations: annotations)
     }
@@ -870,9 +994,50 @@ final class ConfirmCanvasView: NSView {
     }
 }
 
-// MARK: - 文字输入框代理：点别处/回车/按 Esc 都走提交路径（留空=放弃）
-extension ConfirmCanvasView: NSTextFieldDelegate {
-    func controlTextDidEndEditing(_ obj: Notification) {
+// MARK: - 多行文字输入代理：内容实时撑高；失去焦点时空内容丢弃、有内容确认。
+extension ConfirmCanvasView: NSTextViewDelegate {
+    func textDidChange(_ notification: Notification) {
+        guard let textView = notification.object as? NSTextView,
+              textView === editingTextView else { return }
+        updateEditingTextLayout()
+    }
+
+    func textDidEndEditing(_ notification: Notification) {
         endTextEditing(commit: true)
+    }
+}
+
+private final class ConfirmMultilineTextView: NSTextView {
+    var placeholderString = ""
+    var onFinish: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        let isReturn = event.keyCode == 36 || event.keyCode == 76
+        if isReturn, event.modifierFlags.contains(.command) {
+            onFinish?()
+            return
+        }
+        if event.keyCode == 53 {
+            onFinish?()
+            return
+        }
+        super.keyDown(with: event)
+    }
+
+    override func didChangeText() {
+        super.didChangeText()
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard string.isEmpty, !placeholderString.isEmpty else { return }
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font ?? NSFont.systemFont(ofSize: 15),
+            .foregroundColor: NSColor.secondaryLabelColor
+        ]
+        NSAttributedString(string: placeholderString, attributes: attributes).draw(
+            at: CGPoint(x: textContainerInset.width, y: textContainerInset.height)
+        )
     }
 }
