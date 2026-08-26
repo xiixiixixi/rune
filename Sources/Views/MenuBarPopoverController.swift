@@ -89,7 +89,11 @@ final class MenuBarPopoverController: NSObject {
         let panelY = visibleFrame.maxY - panel.frame.height - 24
         panel.setFrameOrigin(NSPoint(x: panelX, y: panelY))
         panel.alphaValue = 1
-        panel.orderFrontRegardless()
+        if ProcessInfo.processInfo.arguments.contains("--audit-menu-interactive") {
+            panel.makeKeyAndOrderFront(nil)
+        } else {
+            panel.orderFrontRegardless()
+        }
         isOpen = true
         DebugAuditSnapshot.captureAfter("20-menu-complete-redesign.png")
     }
@@ -124,7 +128,7 @@ final class MenuBarPopoverController: NSObject {
         let hostingView = NSHostingView(rootView: contentView.runeTypography())
         hostingView.setFrameSize(hostingView.fittingSize)
 
-        let panel = NSPanel(
+        let panel = MenuBarPanel(
             contentRect: NSRect(origin: .zero, size: hostingView.fittingSize),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
@@ -155,5 +159,15 @@ final class MenuBarPopoverController: NSObject {
             NSEvent.removeMonitor(monitor)
             eventMonitor = nil
         }
+    }
+}
+
+private final class MenuBarPanel: NSPanel {
+    override var canBecomeKey: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("--audit-menu-interactive")
+        #else
+        false
+        #endif
     }
 }

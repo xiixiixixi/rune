@@ -285,6 +285,13 @@ struct ConfirmToolbarView: View {
         canvas?.selectedID = nil
         canvas?.needsDisplay = true
         canvas?.refreshCursor()
+
+        #if DEBUG
+        if tool == .text,
+           ProcessInfo.processInfo.arguments.contains("--audit-confirm-text") {
+            canvas?.beginTextInputForAudit()
+        }
+        #endif
     }
 }
 

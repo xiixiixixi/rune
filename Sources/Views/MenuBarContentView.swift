@@ -545,13 +545,13 @@ private struct RecentCaptureSection: View {
         }
     }
 
-    /// 单个历史瓦片：整块点击=贴到屏幕右下角；悬停露出"复制"角标（最常用，一步到位）；
+    /// 单个历史瓦片：整块点击=复制（最常用，一步到位）；悬停露出贴图/预览按钮；
     /// 右键收着"编辑 / 在访达中显示"这些不常用操作。
     private func recordTile(_ record: CaptureRecord) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             ZStack(alignment: .topTrailing) {
                 Button {
-                    onOpen(record)
+                    copyRecord(record)
                 } label: {
                     ZStack {
                         RuneTheme.chromeElevated
@@ -587,9 +587,7 @@ private struct RecentCaptureSection: View {
                     .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(RuneTheme.RunePressStyle())
-                .help(record.kind == .recording
-                      ? "点击预览 · \(record.filename)"
-                      : "点击贴到屏幕右下角 · \(record.filename)")
+                .help("点击复制到剪贴板 · \(record.filename)")
                 .contextMenu {
                     Button("复制") {
                         copyRecord(record)
@@ -621,11 +619,11 @@ private struct RecentCaptureSection: View {
                     }
                 }
 
-                if hoveredRecordID == record.id || copiedRecordID == record.id {
+                if hoveredRecordID == record.id || showsAuditQuickActions {
                     Button {
-                        copyRecord(record)
+                        onOpen(record)
                     } label: {
-                        Image(systemName: copiedRecordID == record.id ? "checkmark" : "doc.on.doc")
+                        Image(systemName: record.kind == .recording ? "play.fill" : "pin.fill")
                             .font(RuneFont.swiftUI(size: 11, weight: .semibold))
                             .foregroundStyle(RuneTheme.paperInk)
                             .frame(width: 28, height: 28)
@@ -634,8 +632,21 @@ private struct RecentCaptureSection: View {
                     }
                     .buttonStyle(.plain)
                     .padding(7)
-                    .help("复制到剪贴板")
+                    .help(record.kind == .recording ? "预览录屏" : "贴到屏幕右下角并编辑")
+                    .accessibilityLabel(record.kind == .recording ? "预览录屏" : "贴到屏幕右下角并编辑")
                     .transition(.opacity.animation(.easeInOut(duration: 0.12)))
+                }
+
+                if copiedRecordID == record.id {
+                    Label("已复制到剪贴板", systemImage: "checkmark")
+                        .font(RuneFont.swiftUI(size: 10, weight: .semibold))
+                        .foregroundStyle(RuneTheme.paperInk)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
+                        .background(RuneTheme.paperCard, in: Capsule())
+                        .shadow(color: .black.opacity(0.18), radius: 5, y: 2)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                        .allowsHitTesting(false)
                 }
             }
 
@@ -657,13 +668,26 @@ private struct RecentCaptureSection: View {
         let recordID = record.id
         Task.detached(priority: .userInitiated) {
             let pasteboard = NSPasteboard.general
-            pasteboard.clearContents()
+            let didCopy: Bool
             if kind == .recording {
-                pasteboard.writeObjects([url as NSURL])
+                pasteboard.clearContents()
+                didCopy = pasteboard.writeObjects([url as NSURL])
             } else if let image = NSImage(contentsOf: url) {
-                pasteboard.writeObjects([image])
+                pasteboard.clearContents()
+                didCopy = pasteboard.writeObjects([image])
+            } else {
+                didCopy = false
             }
             await MainActor.run {
+                guard didCopy else {
+                    ToastWindow.shared.show(
+                        title: "复制失败",
+                        message: "无法读取这条历史记录",
+                        systemIcon: "exclamationmark.triangle",
+                        on: MenuBarPopoverController.shared.originScreen
+                    )
+                    return
+                }
                 copiedRecordID = recordID
                 Task {
                     try? await Task.sleep(for: .milliseconds(1200))
@@ -677,6 +701,14 @@ private struct RecentCaptureSection: View {
 
     private let tileWidth: CGFloat = 150
     private let tileImageHeight: CGFloat = 154
+
+    private var showsAuditQuickActions: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("--audit-menu-interactive")
+        #else
+        false
+        #endif
+    }
 }
 
 private struct TrayDivider: View {

@@ -44,7 +44,8 @@ final class CaptureConfirmController: NSObject {
         let targetScreen = screen ?? NSScreen.main ?? NSScreen.screens.first!
         capturedRegion = region
         #if DEBUG
-        if !ProcessInfo.processInfo.arguments.contains("--audit-confirm") {
+        let arguments = ProcessInfo.processInfo.arguments
+        if !arguments.contains("--audit-confirm") || arguments.contains("--audit-confirm-text") {
             installFocusGuard()
         }
         #else
@@ -114,7 +115,8 @@ final class CaptureConfirmController: NSObject {
         panel.orderFrontRegardless()
 
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--audit-confirm") {
+        if ProcessInfo.processInfo.arguments.contains("--audit-confirm")
+            || ProcessInfo.processInfo.arguments.contains("--audit-confirm-text") {
             panel.makeKeyAndOrderFront(nil)
         }
         #endif
@@ -255,6 +257,15 @@ final class CaptureConfirmController: NSObject {
                     NSLog("RUNEFOCUS 画布丢 key，抢回")
                     win.makeKeyAndOrderFront(nil)
                 }
+
+                // 文字工具会在画布上嵌入 NSTextField。它编辑时，窗口的
+                // firstResponder 实际是系统 field editor（NSTextView），不是输入框本身。
+                // 这时不能把焦点抢回画布，否则输入框可见但收不到键盘内容。
+                if self.canvas?.isEditingText == true,
+                   win.firstResponder is NSTextView {
+                    return
+                }
+
                 // 键盘焦点兜底：first responder 不是画布就重设
                 if !(win.firstResponder is ConfirmCanvasView) {
                     NSLog("RUNEFOCUS firstResponder=\(String(describing: win.firstResponder)) 重设画布")
@@ -296,7 +307,8 @@ private final class OverlayWindow: NSWindow {
 private final class ToolbarPanel: NSPanel {
     override var canBecomeKey: Bool {
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--audit-confirm") {
+        if ProcessInfo.processInfo.arguments.contains("--audit-confirm")
+            || ProcessInfo.processInfo.arguments.contains("--audit-confirm-text") {
             return true
         }
         #endif

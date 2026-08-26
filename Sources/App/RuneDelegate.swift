@@ -272,7 +272,8 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                 SettingsWindowController.shared.open(on: NSScreen.main)
                 DebugAuditSnapshot.captureAfter("settings-redesign-final.png", delay: 1.2)
             }
-        } else if ProcessInfo.processInfo.arguments.contains("--audit-confirm") {
+        } else if ProcessInfo.processInfo.arguments.contains("--audit-confirm")
+                    || ProcessInfo.processInfo.arguments.contains("--audit-confirm-text") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 guard let url = Bundle.main.url(
                     forResource: "mac-asset-3",

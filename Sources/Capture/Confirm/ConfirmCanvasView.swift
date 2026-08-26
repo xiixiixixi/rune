@@ -504,19 +504,7 @@ final class ConfirmCanvasView: NSView {
 
         // 文字：点击放置 + 就地输入（回车确认；留空=不放置）
         if selectedTool == .text {
-            pushUndo()
-            let item = AnnotationItem(
-                tool: .text,
-                rect: CGRect(x: n.x, y: max(0, n.y - 0.02), width: 0.3, height: 0.06),
-                points: [],
-                swatch: selectedSwatch,
-                strokeWidth: strokeWidth,
-                text: ""
-            )
-            annotations.append(item)
-            selectedID = item.id
-            beginTextEditing(item: item, at: loc)
-            needsDisplay = true
+            beginTextPlacement(at: loc)
             return
         }
 
@@ -600,6 +588,36 @@ final class ConfirmCanvasView: NSView {
 
     private var editingTextField: NSTextField?
     private var editingItemID: AnnotationItem.ID?
+
+    /// 供控制器的焦点守护判断：文字输入期间必须保留系统 field editor 的焦点。
+    var isEditingText: Bool { editingTextField != nil }
+
+    private func beginTextPlacement(at viewPoint: CGPoint) {
+        let n = normalizedPoint(viewPoint)
+        pushUndo()
+        let item = AnnotationItem(
+            tool: .text,
+            rect: CGRect(x: n.x, y: max(0, n.y - 0.02), width: 0.3, height: 0.06),
+            points: [],
+            swatch: selectedSwatch,
+            strokeWidth: strokeWidth,
+            text: ""
+        )
+        annotations.append(item)
+        selectedID = item.id
+        beginTextEditing(item: item, at: viewPoint)
+        needsDisplay = true
+    }
+
+    #if DEBUG
+    /// 交互体检入口：不需要屏幕录制权限，在测试图中心打开真实文字输入框。
+    func beginTextInputForAudit() {
+        guard ProcessInfo.processInfo.arguments.contains("--audit-confirm-text") else { return }
+        selectedTool = .text
+        window?.makeKeyAndOrderFront(nil)
+        beginTextPlacement(at: CGPoint(x: imageDrawRect.midX, y: imageDrawRect.midY))
+    }
+    #endif
 
     /// 在点击位置弹一个输入框，回车/点别处确认；留空则放弃放置。
     private func beginTextEditing(item: AnnotationItem, at viewPoint: CGPoint) {
