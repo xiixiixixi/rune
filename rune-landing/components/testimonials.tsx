@@ -67,6 +67,8 @@ const TestimonialCard = ({
       <div className="text-white/90 leading-relaxed">{body}</div>
 
       <div className="mt-5 flex items-center gap-2">
+        {/* Avatars are remote user-provided URLs in this legacy section. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={img || "/placeholder.svg"} alt={name} height="40" width="40" className="h-10 w-10 rounded-full" />
         <div className="flex flex-col">
           <div className="leading-5 font-medium tracking-tight text-white">{name}</div>

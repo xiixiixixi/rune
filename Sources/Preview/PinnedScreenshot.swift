@@ -664,9 +664,7 @@ private struct PinnedScreenshotView: View {
         .foregroundStyle(.primary.opacity(0.78))
         .padding(.horizontal, 7)
         .frame(height: 34)
-        .background(.regularMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5))
-        .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
+        .runeGlassSurface(cornerRadius: 17, elevation: .floating)
     }
 
     /// 最常用操作：带文字的主按钮，点完短暂显示"已复制"确认。

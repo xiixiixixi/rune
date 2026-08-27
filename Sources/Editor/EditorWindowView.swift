@@ -32,8 +32,7 @@ struct EditorWindowView: View {
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
-        .tint(RuneTheme.paperAccent)
-        .environment(\.colorScheme, .light)
+        .tint(RuneTheme.accent)
         .overlay(alignment: .bottom) {
             if let message = model.toastMessage {
                 Text(message)

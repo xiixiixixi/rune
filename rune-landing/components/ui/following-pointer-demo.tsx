@@ -6,6 +6,7 @@ export default function FollowingPointerDemo() {
       <FollowerPointerCard title={<TitleComponent title={blogContent.author} avatar={blogContent.authorAvatar} />}>
         <div className="group relative h-full overflow-hidden rounded-2xl border border-zinc-100 bg-white transition duration-200 hover:shadow-xl">
           <div className="relative aspect-[16/10] w-full overflow-hidden rounded-tl-lg rounded-tr-lg bg-gray-100">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={blogContent.image || "/placeholder.svg"}
               alt="thumbnail"
@@ -47,6 +48,7 @@ const TitleComponent = ({
   avatar: string
 }) => (
   <div className="flex items-center space-x-2">
+    {/* eslint-disable-next-line @next/next/no-img-element */}
     <img
       src={avatar || "/placeholder.svg"}
       height="20"

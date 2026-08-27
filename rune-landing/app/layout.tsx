@@ -1,6 +1,5 @@
 import type React from "react"
 import type { Metadata } from "next"
-import { spaceMono } from "@/lib/fonts"
 import "./globals.css"
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://github.com/xiixiixixi/rune"
@@ -71,7 +70,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={spaceMono.variable}>
+    <html lang="en">
       <head>
         <script
           type="application/ld+json"

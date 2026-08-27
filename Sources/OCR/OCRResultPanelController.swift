@@ -117,12 +117,7 @@ private struct OCRResultCardView: View {
             Divider().overlay(RuneTheme.separator)
             footer
         }
-        .background(RuneTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(RuneTheme.separator, lineWidth: 1)
-        )
+        .runeGlassSurface(cornerRadius: 16, elevation: .floating)
         .tint(RuneTheme.accent)
         .onExitCommand(perform: onClose)
     }

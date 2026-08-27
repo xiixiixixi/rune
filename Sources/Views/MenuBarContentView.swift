@@ -13,21 +13,12 @@ struct MenuBarPanelView: View {
     private let panelRadius: CGFloat = 14
 
     var body: some View {
-        VStack(spacing: 0) {
-            PopoverArrow()
-                .fill(RuneTheme.chromeBase)
-                .frame(width: arrowWidth, height: arrowHeight)
-
-            MenuBarContentView(dismissPopover: dismissPopover)
-                .background(RuneTheme.chromeBase)
-                .clipShape(RoundedRectangle(cornerRadius: panelRadius, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: panelRadius, style: .continuous)
-                        .strokeBorder(RuneTheme.chromeLine, lineWidth: 1)
-                )
-        }
-        .shadow(color: .black.opacity(0.14), radius: 22, y: 8)
-        .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
+        MenuBarContentView(dismissPopover: dismissPopover)
+            .runeGlassSurface(
+                cornerRadius: panelRadius,
+                elevation: .floating
+            )
+            .padding(1)
         .offset(y: isVisible || reduceMotion ? 0 : -4)
         .opacity(isVisible ? 1 : 0)
         .onAppear {
@@ -118,7 +109,7 @@ struct MenuBarContentView: View {
             RecentCaptureSection(
                 records: Array(HistoryStore.shared.records.prefix(8)),
                 onOpen: open,
-                onShowAll: { openSettings(section: .history) }
+                onShowAll: openLibrary
             )
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
@@ -160,6 +151,16 @@ struct MenuBarContentView: View {
 
             HStack(spacing: 8) {
                 Button {
+                    openLibrary()
+                } label: {
+                    Label("素材库", systemImage: "square.grid.2x2")
+                        .font(RuneFont.swiftUI(size: 12, weight: .medium))
+                        .foregroundStyle(RuneTheme.chromeMuted)
+                }
+                .buttonStyle(.plain)
+                .help("打开素材库")
+
+                Button {
                     openSettings()
                 } label: {
                     Label("设置", systemImage: "gearshape")
@@ -195,7 +196,7 @@ struct MenuBarContentView: View {
                     .frame(height: 1)
             }
         }
-        .frame(width: 560)
+        .frame(width: 480)
     }
 
     private var header: some View {
@@ -204,17 +205,15 @@ struct MenuBarContentView: View {
                 .font(RuneFont.swiftUI(size: 16, weight: .bold))
                 .foregroundStyle(RuneTheme.chromeText)
 
-            // 数据声部的小章：版本号用 Space Mono，像校样单上的机读行
             Text("v\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")")
                 .font(RuneFont.mono(size: 9, weight: .medium))
                 .foregroundStyle(RuneTheme.chromeMuted)
 
             Spacer()
 
-            Text("截图 · 标注 · 贴图")
+            Text("捕捉 · 查找 · 复用")
                 .font(RuneFont.mono(size: 9, weight: .medium))
                 .foregroundStyle(RuneTheme.chromeMuted)
-                .tracking(1.2)
         }
         .padding(.horizontal, 18)
         .frame(height: 52)
@@ -281,6 +280,12 @@ struct MenuBarContentView: View {
         SettingsWindowController.shared.open(on: screen, section: section)
     }
 
+    private func openLibrary() {
+        let screen = originScreen
+        dismissPopover()
+        CaptureLibraryWindowController.shared.open(on: screen)
+    }
+
     private enum RecordingMode {
         case fullScreen, area
     }
@@ -327,29 +332,28 @@ private struct TrayFeatureButton: View {
                 HStack {
                     Image(systemName: icon)
                         .font(RuneFont.swiftUI(size: 19, weight: .medium))
-                        .foregroundStyle(isAccent ? RuneTheme.paperInk : RuneTheme.chromeText)
+                        .foregroundStyle(isAccent ? RuneTheme.accent : RuneTheme.chromeText)
 
                     Spacer()
 
-                    // 快捷键是"机器读数"：主卡上白底墨字，次卡上纸底灰字
                     Text(shortcut)
                         .font(RuneFont.mono(size: 9, weight: .medium))
-                        .foregroundStyle(isAccent ? RuneTheme.paperTextSecondary : RuneTheme.chromeMuted)
+                        .foregroundStyle(RuneTheme.chromeMuted)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)
                         .background(
                             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(isAccent ? RuneTheme.paperControl : RuneTheme.chromeBase)
+                                .fill(RuneTheme.chromeElevated)
                         )
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(RuneFont.swiftUI(size: 14, weight: .bold))
-                        .foregroundStyle(isAccent ? RuneTheme.paperInk : RuneTheme.chromeText)
+                        .foregroundStyle(RuneTheme.chromeText)
                     Text(subtitle)
                         .font(RuneFont.swiftUI(size: 10))
-                        .foregroundStyle(isAccent ? RuneTheme.paperTextSecondary : RuneTheme.chromeMuted)
+                        .foregroundStyle(RuneTheme.chromeMuted)
                         .lineLimit(1)
                 }
             }
@@ -357,21 +361,16 @@ private struct TrayFeatureButton: View {
             .frame(maxWidth: .infinity, minHeight: 84, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: RuneTheme.cardCorner, style: .continuous)
-                    .fill(isAccent ? RuneTheme.paperCard : RuneTheme.chromeElevated)
+                    .fill(isAccent ? RuneTheme.accentDim : RuneTheme.chromeElevated)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: RuneTheme.cardCorner, style: .continuous)
                     .strokeBorder(
                         isAccent
-                            ? RuneTheme.paperSeparator
+                            ? RuneTheme.accent.opacity(0.28)
                             : (isHovered ? RuneTheme.chromeMuted : RuneTheme.chromeLine),
                         lineWidth: 1
                     )
-            )
-            .shadow(
-                color: isAccent ? .black.opacity(isHovered ? 0.18 : 0.10) : .clear,
-                radius: isHovered ? 14 : 8,
-                y: 4
             )
             .contentShape(RoundedRectangle(cornerRadius: RuneTheme.cardCorner, style: .continuous))
         }
@@ -428,7 +427,7 @@ private struct TrayActionLabel: View {
         .frame(maxWidth: .infinity, minHeight: 38)
         .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(isHovered ? RuneTheme.chromeLine.opacity(0.82) : RuneTheme.chromeElevated)
+                .fill(isHovered ? RuneTheme.accentDim : RuneTheme.chromeElevated)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -492,7 +491,7 @@ private struct RecentCaptureSection: View {
             HStack {
                 HStack(spacing: 8) {
                     Image(systemName: "clock.arrow.circlepath")
-                    Text("最近截图")
+                    Text("最近素材")
                         .font(RuneFont.swiftUI(size: 13, weight: .semibold))
                     if !records.isEmpty {
                         Text("\(records.count) 张")

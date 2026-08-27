@@ -9,6 +9,7 @@ final class HistoryStore {
     static let shared = HistoryStore()
 
     private(set) var records: [CaptureRecord] = []
+    private(set) var indexingRecordIDs: Set<UUID> = []
     private let storageDir: URL
     private let manifestURL: URL
 
@@ -31,7 +32,12 @@ final class HistoryStore {
 
     // MARK: - Import
 
-    func importCapture(from tempURL: URL, deleteSource: Bool = true, kind: CaptureKind = .screenshot) async -> CaptureRecord? {
+    func importCapture(
+        from tempURL: URL,
+        deleteSource: Bool = true,
+        kind: CaptureKind = .screenshot,
+        source: CaptureSource? = nil
+    ) async -> CaptureRecord? {
         let ext = tempURL.pathExtension.isEmpty ? "png" : tempURL.pathExtension
         // M2 自动命名保存：用 AppPreferences 生成器，冲突时加 _2/_3 后缀（比 UUID 更友好）。
         let baseName = AppPreferences.generateFileName(ext: ext)
@@ -64,10 +70,17 @@ final class HistoryStore {
             filename: filename,
             pixelWidth: width,
             pixelHeight: height,
-            kind: kind
+            kind: kind,
+            sourceBundleID: source?.bundleIdentifier,
+            sourceAppName: source?.applicationName,
+            sourceWindowTitle: source?.windowTitle
         )
         records.insert(record, at: 0)
         saveRecords()
+
+        if kind == .screenshot {
+            Task { await indexSearchMetadata(for: record.id) }
+        }
 
         if deleteSource {
             try? FileManager.default.removeItem(at: tempURL)
@@ -104,6 +117,64 @@ final class HistoryStore {
         guard let index = records.firstIndex(where: { $0.id == recordID }) else { return }
         records[index].beautifiedPath = path
         saveRecords()
+    }
+
+    func setFavorite(_ isFavorite: Bool, for recordID: UUID) {
+        guard let index = records.firstIndex(where: { $0.id == recordID }) else { return }
+        records[index].isFavorite = isFavorite
+        saveRecords()
+    }
+
+    func markUsed(_ recordID: UUID) {
+        guard let index = records.firstIndex(where: { $0.id == recordID }) else { return }
+        records[index].lastUsedAt = Date()
+        records[index].useCount += 1
+        saveRecords()
+    }
+
+    func rename(_ title: String?, recordID: UUID) {
+        guard let index = records.firstIndex(where: { $0.id == recordID }) else { return }
+        let trimmed = title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        records[index].title = trimmed?.isEmpty == false ? trimmed : nil
+        saveRecords()
+    }
+
+    /// 把旧截图补齐为可搜索素材。重复调用是安全的：已有文字或正在识别的记录会跳过。
+    func indexMissingSearchMetadata() {
+        let ids = records
+            .filter { $0.kind == .screenshot && $0.ocrText == nil }
+            .map(\.id)
+
+        Task {
+            for id in ids {
+                await indexSearchMetadata(for: id)
+                await Task.yield()
+            }
+        }
+    }
+
+    func indexSearchMetadata(for recordID: UUID) async {
+        guard !indexingRecordIDs.contains(recordID),
+              let record = records.first(where: { $0.id == recordID }),
+              record.kind == .screenshot,
+              record.ocrText == nil else { return }
+
+        indexingRecordIDs.insert(recordID)
+        defer { indexingRecordIDs.remove(recordID) }
+
+        let url = displayURLForRecord(record)
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return }
+
+        do {
+            let result = try await OCRService.shared.recognize(in: image)
+            guard let index = records.firstIndex(where: { $0.id == recordID }) else { return }
+            // 空字符串表示已识别但没有文字，避免每次打开素材库都重复扫描。
+            records[index].ocrText = result.combinedText
+            saveRecords()
+        } catch {
+            print("素材库文字索引失败：\(record.filename)：\(error)")
+        }
     }
 
     // MARK: - Access

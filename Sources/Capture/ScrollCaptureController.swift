@@ -254,6 +254,7 @@ final class ScrollCaptureStatusBarController {
     func show(on screen: NSScreen? = nil) {
         dismiss()
         let view = ScrollCaptureStatusBarView(controller: .shared)
+            .environment(\.colorScheme, .dark)
         let hosting = NSHostingView(rootView: view.runeTypography())
         // 状态变化时宽度保持不跳动，避免用户滚动过程中按钮来回移动。
         let size = NSSize(width: 540, height: 60)
@@ -356,11 +357,7 @@ private struct ScrollCaptureStatusBarView: View {
         }
         .padding(.horizontal, 14)
         .frame(height: 60)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
-        )
+        .runeGlassSurface(cornerRadius: 16, elevation: .floating)
         .accessibilityElement(children: .contain)
     }
 }

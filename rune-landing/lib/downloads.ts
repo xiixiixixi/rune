@@ -7,8 +7,8 @@ export interface ReleaseInfo {
   intel: string
 }
 
-const fallback: ReleaseInfo = {
-  version: "0.3.7",
+export const defaultRelease: ReleaseInfo = {
+  version: "0.7.4",
   appleSilicon: `https://github.com/${REPO}/releases/latest`,
   intel: `https://github.com/${REPO}/releases/latest`,
 }
@@ -19,7 +19,7 @@ export async function getLatestRelease(): Promise<ReleaseInfo> {
       next: { revalidate: 300 },
       headers: { Accept: "application/vnd.github+json" },
     })
-    if (!res.ok) return fallback
+    if (!res.ok) return defaultRelease
 
     const data = await res.json()
     const tag = (data.tag_name ?? "").replace(/^v/, "")
@@ -33,11 +33,11 @@ export async function getLatestRelease(): Promise<ReleaseInfo> {
     )
 
     return {
-      version: tag || fallback.version,
+      version: tag || defaultRelease.version,
       appleSilicon: arm?.browser_download_url ?? `https://github.com/${REPO}/releases/latest`,
       intel: x64?.browser_download_url ?? `https://github.com/${REPO}/releases/latest`,
     }
   } catch {
-    return fallback
+    return defaultRelease
   }
 }

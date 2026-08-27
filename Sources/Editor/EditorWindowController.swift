@@ -19,7 +19,6 @@ final class EditorWindowController {
                 .runeTypography()
                 .frame(minWidth: 1040, minHeight: 680)
         )
-        hostingView.appearance = NSAppearance(named: .aqua)
 
         let win = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1320, height: 860),
@@ -32,8 +31,7 @@ final class EditorWindowController {
         win.titleVisibility = .hidden
         win.titlebarAppearsTransparent = true
         win.toolbarStyle = .unifiedCompact
-        win.appearance = NSAppearance(named: .aqua)
-        win.backgroundColor = RuneTheme.nsPaperBackground
+        win.backgroundColor = RuneTheme.nsBackground
         win.minSize = NSSize(width: 1040, height: 680)
         win.isReleasedWhenClosed = false
         win.delegate = EditorWindowDelegate.shared

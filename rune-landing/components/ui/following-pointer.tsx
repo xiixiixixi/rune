@@ -1,7 +1,7 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
-import { motion, AnimatePresence, useMotionValue } from "framer-motion"
+import React, { useState } from "react"
+import { motion, AnimatePresence, useMotionValue, type MotionValue } from "framer-motion"
 import { cn } from "@/lib/utils"
 
 export const FollowerPointerCard = ({
@@ -16,40 +16,7 @@ export const FollowerPointerCard = ({
   const x = useMotionValue(0)
   const y = useMotionValue(0)
   const ref = React.useRef<HTMLDivElement>(null)
-  const [rect, setRect] = useState<DOMRect | null>(null)
   const [isInside, setIsInside] = useState<boolean>(false)
-
-  useEffect(() => {
-    console.log("[v0] FollowerPointerCard mounted")
-    return () => {
-      console.log("[v0] FollowerPointerCard unmounted")
-    }
-  }, [])
-
-  useEffect(() => {
-    console.log("[v0] isInside changed:", isInside)
-  }, [isInside])
-
-  useEffect(() => {
-    const updateRect = () => {
-      if (ref.current) {
-        setRect(ref.current.getBoundingClientRect())
-      }
-    }
-
-    updateRect()
-
-    const handleResize = () => updateRect()
-    const handleScroll = () => updateRect()
-
-    window.addEventListener("resize", handleResize)
-    window.addEventListener("scroll", handleScroll)
-
-    return () => {
-      window.removeEventListener("resize", handleResize)
-      window.removeEventListener("scroll", handleScroll)
-    }
-  }, [])
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     x.set(e.clientX)
@@ -86,8 +53,8 @@ export const FollowPointer = ({
   y,
   title,
 }: {
-  x: any
-  y: any
+  x: MotionValue<number>
+  y: MotionValue<number>
   title?: string | React.ReactNode
 }) => {
   return (

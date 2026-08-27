@@ -149,7 +149,7 @@ struct EditorInspectorView: View {
             }
             .scrollContentBackground(.hidden)
         }
-        .background(RuneTheme.paperBackground)
+        .background(.regularMaterial)
     }
 }
 
@@ -174,11 +174,9 @@ private struct InspectorSectionHeader: View {
     init(_ title: String) { self.title = title }
 
     var body: some View {
-        // 图章：Space Mono 小号 + 宽字距，像盖在校样上的工序章
         Text(title)
             .font(RuneFont.mono(size: 10, weight: .medium))
             .foregroundStyle(RuneTheme.paperTextMuted)
-            .tracking(1.6)
     }
 }
 

@@ -158,7 +158,7 @@ struct UpdateWindowView: View {
         }
         .padding(20)
         .frame(width: 380, height: 480)
-        .background(RuneTheme.background)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private func startUpdate() {

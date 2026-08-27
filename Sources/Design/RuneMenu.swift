@@ -315,17 +315,7 @@ private struct RuneMenuList: View {
         }
         .frame(maxHeight: 360)
         .fixedSize(horizontal: true, vertical: true)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(surface == .paper ? RuneTheme.paperCard : RuneTheme.chromeElevated)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(
-                    surface == .paper ? RuneTheme.paperSeparator : RuneTheme.chromeLine,
-                    lineWidth: 1
-                )
-        )
+        .runeGlassSurface(cornerRadius: 12, elevation: .floating)
         .padding(6)  // 给系统窗影留出内容外的透明边
         .onExitCommand(perform: onDismiss)
     }

@@ -146,7 +146,8 @@ final class CaptureOrchestrator {
             frame,
             on: Self.screen(forDisplayID: selection.displayID),
             region: selection.pointsRect,
-            backgroundImage: frozenBackground
+            backgroundImage: frozenBackground,
+            source: selection.source
         )
     }
 
@@ -241,7 +242,8 @@ final class CaptureOrchestrator {
         _ frame: CapturedFrame,
         on screen: NSScreen? = nil,
         region: CGRect? = nil,
-        backgroundImage: CGImage? = nil
+        backgroundImage: CGImage? = nil,
+        source: CaptureSource? = nil
     ) async {
         // 确认模式：用户在冻结屏上标注，点保存才继续。
         // 「滚动长图」会以 nil 结束确认并留下 pendingScrollRegion → 转滚动截图。
@@ -269,7 +271,10 @@ final class CaptureOrchestrator {
 
         guard let tempURL = writeCGImageToTemp(frame.image) else { return }
 
-        guard let record = await HistoryStore.shared.importCapture(from: tempURL) else {
+        guard let record = await HistoryStore.shared.importCapture(
+            from: tempURL,
+            source: source
+        ) else {
             try? FileManager.default.removeItem(at: tempURL)
             showCaptureError("截图没有保存", detail: "请检查磁盘空间后重试")
             return

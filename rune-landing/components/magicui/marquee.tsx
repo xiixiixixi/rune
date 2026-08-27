@@ -1,16 +1,14 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import type { ReactNode } from "react"
+import type { HTMLAttributes } from "react"
 
-interface MarqueeProps {
+interface MarqueeProps extends HTMLAttributes<HTMLDivElement> {
   className?: string
   reverse?: boolean
   pauseOnHover?: boolean
-  children?: ReactNode
   vertical?: boolean
   repeat?: number
-  [key: string]: any
 }
 
 export function Marquee({

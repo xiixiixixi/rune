@@ -10,24 +10,26 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { trackDownload } from "@/lib/analytics"
-import type { ReleaseInfo } from "@/lib/downloads"
+import { defaultRelease, type ReleaseInfo } from "@/lib/downloads"
 
 interface DownloadDropdownProps {
-  release: ReleaseInfo
+  release?: ReleaseInfo
   source: "navbar" | "hero" | "cta" | "mobile-menu"
   variant?: "default" | "outline"
   size?: "default" | "sm" | "lg"
   className?: string
   showLabel?: boolean
+  children?: React.ReactNode
 }
 
 export function DownloadDropdown({
-  release,
+  release = defaultRelease,
   source,
   variant = "default",
   size = "lg",
   className,
   showLabel = true,
+  children,
 }: DownloadDropdownProps) {
   const handleDownload = (arch: "appleSilicon" | "intel") => {
     trackDownload(source)
@@ -37,19 +39,24 @@ export function DownloadDropdown({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button size={size} variant={variant === "outline" ? "outline" : "default"} className={className}>
-          {showLabel ? (
+        <Button
+          size={size}
+          variant={variant === "outline" ? "outline" : "default"}
+          className={className}
+          aria-label={showLabel ? undefined : "Download Rune"}
+        >
+          {children ?? (showLabel ? (
             <>
               <Download className="mr-2 h-4 w-4" />
               Download
             </>
           ) : (
             <Download className="h-4 w-4" />
-          )}
-          <ChevronDown className="ml-1.5 h-3 w-3 opacity-50" />
+          ))}
+          {!children && <ChevronDown className="ml-1.5 h-3 w-3 opacity-50" />}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56 border-none shadow-lg bg-white rounded-lg p-1">
+      <DropdownMenuContent align="end" className="glass-surface w-56 rounded-xl border p-1 shadow-xl">
         <DropdownMenuItem onClick={() => handleDownload("appleSilicon")} className="cursor-pointer rounded-md">
           <Download className="mr-2 h-4 w-4" />
           <div className="flex flex-col">

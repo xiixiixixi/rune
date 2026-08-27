@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// 截图后的“冻结工具台”。所有功能直接可见，不用猜省略号里藏了什么。
@@ -12,6 +13,7 @@ struct ConfirmToolbarView: View {
     @State private var customColor = Color(red: 0.85, green: 0.64, blue: 0.25)
     @State private var canUndo = false
     @State private var ocrActive = false
+    @State private var contentAnalysisState: CaptureContentAnalysisState = .analyzing
     @State private var appeared = false
 
     private var canvas: ConfirmCanvasView? { controller.canvas }
@@ -51,22 +53,7 @@ struct ConfirmToolbarView: View {
 
             FreezeSeparator()
 
-            FreezeToolButton(
-                title: "识字",
-                help: "识别截图里的文字，点击或拖选后直接复制",
-                icon: "text.viewfinder",
-                isActive: ocrActive
-            ) {
-                ocrActive.toggle()
-                canvas?.toggleOCRMode { message in
-                    if message == "未识别到文字" { ocrActive = false }
-                    ToastWindow.shared.show(
-                        title: "文字识别",
-                        message: message,
-                        systemIcon: "text.viewfinder"
-                    )
-                }
-            }
+            captureContentMenu
 
             FreezeToolButton(
                 title: "长图",
@@ -142,12 +129,175 @@ struct ConfirmToolbarView: View {
         .runeTypography()
         .onAppear {
             canUndo = canvas?.canUndo ?? false
+            ocrActive = canvas?.ocrMode ?? false
+            contentAnalysisState = canvas?.contentAnalysisState ?? .analyzing
             appeared = true
         }
         .onReceive(NotificationCenter.default.publisher(for: .confirmCanvasStateDidChange)) { note in
             guard note.object as? ConfirmCanvasView === canvas else { return }
             canUndo = canvas?.canUndo ?? false
+            ocrActive = canvas?.ocrMode ?? false
         }
+        .onReceive(NotificationCenter.default.publisher(for: .confirmCaptureContentDidChange)) { note in
+            guard note.object as? ConfirmCanvasView === canvas else { return }
+            contentAnalysisState = canvas?.contentAnalysisState ?? .analyzing
+        }
+    }
+
+    private var captureContentMenu: some View {
+        let presentation = contentMenuPresentation
+        return Menu {
+            captureContentCommands
+        } label: {
+            FreezeContentLabel(
+                title: presentation.title,
+                icon: presentation.icon,
+                isActive: ocrActive,
+                hasResult: presentation.hasResult
+            )
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("理解截图内容：复制文字、打开链接或一键打码")
+        .accessibilityLabel("截图内容")
+        .accessibilityHint("查看截图中识别到的文字、链接、二维码和敏感信息")
+    }
+
+    @ViewBuilder
+    private var captureContentCommands: some View {
+        switch contentAnalysisState {
+        case .analyzing:
+            Button("正在本地识别…") {}
+                .disabled(true)
+
+        case let .ready(analysis):
+            if let text = analysis.text {
+                Button("复制全部文字", systemImage: "doc.on.doc") {
+                    copyString(text, message: "已复制全部文字")
+                }
+                Button(
+                    ocrActive ? "退出选字模式" : "选取部分文字",
+                    systemImage: "selection.pin.in.out"
+                ) {
+                    toggleTextSelection()
+                }
+            }
+
+            if !analysis.links.isEmpty {
+                Divider()
+                Menu("识别到 \(analysis.links.count) 个链接", systemImage: "link") {
+                    ForEach(Array(analysis.links.prefix(5)), id: \.absoluteString) { url in
+                        Menu(linkLabel(url)) {
+                            Button("打开链接", systemImage: "safari") {
+                                NSWorkspace.shared.open(url)
+                            }
+                            Button("复制链接", systemImage: "doc.on.doc") {
+                                copyString(url.absoluteString, message: "链接已复制")
+                            }
+                        }
+                    }
+                }
+            }
+
+            if !analysis.nonLinkBarcodes.isEmpty {
+                Divider()
+                Menu("二维码或条码", systemImage: "qrcode.viewfinder") {
+                    ForEach(Array(analysis.nonLinkBarcodes.prefix(5)), id: \.self) { value in
+                        Button("复制 \(shortValue(value))", systemImage: "doc.on.doc") {
+                            copyString(value, message: "二维码或条码内容已复制")
+                        }
+                    }
+                }
+            }
+
+            if !analysis.sensitiveMatches.isEmpty {
+                Divider()
+                Button(
+                    "打码 \(analysis.sensitiveMatches.count) 处敏感信息",
+                    systemImage: "eye.slash"
+                ) {
+                    let count = canvas?.redactDetectedSensitiveContent() ?? 0
+                    ToastWindow.shared.show(
+                        title: count > 0 ? "已自动打码" : "无需重复打码",
+                        message: count > 0 ? "已遮住 \(count) 处敏感信息，可用撤销恢复" : "这些位置已经处理过了",
+                        systemIcon: "eye.slash"
+                    )
+                }
+            }
+
+            Divider()
+            Button("完全在本地处理", systemImage: "lock.fill") {}
+                .disabled(true)
+
+        case .empty:
+            Button("没有发现可提取内容") {}
+                .disabled(true)
+            Button("重新识别", systemImage: "arrow.clockwise") {
+                canvas?.beginContentAnalysis(force: true)
+            }
+
+        case .failed:
+            Button("内容识别没有完成") {}
+                .disabled(true)
+            Button("重新识别", systemImage: "arrow.clockwise") {
+                canvas?.beginContentAnalysis(force: true)
+            }
+        }
+    }
+
+    private var contentMenuPresentation: (title: String, icon: String, hasResult: Bool) {
+        switch contentAnalysisState {
+        case .analyzing:
+            return ("理解中", "text.magnifyingglass", false)
+        case let .ready(analysis):
+            if !analysis.sensitiveMatches.isEmpty {
+                return ("敏感 \(analysis.sensitiveMatches.count)", "eye.slash", true)
+            }
+            if !analysis.links.isEmpty {
+                return ("链接 \(analysis.links.count)", "link", true)
+            }
+            if analysis.textBlockCount > 0 {
+                return ("文字 \(analysis.textBlockCount)", "text.viewfinder", true)
+            }
+            return ("内容", "doc.viewfinder", true)
+        case .empty:
+            return ("内容", "doc.viewfinder", false)
+        case .failed:
+            return ("重试", "arrow.clockwise", false)
+        }
+    }
+
+    private func toggleTextSelection() {
+        ocrActive.toggle()
+        canvas?.toggleOCRMode { message in
+            if message == "未识别到文字" { ocrActive = false }
+            ToastWindow.shared.show(
+                title: "文字识别",
+                message: message,
+                systemIcon: "text.viewfinder"
+            )
+        }
+    }
+
+    private func copyString(_ value: String, message: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(value, forType: .string)
+        ToastWindow.shared.show(
+            title: "已复制",
+            message: message,
+            systemIcon: "doc.on.doc"
+        )
+    }
+
+    private func linkLabel(_ url: URL) -> String {
+        shortValue(url.host ?? url.absoluteString)
+    }
+
+    private func shortValue(_ value: String) -> String {
+        let limit = 34
+        guard value.count > limit else { return value }
+        return "\(value.prefix(limit))…"
     }
 
     private var annotationTools: some View {
@@ -234,7 +384,7 @@ struct ConfirmToolbarView: View {
 
             if showsColorOptions && showsWidthOptions {
                 Rectangle()
-                    .fill(Color.white.opacity(0.10))
+                    .fill(RuneTheme.chromeText.opacity(0.10))
                     .frame(width: 1, height: 22)
             }
 
@@ -247,12 +397,12 @@ struct ConfirmToolbarView: View {
                             canvas?.updateSelectedAnnotation(strokeWidth: widths[index])
                         } label: {
                             Capsule()
-                                .fill(widthRaw == index ? Color.white : Color.white.opacity(0.50))
+                                .fill(widthRaw == index ? RuneTheme.chromeText : RuneTheme.chromeText.opacity(0.50))
                                 .frame(width: 15, height: max(2, CGFloat(index + 1) * 2))
                                 .frame(width: 28, height: 34)
                                 .background(
                                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .fill(widthRaw == index ? Color.white.opacity(0.11) : .clear)
+                                        .fill(widthRaw == index ? RuneTheme.chromeText.opacity(0.11) : .clear)
                                 )
                         }
                         .buttonStyle(FreezePressStyle())
@@ -299,21 +449,49 @@ struct ConfirmToolbarView: View {
 
 private struct FreezeToolbarBackground: View {
     var body: some View {
-        // 石墨机身：印刷车间里压在纸上的深色工具台
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .fill(RuneTheme.chromeBase.opacity(0.97))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [RuneTheme.chromeText.opacity(0.14), RuneTheme.chromeLine],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        lineWidth: 1
-                    )
-            )
-            .shadow(color: .black.opacity(0.35), radius: 24, y: 10)
+        RuneGlassBackground(cornerRadius: 16, elevation: .floating)
+    }
+}
+
+/// 截图确认台里唯一会随内容改变的入口：结果比功能名更重要。
+private struct FreezeContentLabel: View {
+    let title: String
+    let icon: String
+    let isActive: Bool
+    let hasResult: Bool
+
+    var body: some View {
+        VStack(spacing: 3) {
+            Image(systemName: icon)
+                .font(RuneFont.swiftUI(size: 16, weight: .medium))
+                .symbolRenderingMode(.monochrome)
+                .frame(height: 19)
+
+            Text(title)
+                .font(RuneFont.swiftUI(size: 9.5, weight: .medium))
+                .lineLimit(1)
+                .monospacedDigit()
+        }
+        .foregroundStyle(isActive || hasResult ? RuneTheme.chromeBlue : RuneTheme.chromeText.opacity(0.80))
+        .frame(width: 58, height: 46)
+        .background(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(isActive || hasResult ? RuneTheme.chromeBlue.opacity(0.14) : .clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .strokeBorder(
+                    isActive || hasResult ? RuneTheme.chromeBlue.opacity(0.40) : .clear,
+                    lineWidth: 0.8
+                )
+        )
+        .overlay(alignment: .topTrailing) {
+            Image(systemName: "chevron.down")
+                .font(RuneFont.swiftUI(size: 6.5, weight: .bold))
+                .foregroundStyle(RuneTheme.chromeText.opacity(0.46))
+                .padding(5)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
     }
 }
 
@@ -373,15 +551,15 @@ private struct FreezeToolButton: View {
     }
 
     private var background: Color {
-        if !isEnabled { return .white.opacity(0.018) }
+        if !isEnabled { return RuneTheme.chromeText.opacity(0.018) }
         if isActive { return RuneTheme.chromeBlue.opacity(0.16) }
-        return isHovered ? .white.opacity(0.09) : .clear
+        return isHovered ? RuneTheme.chromeText.opacity(0.09) : .clear
     }
 
     private var border: Color {
         if !isEnabled { return RuneTheme.chromeLine.opacity(0.4) }
         if isActive { return RuneTheme.chromeBlue.opacity(0.45) }
-        return isHovered ? .white.opacity(0.14) : .clear
+        return isHovered ? RuneTheme.chromeText.opacity(0.14) : .clear
     }
 }
 
@@ -409,7 +587,7 @@ private struct FreezeEndButton: View {
                     .fill(
                         isPrimary
                             ? RuneTheme.chromeBlueFill
-                            : Color.white.opacity(isHovered ? 0.12 : 0.065)
+                            : RuneTheme.chromeText.opacity(isHovered ? 0.12 : 0.065)
                     )
             )
             .overlay(
@@ -443,15 +621,15 @@ private struct FreezeSwatch: View {
             Circle()
                 .fill(Color(swatch.nsColor))
                 .frame(width: 14, height: 14)
-                .overlay(Circle().strokeBorder(Color.white.opacity(0.72), lineWidth: 0.7))
+                .overlay(Circle().strokeBorder(RuneTheme.chromeText.opacity(0.72), lineWidth: 0.7))
                 .padding(4)
                 .background(
                     Circle()
-                        .fill(isHovered ? Color.white.opacity(0.12) : .clear)
+                        .fill(isHovered ? RuneTheme.chromeText.opacity(0.12) : .clear)
                 )
                 .overlay(
                     Circle()
-                        .strokeBorder(isSelected ? Color.white.opacity(0.90) : .clear, lineWidth: 1.2)
+                        .strokeBorder(isSelected ? RuneTheme.chromeText.opacity(0.90) : .clear, lineWidth: 1.2)
                 )
                 .scaleEffect(isHovered ? 1.08 : 1)
         }
@@ -465,7 +643,7 @@ private struct FreezeSwatch: View {
 private struct FreezeSeparator: View {
     var body: some View {
         Rectangle()
-            .fill(Color.white.opacity(0.10))
+            .fill(RuneTheme.chromeText.opacity(0.10))
             .frame(width: 1, height: 30)
             .padding(.horizontal, 4)
     }

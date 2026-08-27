@@ -16,7 +16,7 @@ export default async function Image() {
           height: "100%",
           display: "flex",
           flexDirection: "column",
-          background: "#fafaf9",
+          background: "#f5f5f7",
           fontFamily: "system-ui, -apple-system, sans-serif",
           position: "relative",
           overflow: "hidden",
@@ -36,8 +36,8 @@ export default async function Image() {
               style={{
                 width: 40,
                 height: 40,
-                borderRadius: 10,
-                background: "linear-gradient(135deg, #f97316, #eab308)",
+                borderRadius: 12,
+                background: "#0071e3",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -47,8 +47,8 @@ export default async function Image() {
                 style={{
                   width: 20,
                   height: 20,
-                  borderRadius: 10,
-                  background: "white",
+                  border: "2px solid white",
+                  background: "transparent",
                   display: "flex",
                 }}
               />
@@ -58,7 +58,6 @@ export default async function Image() {
                 fontSize: 22,
                 fontWeight: 600,
                 color: "rgba(17, 17, 17, 0.5)",
-                letterSpacing: "-0.01em",
               }}
             >
               Rune
@@ -79,24 +78,22 @@ export default async function Image() {
                 fontSize: 62,
                 fontWeight: 700,
                 color: "#111",
-                letterSpacing: "-0.035em",
                 lineHeight: 1.1,
                 display: "flex",
               }}
             >
-              Capture your screen,
+              One shortcut from screen
             </div>
             <div
               style={{
                 fontSize: 62,
                 fontWeight: 700,
                 color: "rgba(17, 17, 17, 0.25)",
-                letterSpacing: "-0.035em",
                 lineHeight: 1.1,
                 display: "flex",
               }}
             >
-              make it beautiful.
+              to shared.
             </div>
           </div>
 
@@ -110,7 +107,7 @@ export default async function Image() {
               display: "flex",
             }}
           >
-            Screenshots, recordings, annotations, and effects. Local-first and private on macOS.
+            A private capture studio for macOS. No account, cloud upload, or subscription.
           </div>
 
           {/* Bottom bar */}
@@ -129,9 +126,9 @@ export default async function Image() {
                   key={label}
                   style={{
                     padding: "8px 18px",
-                    borderRadius: 6,
-                    background: "rgba(17, 17, 17, 0.04)",
-                    border: "1px solid rgba(17, 17, 17, 0.06)",
+                    borderRadius: 12,
+                    background: "rgba(255, 255, 255, 0.72)",
+                    border: "1px solid rgba(255, 255, 255, 0.82)",
                     fontSize: 14,
                     fontWeight: 500,
                     color: "rgba(17, 17, 17, 0.4)",

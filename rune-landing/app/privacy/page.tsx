@@ -1,115 +1,92 @@
 import type { Metadata } from "next"
-import Link from "next/link"
-import Image from "next/image"
+import { Check, LockKeyhole } from "lucide-react"
+import { SiteFooter, SiteHeader } from "@/components/site-shell"
 
 export const metadata: Metadata = {
-  title: "Privacy Policy - Rune",
-  description: "Privacy policy for Rune, the local-first screenshot tool for macOS.",
-  alternates: {
-    canonical: "/privacy",
-  },
+  title: "Privacy Policy — Rune",
+  description: "Privacy policy for Rune, the local-first screen capture tool for macOS.",
+  alternates: { canonical: "/privacy" },
 }
+
+const promises = [
+  "Screenshots and recordings are processed on your Mac.",
+  "Rune does not require an account or login.",
+  "The website does not use cookies or tracking identifiers.",
+]
 
 export default function PrivacyPolicy() {
   return (
-    <div className="min-h-screen bg-[#faf9f7] text-[#1a1a1a]/80">
-      <header>
-        <div className="max-w-[600px] mx-auto px-6 h-12 flex items-center">
-          <Link href="/" className="flex items-center gap-2 text-[13px] font-medium text-[#1a1a1a]/70 tracking-[-0.01em]">
-            <Image src="/logo.png" alt="Rune" width={18} height={18} className="rounded-[3px]" />
-            Rune
-          </Link>
-        </div>
-      </header>
+    <div className="min-h-dvh bg-background text-foreground">
+      <SiteHeader />
+      <main id="main-content" className="pt-16">
+        <header className="mx-auto max-w-3xl px-6 pb-12 pt-20 text-center sm:pt-28">
+          <span className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-accent text-primary">
+            <LockKeyhole className="size-7" aria-hidden="true" />
+          </span>
+          <h1 className="mt-6 text-balance text-5xl font-semibold sm:text-6xl">Your captures stay on your Mac.</h1>
+          <p className="mx-auto mt-5 max-w-xl text-pretty text-lg leading-relaxed text-muted-foreground">
+            Rune is built around a simple privacy boundary: your screen content is not an online service.
+          </p>
+          <p className="mt-4 font-mono text-xs text-muted-foreground">Last updated June 2, 2026</p>
+        </header>
 
-      <main className="max-w-[600px] mx-auto px-6 py-16">
-        <h1 className="text-2xl font-semibold tracking-[-0.03em] text-[#1a1a1a] mb-2">
-          Privacy Policy
-        </h1>
-        <p className="text-[12px] text-[#1a1a1a]/25 mb-12">
-          Last updated: June 2, 2026
-        </p>
+        <section className="mx-auto max-w-3xl px-6 pb-10">
+          <div className="glass-surface rounded-2xl border p-5 shadow-lg sm:p-6">
+            <ul className="space-y-4">
+              {promises.map((promise) => (
+                <li key={promise} className="flex items-start gap-3 text-sm leading-relaxed">
+                  <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                    <Check className="size-3" aria-hidden="true" />
+                  </span>
+                  {promise}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
 
-        <div className="space-y-10 text-[14px] leading-[1.7] text-[#1a1a1a]/50">
-          <section>
-            <h2 className="text-[15px] font-medium text-[#1a1a1a]/70 mb-3">Overview</h2>
-            <p>
-              Rune is a local-first screenshot tool for macOS. We are committed
-              to protecting your privacy. This policy explains what data we collect and how
-              we use it.
-            </p>
-          </section>
+        <article className="mx-auto max-w-3xl space-y-12 px-6 pb-24 pt-10 text-base leading-relaxed text-muted-foreground">
+          <PolicySection title="Overview">
+            Rune is a local-first screen capture tool for macOS. This policy explains what the app and this website do with data.
+          </PolicySection>
 
-          <section>
-            <h2 className="text-[15px] font-medium text-[#1a1a1a]/70 mb-3">Data Collection</h2>
-            <p className="mb-3">
-              <strong className="text-[#1a1a1a]/70">Rune does not collect, store, or transmit
-              any personal data.</strong> All screenshots and annotations are processed locally
-              on your device and never leave your computer.
-            </p>
-            <p>
-              The application does not require an account, login, or any form of registration.
-            </p>
-          </section>
+          <PolicySection title="Data collection">
+            <strong className="font-semibold text-foreground">Rune does not collect, store, or transmit personal data.</strong> Screenshots, recordings, annotations, OCR, and image processing happen locally on your device. The app does not require registration.
+          </PolicySection>
 
-          <section>
-            <h2 className="text-[15px] font-medium text-[#1a1a1a]/70 mb-3">Website Analytics</h2>
-            <p>
-              This website does not use analytics, cookies, or tracking identifiers.
-            </p>
-          </section>
+          <PolicySection title="Website analytics">
+            This website does not use analytics, cookies, advertising pixels, or tracking identifiers.
+          </PolicySection>
 
-          <section>
-            <h2 className="text-[15px] font-medium text-[#1a1a1a]/70 mb-3">Third-Party Services</h2>
-            <p>
-              Rune does not integrate with any third-party services that collect user
-              data. The application is distributed via its official release page.
-            </p>
-          </section>
+          <PolicySection title="Third-party services">
+            Rune does not connect your captures to third-party services. The app is distributed from its official GitHub release page, which is governed by GitHub&apos;s own terms and privacy policy.
+          </PolicySection>
 
-          <section>
-            <h2 className="text-[15px] font-medium text-[#1a1a1a]/70 mb-3">Licensing</h2>
-            <p>
-              Rune includes open-source components under their respective licenses.
-              Required copyright and license notices are available on{" "}
-              <a
-                href="https://github.com/xiixiixixi/rune"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[#1a1a1a]/70 underline underline-offset-4 hover:text-[#1a1a1a]/90 transition-colors"
-              >
-                GitHub
-              </a>{" "}
-              to verify these claims.
-            </p>
-          </section>
+          <PolicySection title="Open-source licenses">
+            Rune includes open-source components under their respective licenses. Copyright notices and license terms are available in the{" "}
+            <a href="https://github.com/xiixiixixi/rune" target="_blank" rel="noopener noreferrer" className="font-medium text-primary hover:underline">
+              source repository
+            </a>.
+          </PolicySection>
 
-          <section>
-            <h2 className="text-[15px] font-medium text-[#1a1a1a]/70 mb-3">Contact</h2>
-            <p>
-              If you have questions about this privacy policy, open an issue on{" "}
-              <a
-                href="https://github.com/xiixiixixi/rune/issues"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[#1a1a1a]/70 underline underline-offset-4 hover:text-[#1a1a1a]/90 transition-colors"
-              >
-                GitHub
-              </a>
-              .
-            </p>
-          </section>
-        </div>
-
-        <div className="mt-16 pt-6 border-t border-[#1a1a1a]/[0.06]">
-          <Link
-            href="/"
-            className="text-[12px] text-[#1a1a1a]/25 hover:text-[#1a1a1a]/50 transition-colors"
-          >
-            &larr; Home
-          </Link>
-        </div>
+          <PolicySection title="Contact">
+            Questions about this policy can be filed in the{" "}
+            <a href="https://github.com/xiixiixixi/rune/issues" target="_blank" rel="noopener noreferrer" className="font-medium text-primary hover:underline">
+              public issue tracker
+            </a>.
+          </PolicySection>
+        </article>
       </main>
+      <SiteFooter />
     </div>
+  )
+}
+
+function PolicySection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="grid gap-3 border-t border-border/70 pt-7 sm:grid-cols-[11rem_1fr] sm:gap-8">
+      <h2 className="font-semibold text-foreground">{title}</h2>
+      <p className="text-pretty">{children}</p>
+    </section>
   )
 }

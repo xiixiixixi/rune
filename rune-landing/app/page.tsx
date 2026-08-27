@@ -1,458 +1,313 @@
-import Image from "next/image"
 import Link from "next/link"
-import { ArrowUpRight, Shield, Zap } from "lucide-react"
+import {
+  ArrowUpRight,
+  Camera,
+  Check,
+  Copy,
+  Crop,
+  LockKeyhole,
+  MousePointer2,
+  Pin,
+  Scissors,
+  SquareDashedMousePointer,
+  Video,
+} from "lucide-react"
 import { DownloadDropdown } from "@/components/download-dropdown"
-import { getLatestRelease } from "@/lib/downloads"
-import { StarCount } from "@/components/star-count"
 import { EditorPreview } from "@/components/editor-demo"
+import { SiteFooter, SiteHeader } from "@/components/site-shell"
+import { getLatestRelease } from "@/lib/downloads"
+
+const shortcuts = [
+  ["Capture a region", ["⌘", "⇧", "4"]],
+  ["Capture the screen", ["⌘", "⇧", "3"]],
+  ["Capture a window", ["⌘", "⇧", "5"]],
+  ["Record the screen", ["⌘", "⇧", "2"]],
+  ["Read text", ["⌘", "⇧", "O"]],
+] as const
 
 export default async function Home() {
   const release = await getLatestRelease()
+
   return (
-    <div className="min-h-screen w-full bg-[#fafaf9] text-[#111] selection:bg-[#e78a53]/20">
-      {/* Nav */}
-      <nav className="fixed top-0 inset-x-0 z-50 h-14 backdrop-blur-xl bg-[#fafaf9]/80 border-b border-[#111]/[0.04]">
-        <div className="max-w-[1080px] mx-auto h-full px-6 flex items-center justify-between">
-          <a href="/" className="flex items-center gap-2.5">
-            <Image src="/logo.png" alt="" width={22} height={22} className="rounded-[5px]" />
-            <span className="text-[13px] font-semibold tracking-[-0.01em] text-[#111]/70">
-              Rune
-            </span>
-          </a>
-          <div className="flex items-center gap-6">
-            <Link
-              href="/changelog"
-              className="text-[12px] text-[#111]/30 hover:text-[#111]/60 transition-colors hidden sm:block"
-            >
-              Changelog
-            </Link>
-            <a
-              href="https://github.com/xiixiixixi/rune"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[12px] text-[#111]/30 hover:text-[#111]/60 transition-colors hidden sm:block"
-            >
-              <StarCount />
-            </a>
-            <DownloadDropdown release={release} source="navbar" size="sm" showLabel={false} />
-          </div>
-        </div>
-      </nav>
+    <div className="min-h-dvh overflow-x-hidden bg-background text-foreground">
+      <SiteHeader
+        actions={
+          <DownloadDropdown
+            release={release}
+            source="navbar"
+            size="sm"
+            showLabel={false}
+            className="rounded-full"
+          />
+        }
+      />
 
-      {/* Hero */}
-      <main className="pt-14">
-        <section className="flex flex-col items-center px-6 pt-28 pb-20 sm:pt-36 sm:pb-24">
-          <h1 className="text-center text-[clamp(36px,6.5vw,68px)] leading-[1.02] font-bold tracking-[-0.04em] text-[#111] max-w-[740px] text-balance">
-            Capture your screen,{" "}
-            <span className="text-[#111]/30">make&nbsp;it&nbsp;beautiful</span>
+      <main id="main-content" className="pt-16">
+        <section className="mx-auto flex max-w-5xl flex-col items-center px-6 pb-20 pt-24 text-center sm:pt-32">
+          <p className="mb-5 text-sm font-semibold text-primary">A private capture studio for your Mac</p>
+          <h1 className="max-w-4xl text-balance text-5xl font-semibold leading-none sm:text-6xl lg:text-7xl">
+            One shortcut from screen to shared.
           </h1>
-
-          <p className="text-center text-[16px] leading-[1.7] text-[#111]/40 mt-6 max-w-[460px] text-pretty">
-            Screenshots, recordings, annotations, and effects — all in one local&#8209;first macOS app. No account, no cloud, no subscription.
+          <p className="mt-7 max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground sm:text-xl">
+            Rune captures screenshots and recordings, lets you explain what matters, and keeps every pixel on your Mac.
           </p>
 
-          <div className="flex items-center gap-3 mt-10">
-            <DownloadDropdown release={release} source="hero" />
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+            <DownloadDropdown release={release} source="hero" className="h-11 rounded-full px-6" />
             <a
               href="https://github.com/xiixiixixi/rune"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-5 h-11 text-[13px] font-medium text-[#111]/35 hover:text-[#111]/60 border border-[#111]/[0.08] hover:border-[#111]/[0.15] rounded-lg transition-all"
+              className="glass-surface inline-flex h-11 items-center gap-2 rounded-full border px-5 text-sm font-medium text-foreground shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
-              Source
-              <ArrowUpRight className="h-3.5 w-3.5" />
+              View source
+              <ArrowUpRight className="size-4" aria-hidden="true" />
             </a>
           </div>
 
-          <div className="flex flex-wrap justify-center items-center gap-4 sm:gap-6 mt-8 text-[11px] text-[#111]/25">
-            <span className="flex items-center gap-1.5">
-              <span className="h-1 w-1 rounded-full bg-[#111]/15" />
-              macOS 14+
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-1 w-1 rounded-full bg-[#111]/15" />
-              Apple Silicon &amp; Intel
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="h-1 w-1 rounded-full bg-[#111]/15" />
-              Local-first &amp; private
-            </span>
-          </div>
+          <p className="mt-6 text-sm text-muted-foreground">macOS 14+ · Apple silicon and Intel · No account</p>
         </section>
 
-        {/* Editor preview — the hero product shot, largest visual on the page */}
-        <section className="max-w-[960px] mx-auto px-6 pb-32">
-          <div className="rounded-2xl border border-[#111]/[0.06] bg-[#111]/[0.02] p-2 shadow-[0_8px_40px_rgba(0,0,0,0.04)] overflow-hidden">
-            <EditorPreview />
-          </div>
-        </section>
-
-        {/* ─── PRIMARY FEATURES — full-width with visuals ─── */}
-
-        {/* 1. Capture — the core, gets the most space */}
-        <section className="border-t border-[#111]/[0.06] py-20 sm:py-28">
-          <div className="max-w-[960px] mx-auto px-6">
-            <div className="flex flex-col md:flex-row md:items-center gap-12 md:gap-20">
-              <div className="flex-1 min-w-0">
-                <h2 className="text-[28px] sm:text-[36px] font-bold tracking-[-0.03em] text-[#111] mb-5">
-                  Capture everything
-                </h2>
-                <p className="text-[15px] leading-[1.8] text-[#111]/40 max-w-[400px] mb-8">
-                  Region, fullscreen, or window — pick how you want to capture. A floating preview appears after every shot so you can edit, copy, or drag it straight into another app.
-                </p>
-                <div className="flex flex-wrap gap-x-6 gap-y-3">
-                  <FeatureBullet label="Region capture" />
-                  <FeatureBullet label="Window capture" />
-                  <FeatureBullet label="Fullscreen" />
-                  <FeatureBullet label="Floating preview" />
-                  <FeatureBullet label="OCR text extraction" />
-                  <FeatureBullet label="Color picker" />
-                </div>
-              </div>
-              <div className="flex-1 flex justify-center">
-                <MockScreenshotPreview />
+        <section aria-label="Rune editor preview" className="mx-auto max-w-6xl px-6 pb-28">
+          <div className="relative p-4 sm:p-6">
+            <ViewfinderCorners />
+            <div className="glass-surface overflow-hidden rounded-2xl border p-2 shadow-2xl">
+              <div className="overflow-hidden rounded-xl border border-border/70 bg-card">
+                <EditorPreview />
               </div>
             </div>
           </div>
         </section>
 
-        {/* 2. Recording — second hero feature, reversed layout, shaded */}
-        <section className="border-t border-[#111]/[0.06] bg-[#111]/[0.015] py-20 sm:py-28">
-          <div className="max-w-[960px] mx-auto px-6">
-            <div className="flex flex-col md:flex-row-reverse md:items-center gap-12 md:gap-20">
-              <div className="flex-1 min-w-0">
-                <h2 className="text-[28px] sm:text-[36px] font-bold tracking-[-0.03em] text-[#111] mb-5">
-                  Screen recording,<br className="hidden sm:block" /> built right&nbsp;in
-                </h2>
-                <p className="text-[15px] leading-[1.8] text-[#111]/40 max-w-[400px] mb-8">
-                  Record your screen as MP4 with a single shortcut. Pause, resume, restart, or discard — all from a minimal floating pill that stays out of the capture.
-                </p>
-                <div className="flex flex-wrap gap-x-6 gap-y-3">
-                  <FeatureBullet label="MP4 capture" />
-                  <FeatureBullet label="Pause & resume" />
-                  <FeatureBullet label="Restart recording" />
-                  <FeatureBullet label="24 / 30 / 60 fps" />
-                  <FeatureBullet label="Cursor toggle" />
-                  <FeatureBullet label="Audio capture" />
-                </div>
-              </div>
-              <div className="flex-1 flex justify-center">
-                <MockRecordingPill />
+        <section className="border-y border-border/70 bg-card/35">
+          <div className="mx-auto grid max-w-6xl divide-y divide-border/70 px-6 md:grid-cols-3 md:divide-x md:divide-y-0">
+            <ProofPoint icon={<LockKeyhole />} title="Local by design" detail="No cloud upload, account, or telemetry." />
+            <ProofPoint icon={<Camera />} title="Native and ready" detail="A Swift app that lives in your menu bar." />
+            <ProofPoint icon={<Check />} title="Open source" detail="Inspect the code and keep your workflow portable." />
+          </div>
+        </section>
+
+        <WorkflowChapter
+          step="01"
+          eyebrow="Capture"
+          title="Take exactly the frame you mean."
+          description="Drag a region, click a window, capture the full display, or start a recording. Rune stays in the menu bar until you need it."
+          bullets={["Region, window, and full-screen capture", "MP4 recording with pause and resume", "Scrolling capture, OCR, and color picking"]}
+          visual={<CaptureModesMock />}
+        />
+
+        <WorkflowChapter
+          step="02"
+          eyebrow="Explain"
+          title="Turn a capture into a clear answer."
+          description="Add one precise arrow, hide private information, crop the noise, or frame the image for sharing. The canvas stays primary; tools float at the edge."
+          bullets={["Shapes, arrows, text, blur, and spotlight", "Non-destructive crop and undo", "Padding, corners, shadows, and backgrounds"]}
+          visual={<AnnotationToolsMock />}
+          reverse
+        />
+
+        <WorkflowChapter
+          step="03"
+          eyebrow="Share"
+          title="Copy it, drag it, or keep it in sight."
+          description="The saved preview gives you the next useful action immediately. Copy to the clipboard, drag into another app, pin it above your work, or open the editor."
+          bullets={["Drag directly into Figma, Slack, or Finder", "Pin references above every window", "Search recent screenshots and recordings"]}
+          visual={<ShareFlowMock />}
+        />
+
+        <section className="border-y border-border/70 bg-card/35 py-24 sm:py-28">
+          <div className="mx-auto grid max-w-6xl gap-14 px-6 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
+            <div>
+              <p className="text-sm font-semibold text-primary">Keyboard first</p>
+              <h2 className="mt-3 text-balance text-4xl font-semibold sm:text-5xl">Fast enough to become muscle memory.</h2>
+              <p className="mt-5 max-w-md text-pretty text-lg leading-relaxed text-muted-foreground">
+                Familiar macOS shortcuts start the job. Clear labels and visible focus keep every action reachable without guessing.
+              </p>
+            </div>
+
+            <div className="glass-surface overflow-hidden rounded-2xl border shadow-xl">
+              <div className="divide-y divide-border/70">
+                {shortcuts.map(([label, keys]) => (
+                  <div key={label} className="flex items-center justify-between gap-6 px-5 py-4 sm:px-6">
+                    <span className="text-sm font-medium">{label}</span>
+                    <div className="flex items-center gap-1.5" role="group" aria-label={keys.join(" ")}>
+                      {keys.map((key) => (
+                        <kbd aria-hidden="true" key={key} className="flex size-7 items-center justify-center rounded-md border bg-card font-mono text-xs text-muted-foreground shadow-sm">
+                          {key}
+                        </kbd>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
         </section>
 
-        {/* 3. Effects — third hero feature, full visual */}
-        <section className="border-t border-[#111]/[0.06] py-20 sm:py-28">
-          <div className="max-w-[960px] mx-auto px-6">
-            <div className="flex flex-col md:flex-row md:items-center gap-12 md:gap-20">
-              <div className="flex-1 min-w-0">
-                <h2 className="text-[28px] sm:text-[36px] font-bold tracking-[-0.03em] text-[#111] mb-5">
-                  Make it look good
-                </h2>
-                <p className="text-[15px] leading-[1.8] text-[#111]/40 max-w-[400px] mb-8">
-                  Add padding, corner radius, and shadows. Pick from solid colors, gradients, macOS wallpapers, or drop in your own image as a background.
-                </p>
-                <div className="flex flex-wrap gap-x-6 gap-y-3">
-                  <FeatureBullet label="Adjustable padding" />
-                  <FeatureBullet label="Corner radius" />
-                  <FeatureBullet label="Drop shadows" />
-                  <FeatureBullet label="Solid colors" />
-                  <FeatureBullet label="Gradients" />
-                  <FeatureBullet label="macOS wallpapers" />
-                  <FeatureBullet label="Custom images" />
-                </div>
-              </div>
-              <div className="flex-1 flex justify-center">
-                <MockEffectsPanel />
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ─── SECONDARY FEATURES — compact text-only grid, less visual weight ─── */}
-        <section className="border-t border-[#111]/[0.06] bg-[#111]/[0.015] py-20 sm:py-24">
-          <div className="max-w-[960px] mx-auto px-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-16 gap-y-14">
-              <TextFeature
-                title="Annotate with purpose"
-                description="Arrows, shapes, text, numbered badges, blur, and spotlight. Each tool has a single-key shortcut so you never leave the keyboard."
-                features={["Arrows", "Rectangles & circles", "Text with fonts", "Numbered badges", "Blur regions", "Spotlight"]}
-              />
-              <TextFeature
-                title="Crop with precision"
-                description="Draggable corner and edge handles with a rule-of-thirds grid. Works on both screenshots and recordings — crop is applied on export so your annotations stay editable."
-                features={["Corner & edge handles", "Rule-of-thirds grid", "Non-destructive", "Works on video"]}
-              />
-              <TextFeature
-                title="Edit recordings before you share"
-                description="Full video editor with trim timeline, thumbnail strip, and transport controls. Add backgrounds and effects, then export with your look baked in."
-                features={["Trim timeline", "Thumbnail strip", "Background picker", "Video effects", "MP4 export"]}
-              />
-              <TextFeature
-                title="Stay in flow"
-                description="Drag the floating preview into Figma, Slack, or Finder. Pin screenshots as always-on-top windows. Auto-apply your default effects on every capture."
-                features={["Drag into any app", "Pin to screen", "Always-on-top", "Auto-apply defaults"]}
-              />
-            </div>
-          </div>
-        </section>
-
-        {/* ─── VALUES — local-first, fast, private ─── */}
-        <section className="border-t border-[#111]/[0.06] py-20 sm:py-24">
-          <div className="max-w-[960px] mx-auto px-6">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-12">
-              <ValueProp
-                icon={<Shield className="h-5 w-5" />}
-                title="Local-first"
-                description="Everything stays on your Mac. No uploads, no accounts, no telemetry."
-              />
-              <ValueProp
-                icon={<Zap className="h-5 w-5" />}
-                title="Fast"
-                description="Native Swift app. Launches instantly, captures in milliseconds."
-              />
-              <ValueProp
-                icon={<ArrowUpRight className="h-5 w-5" />}
-                title="Private by design"
-                description="Screenshots and recordings stay on your Mac."
-              />
-            </div>
-          </div>
-        </section>
-
-        {/* Shortcuts */}
-        <section className="max-w-[520px] mx-auto px-6 pb-28 pt-4">
-          <h2 className="text-[13px] font-semibold text-[#111]/25 tracking-wide uppercase text-center mb-8">
-            Keyboard shortcuts
-          </h2>
-          <div className="divide-y divide-[#111]/[0.06] border border-[#111]/[0.06] rounded-xl overflow-hidden bg-white">
-            <Shortcut label="Capture region" keys={["⌘", "⇧", "4"]} />
-            <Shortcut label="Capture screen" keys={["⌘", "⇧", "3"]} />
-            <Shortcut label="Capture window" keys={["⌘", "⇧", "5"]} />
-            <Shortcut label="Record screen" keys={["⌘", "⇧", "2"]} />
-            <Shortcut label="OCR text scan" keys={["⌘", "⇧", "O"]} />
-            <Shortcut label="Color picker" keys={["⌘", "⇧", "C"]} />
-          </div>
-        </section>
-
-        {/* CTA */}
-        <section className="border-t border-[#111]/[0.06] py-24">
-          <div className="text-center px-6">
-            <h2 className="text-[24px] sm:text-[28px] font-bold tracking-[-0.03em] text-[#111] mb-3">
-              Ready to try it?
-            </h2>
-            <p className="text-[15px] text-[#111]/35 mb-8 max-w-[340px] mx-auto text-pretty">
-              No account. No subscription. Just a better way to capture your screen.
+        <section className="mx-auto max-w-5xl px-6 py-24 text-center sm:py-32">
+          <div className="glass-surface rounded-3xl border px-6 py-16 shadow-xl sm:px-12">
+            <h2 className="text-balance text-4xl font-semibold sm:text-5xl">Your screen stays yours.</h2>
+            <p className="mx-auto mt-5 max-w-xl text-pretty text-lg leading-relaxed text-muted-foreground">
+              Download Rune, grant screen recording permission once, and capture without creating an account or sending images to a server.
             </p>
-            <div className="flex flex-col items-center gap-4">
-              <DownloadDropdown release={release} source="cta" />
+            <div className="mt-8 flex justify-center">
+              <DownloadDropdown release={release} source="cta" className="h-11 rounded-full px-6" />
             </div>
+            <Link href="/privacy" className="mt-5 inline-block text-sm text-primary hover:underline">
+              Read the privacy policy
+            </Link>
           </div>
         </section>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-[#111]/[0.04]">
-        <div className="max-w-[1080px] mx-auto px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <Image src="/logo.png" alt="" width={16} height={16} className="rounded-[3px] opacity-40" />
-            <p className="text-[11px] text-[#111]/20">
-              &copy; {new Date().getFullYear()} Rune
-            </p>
-          </div>
-          <nav className="flex items-center gap-5">
-            <Link
-              href="/changelog"
-              className="text-[11px] text-[#111]/20 hover:text-[#111]/45 transition-colors"
-            >
-              Changelog
-            </Link>
-            <Link
-              href="/privacy"
-              className="text-[11px] text-[#111]/20 hover:text-[#111]/45 transition-colors"
-            >
-              Privacy
-            </Link>
-            <a
-              href="https://github.com/xiixiixixi/rune"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[11px] text-[#111]/20 hover:text-[#111]/45 transition-colors"
-            >
-              GitHub
-            </a>
-          </nav>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   )
 }
 
-/* ─── Primary feature mocks — large, varied visual weight ─── */
-
-function MockScreenshotPreview() {
+function ViewfinderCorners() {
   return (
-    <div className="w-full max-w-[360px]">
-      <div className="rounded-lg bg-white border border-[#111]/[0.08] shadow-[0_2px_16px_rgba(0,0,0,0.06)] overflow-hidden">
-        <div className="h-8 bg-[#fafafa] border-b border-[#111]/[0.06] flex items-center px-3 gap-[6px]">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]" />
-          <span className="w-2.5 h-2.5 rounded-full bg-[#febc2e]" />
-          <span className="w-2.5 h-2.5 rounded-full bg-[#28c840]" />
-          <span className="flex-1 text-center text-[10px] text-[#111]/30">Preview</span>
-        </div>
-        <div className="p-4">
-          <div
-            className="aspect-[16/10] rounded-md overflow-hidden flex items-center justify-center"
-            style={{ background: "linear-gradient(135deg, #ec4899, #8b5cf6, #3b82f6)", padding: "10%" }}
-          >
-            <div className="w-full h-full rounded bg-[#1a1a2e] flex items-center justify-center">
-              <div className="text-center">
-                <div className="text-[20px] mb-1">⌘</div>
-                <div className="text-[10px] text-white/50">screenshot.png</div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="px-4 pb-3 flex gap-2">
-          <span className="text-[10px] text-[#111]/30 bg-[#111]/[0.04] px-2.5 py-1 rounded">Edit</span>
-          <span className="text-[10px] text-[#111]/30 bg-[#111]/[0.04] px-2.5 py-1 rounded">Copy</span>
-          <span className="text-[10px] text-[#111]/30 bg-[#111]/[0.04] px-2.5 py-1 rounded">Pin</span>
-        </div>
+    <>
+      <span className="viewfinder-corner left-0 top-0 border-l-2 border-t-2" />
+      <span className="viewfinder-corner right-0 top-0 border-r-2 border-t-2" />
+      <span className="viewfinder-corner bottom-0 left-0 border-b-2 border-l-2" />
+      <span className="viewfinder-corner bottom-0 right-0 border-b-2 border-r-2" />
+    </>
+  )
+}
+
+function ProofPoint({ icon, title, detail }: { icon: React.ReactNode; title: string; detail: string }) {
+  return (
+    <div className="flex gap-4 py-8 md:px-8">
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent text-primary [&>svg]:size-5">{icon}</span>
+      <div>
+        <h2 className="font-semibold">{title}</h2>
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{detail}</p>
       </div>
     </div>
   )
 }
 
-function MockRecordingPill() {
+function WorkflowChapter({
+  step,
+  eyebrow,
+  title,
+  description,
+  bullets,
+  visual,
+  reverse = false,
+}: {
+  step: string
+  eyebrow: string
+  title: string
+  description: string
+  bullets: string[]
+  visual: React.ReactNode
+  reverse?: boolean
+}) {
   return (
-    <div className="flex flex-col items-center gap-5">
-      <div className="inline-flex items-center gap-3 bg-[#1a1a1a] rounded-full px-5 py-3 shadow-[0_8px_32px_rgba(0,0,0,0.25)]">
-        <div className="flex items-center gap-2">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
-          </span>
-          <span className="text-[13px] font-mono text-white/80 tabular-nums">02:34</span>
-        </div>
-        <span className="h-4 w-px bg-white/10" />
-        <div className="flex items-center gap-1.5">
-          <span className="h-7 w-7 rounded-full bg-white/10 flex items-center justify-center text-[11px] text-white/60">⏸</span>
-          <span className="h-7 w-7 rounded-full bg-white/10 flex items-center justify-center text-[11px] text-white/60">■</span>
-          <span className="h-7 w-7 rounded-full bg-white/10 flex items-center justify-center text-[11px] text-white/60">↻</span>
-          <span className="h-7 w-7 rounded-full bg-white/10 flex items-center justify-center text-[11px] text-white/60">✕</span>
-        </div>
-      </div>
-      <p className="text-[11px] text-[#111]/20">Floating recording controls</p>
-    </div>
-  )
-}
-
-function MockEffectsPanel() {
-  const gradients = [
-    "linear-gradient(135deg, #a8edea, #fed6e3)",
-    "linear-gradient(135deg, #3b82f6, #8b5cf6)",
-    "linear-gradient(135deg, #f97316, #ec4899)",
-    "linear-gradient(135deg, #ec4899, #8b5cf6, #3b82f6)",
-    "linear-gradient(135deg, #22c55e, #06b6d4)",
-    "linear-gradient(135deg, #eab308, #f97316)",
-  ]
-  return (
-    <div className="w-full max-w-[260px]">
-      <div className="rounded-lg bg-white border border-[#111]/[0.08] shadow-[0_2px_16px_rgba(0,0,0,0.06)] p-5">
-        <div className="text-[10px] font-semibold text-[#111]/25 tracking-widest uppercase mb-4">Effects</div>
-        <SliderMock label="Padding" value="8%" progress={40} />
-        <SliderMock label="Corner Radius" value="18" progress={45} />
-        <SliderMock label="Shadow" value="36%" progress={55} />
-        <div className="mt-5">
-          <div className="text-[10px] font-semibold text-[#111]/25 tracking-widest uppercase mb-3">Background</div>
-          <div className="grid grid-cols-6 gap-1.5">
-            {gradients.map((g, i) => (
-              <div
-                key={i}
-                className="w-8 h-8 rounded"
-                style={{
-                  background: g,
-                  border: i === 3 ? "2px solid #3b82f6" : "1px solid rgba(0,0,0,0.06)",
-                  boxShadow: i === 3 ? "0 0 0 2px rgba(59,130,246,0.2)" : "none",
-                }}
-              />
+    <section className="border-b border-border/70 py-24 sm:py-32">
+      <div className={`mx-auto grid max-w-6xl gap-14 px-6 lg:grid-cols-2 lg:items-center ${reverse ? "lg:[&>*:first-child]:order-2" : ""}`}>
+        <div>
+          <p className="font-mono text-sm text-muted-foreground">{step} · {eyebrow}</p>
+          <h2 className="mt-4 text-balance text-4xl font-semibold sm:text-5xl">{title}</h2>
+          <p className="mt-5 max-w-xl text-pretty text-lg leading-relaxed text-muted-foreground">{description}</p>
+          <ul className="mt-7 space-y-3">
+            {bullets.map((bullet) => (
+              <li key={bullet} className="flex items-start gap-3 text-sm text-muted-foreground">
+                <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
+                {bullet}
+              </li>
             ))}
-          </div>
+          </ul>
+        </div>
+        <div className="relative p-3">
+          <ViewfinderCorners />
+          {visual}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function CaptureModesMock() {
+  const rows = [
+    [<SquareDashedMousePointer key="region" />, "Capture region", "⌘⇧4"],
+    [<MousePointer2 key="window" />, "Capture window", "⌘⇧5"],
+    [<Video key="video" />, "Record screen", "⌘⇧2"],
+  ]
+
+  return (
+    <div className="glass-surface rounded-2xl border p-3 shadow-xl">
+      <div className="rounded-xl border border-border/70 bg-card/70 p-3">
+        <div className="mb-2 flex items-center justify-between px-2 py-2">
+          <span className="font-semibold">Rune</span>
+          <span className="text-xs text-muted-foreground">Capture</span>
+        </div>
+        <div className="space-y-2">
+          {rows.map(([icon, label, shortcut]) => (
+            <div key={String(label)} className="flex items-center gap-3 rounded-lg bg-secondary/70 px-3 py-3">
+              <span className="text-primary [&>svg]:size-5">{icon}</span>
+              <span className="flex-1 text-sm font-medium">{label}</span>
+              <kbd className="font-mono text-xs text-muted-foreground">{shortcut}</kbd>
+            </div>
+          ))}
         </div>
       </div>
     </div>
   )
 }
 
-function SliderMock({ label, value, progress }: { label: string; value: string; progress: number }) {
-  return (
-    <div className="mb-3">
-      <div className="flex justify-between mb-1.5">
-        <span className="text-[11px] text-[#111]/35">{label}</span>
-        <span className="text-[11px] text-[#111]/50 font-medium">{value}</span>
-      </div>
-      <div className="h-1 bg-[#111]/[0.06] rounded-full overflow-hidden">
-        <div className="h-full bg-blue-500 rounded-full" style={{ width: `${progress}%` }} />
-      </div>
-    </div>
-  )
-}
+function AnnotationToolsMock() {
+  const tools = [
+    [<MousePointer2 key="pointer" />, "Select"],
+    [<Crop key="crop" />, "Crop"],
+    [<Scissors key="trim" />, "Trim"],
+    [<LockKeyhole key="redact" />, "Redact"],
+  ]
 
-/* ─── Secondary features — text only, compact, less weight ─── */
-
-function TextFeature({ title, description, features }: { title: string; description: string; features: string[] }) {
   return (
-    <div>
-      <h3 className="text-[18px] font-bold tracking-[-0.02em] text-[#111] mb-2.5">{title}</h3>
-      <p className="text-[14px] leading-[1.7] text-[#111]/35 mb-5">{description}</p>
-      <div className="flex flex-wrap gap-x-5 gap-y-2">
-        {features.map((f) => (
-          <FeatureBullet key={f} label={f} />
+    <div className="glass-surface rounded-2xl border p-5 shadow-xl">
+      <div className="grid grid-cols-2 gap-3">
+        {tools.map(([icon, label], index) => (
+          <div key={String(label)} className={`rounded-xl border p-4 ${index === 1 ? "border-primary/40 bg-accent" : "border-border/70 bg-card/60"}`}>
+            <span className={`flex size-9 items-center justify-center rounded-lg ${index === 1 ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"} [&>svg]:size-4`}>
+              {icon}
+            </span>
+            <p className="mt-3 text-sm font-semibold">{label}</p>
+          </div>
         ))}
       </div>
+      <div className="mt-4 rounded-xl border border-border/70 bg-card/60 p-4">
+        <div className="flex items-center justify-between text-xs text-muted-foreground"><span>Padding</span><span className="font-mono">12%</span></div>
+        <div className="mt-3 h-1.5 rounded-full bg-secondary"><div className="h-full w-2/5 rounded-full bg-primary" /></div>
+      </div>
     </div>
   )
 }
 
-/* ─── Shared ─── */
-
-function FeatureBullet({ label }: { label: string }) {
+function ShareFlowMock() {
   return (
-    <span className="inline-flex items-center gap-1.5 text-[13px] text-[#111]/40">
-      <span className="h-1 w-1 rounded-full bg-[#e78a53]" />
+    <div className="glass-surface rounded-2xl border p-5 shadow-xl">
+      <div className="aspect-video rounded-xl border border-border/70 bg-secondary/80 p-4">
+        <div className="flex h-full items-center justify-center rounded-lg border border-border/70 bg-card">
+          <Camera className="size-10 text-muted-foreground" aria-hidden="true" />
+        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <MockAction icon={<Copy />} label="Copy" primary />
+        <MockAction icon={<Pin />} label="Pin" />
+        <MockAction icon={<Scissors />} label="Edit" />
+      </div>
+    </div>
+  )
+}
+
+function MockAction({ icon, label, primary = false }: { icon: React.ReactNode; label: string; primary?: boolean }) {
+  return (
+    <span className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium ${primary ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`}>
+      <span className="[&>svg]:size-4">{icon}</span>
       {label}
     </span>
-  )
-}
-
-function ValueProp({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
-  return (
-    <div className="text-center">
-      <div className="h-10 w-10 rounded-lg bg-[#111]/[0.03] flex items-center justify-center text-[#111]/40 mx-auto mb-4">
-        {icon}
-      </div>
-      <h3 className="text-[14px] font-semibold text-[#111]/70 mb-1.5">{title}</h3>
-      <p className="text-[13px] leading-[1.6] text-[#111]/35">{description}</p>
-    </div>
-  )
-}
-
-function Shortcut({ label, keys }: { label: string; keys: string[] }) {
-  return (
-    <div className="flex items-center justify-between px-5 py-3.5">
-      <span className="text-[13px] text-[#111]/45">{label}</span>
-      <div className="flex items-center gap-1">
-        {keys.map((k, i) => (
-          <kbd
-            key={i}
-            className="inline-flex items-center justify-center h-6 min-w-[24px] px-1.5 text-[11px] font-medium text-[#111]/50 bg-[#fafaf9] border border-[#111]/[0.08] rounded-md shadow-[0_1px_0_rgba(0,0,0,0.04)]"
-          >
-            {k}
-          </kbd>
-        ))}
-      </div>
-    </div>
   )
 }

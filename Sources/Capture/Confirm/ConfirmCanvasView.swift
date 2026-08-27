@@ -3,6 +3,7 @@ import QuartzCore
 
 extension Notification.Name {
     static let confirmCanvasStateDidChange = Notification.Name("Rune.ConfirmCanvasStateDidChange")
+    static let confirmCaptureContentDidChange = Notification.Name("Rune.ConfirmCaptureContentDidChange")
 }
 
 /// 确认模式画布：显示截图 + 就地标注（拖画/选中/移动/删除）。
@@ -44,6 +45,10 @@ final class ConfirmCanvasView: NSView {
     private var ocrDragStart: CGPoint?
     private var ocrDragRect: CGRect?
 
+    // 截图内容理解：确认台出现后在后台识别，不阻塞保存、复制和取消。
+    private var contentAnalysisTask: Task<Void, Never>?
+    private(set) var contentAnalysisState: CaptureContentAnalysisState = .analyzing
+
     init(
         image: CGImage,
         backgroundImage: CGImage?,
@@ -65,11 +70,18 @@ final class ConfirmCanvasView: NSView {
 
     override var acceptsFirstResponder: Bool { true }
 
+    /// 工具栏是独立面板。即使它短暂拿走了 key window，用户回到画布的
+    /// 第一次按下也必须直接开始标注，不能只用来激活画布、让首次拖拽失效。
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         window?.makeFirstResponder(self)
         if window != nil {
             startFreezePulse()
+            beginContentAnalysis()
+        } else {
+            cancelContentAnalysis()
         }
     }
 
@@ -170,20 +182,27 @@ final class ConfirmCanvasView: NSView {
         }
         guard !items.isEmpty else { return }
 
-        ctx.saveGState()
-        // AnnotationDrawing.draw(flipped:true) 要求上下文为 Y-down：整体翻转一次
-        ctx.translateBy(x: 0, y: drawRect.maxY)
-        ctx.scaleBy(x: 1, y: -1)
-        let flippedRect = CGRect(x: drawRect.minX, y: 0, width: drawRect.width, height: drawRect.height)
-        AnnotationDrawing.draw(
-            items,
-            in: ctx,
-            imageRect: flippedRect,
-            fullCanvasRect: flippedRect,
-            sourceImage: image,
-            flipped: true
-        )
-        ctx.restoreGState()
+        // 屏幕窗口的 CGContext 不能稳定生成快照，AnnotationDrawing 的打码预览会因此为空。
+        // 确认台直接从原图裁出并处理打码区域；保存时仍走统一的烘焙渲染。
+        drawRedactionPreviews(items)
+
+        let vectorItems = items.filter { !$0.tool.isRedactionTool }
+        if !vectorItems.isEmpty {
+            ctx.saveGState()
+            // AnnotationDrawing.draw(flipped:true) 要求上下文为 Y-down：整体翻转一次
+            ctx.translateBy(x: 0, y: drawRect.maxY)
+            ctx.scaleBy(x: 1, y: -1)
+            let flippedRect = CGRect(x: drawRect.minX, y: 0, width: drawRect.width, height: drawRect.height)
+            AnnotationDrawing.draw(
+                vectorItems,
+                in: ctx,
+                imageRect: flippedRect,
+                fullCanvasRect: flippedRect,
+                sourceImage: image,
+                flipped: true
+            )
+            ctx.restoreGState()
+        }
 
         // 5. 选中高亮：红色圆角虚线框 + 四角白色手柄方块（视觉上"可操作"）
         if let id = selectedID,
@@ -209,6 +228,27 @@ final class ConfirmCanvasView: NSView {
                 ctx.fill(rect)
                 ctx.stroke(rect)
             }
+        }
+    }
+
+    private func drawRedactionPreviews(_ items: [AnnotationItem]) {
+        let scale = imageDrawRect.width / max(CGFloat(image.width), 1)
+        for item in items where item.tool.isRedactionTool {
+            guard let preview = RedactionImageProcessor.previewImageFromCGImage(
+                source: image,
+                tool: item.tool,
+                density: item.redactionDensity,
+                normalizedBounds: item.bounds,
+                viewScale: scale
+            ) else { continue }
+            preview.draw(
+                in: viewRect(for: item.bounds),
+                from: .zero,
+                operation: .sourceOver,
+                fraction: 1,
+                respectFlipped: true,
+                hints: [.interpolation: item.tool == .pixelate ? NSImageInterpolation.none : .medium]
+            )
         }
     }
 
@@ -382,6 +422,10 @@ final class ConfirmCanvasView: NSView {
 
     private func postCanvasStateChange() {
         NotificationCenter.default.post(name: .confirmCanvasStateDidChange, object: self)
+    }
+
+    private func postContentAnalysisChange() {
+        NotificationCenter.default.post(name: .confirmCaptureContentDidChange, object: self)
     }
 
     private func viewRect(for normalized: CGRect) -> CGRect {
@@ -837,12 +881,92 @@ final class ConfirmCanvasView: NSView {
 
     // MARK: - 工具栏动作（复制 / 贴图）
 
+    /// 在截图确认台后台理解文字、链接、二维码和敏感信息。
+    /// 识别期间截图仍可正常保存或复制；结果只改变“内容”菜单。
+    func beginContentAnalysis(force: Bool = false) {
+        if contentAnalysisTask != nil, !force { return }
+        contentAnalysisTask?.cancel()
+        contentAnalysisState = .analyzing
+        postContentAnalysisChange()
+
+        let sourceImage = image
+        contentAnalysisTask = Task { @MainActor [weak self] in
+            do {
+                let analysis = try await OCRService.shared.analyzeCapture(in: sourceImage)
+                guard !Task.isCancelled, let self else { return }
+                self.contentAnalysisState = analysis.isEmpty ? .empty : .ready(analysis)
+                self.contentAnalysisTask = nil
+                self.postContentAnalysisChange()
+            } catch {
+                guard !Task.isCancelled, let self else { return }
+                self.contentAnalysisState = .failed
+                self.contentAnalysisTask = nil
+                self.postContentAnalysisChange()
+            }
+        }
+    }
+
+    func cancelContentAnalysis() {
+        contentAnalysisTask?.cancel()
+        contentAnalysisTask = nil
+    }
+
+    /// 把自动识别到的手机号、邮箱、身份证号直接变成可撤销的打码标注。
+    @discardableResult
+    func redactDetectedSensitiveContent() -> Int {
+        guard case let .ready(analysis) = contentAnalysisState else { return 0 }
+        var additions: [AnnotationItem] = []
+        for match in analysis.sensitiveMatches {
+            let box = match.boundingBox
+            let rect = CGRect(
+                x: box.minX,
+                y: 1 - box.maxY,
+                width: box.width,
+                height: box.height
+            )
+            let alreadyRedacted = annotations.contains { item in
+                item.tool == .blur && Self.nearlyEqual(item.rect, rect)
+            } || additions.contains { item in
+                item.tool == .blur && Self.nearlyEqual(item.rect, rect)
+            }
+            guard !alreadyRedacted else { continue }
+            additions.append(AnnotationItem(
+                tool: .blur,
+                rect: rect,
+                points: [],
+                swatch: selectedSwatch,
+                strokeWidth: strokeWidth,
+                redactionDensity: 0.55
+            ))
+        }
+        guard !additions.isEmpty else { return 0 }
+        pushUndo()
+        annotations.append(contentsOf: additions)
+        selectedID = nil
+        needsDisplay = true
+        postCanvasStateChange()
+        return additions.count
+    }
+
+    private static func nearlyEqual(_ lhs: CGRect, _ rhs: CGRect) -> Bool {
+        let tolerance: CGFloat = 0.002
+        return abs(lhs.minX - rhs.minX) < tolerance
+            && abs(lhs.minY - rhs.minY) < tolerance
+            && abs(lhs.width - rhs.width) < tolerance
+            && abs(lhs.height - rhs.height) < tolerance
+    }
+
     /// 「识别文字」→ 选字模式：识别出带位置的文字块，点选/划选复制（钉钉式）。
     /// 再次调用或 Esc 退出选字，回到标注模式。
     func toggleOCRMode(onDone: @escaping (String) -> Void) {
         finishTextEditing()
         if ocrMode {
             exitOCRMode()
+            return
+        }
+        if case let .ready(analysis) = contentAnalysisState,
+           !analysis.observations.isEmpty {
+            enterOCRMode(with: analysis.observations, onDone: onDone)
             return
         }
         let cg = image
@@ -853,28 +977,36 @@ final class ConfirmCanvasView: NSView {
                 onDone("未识别到文字")
                 return
             }
-            let r = imageDrawRect
-            // Vision boundingBox：归一化、原点左下（Y 向上）→ 视图坐标
-            ocrBlocks = observations.map { obs in
-                let b = obs.boundingBox
-                return (
-                    text: obs.text,
-                    frame: CGRect(
-                        x: r.minX + b.minX * r.width,
-                        y: r.minY + b.minY * r.height,
-                        width: b.width * r.width,
-                        height: b.height * r.height
-                    )
-                )
-            }
-            ocrMode = true
-            selectedTool = .select
-            selectedID = nil
-            installOCRMontior()
-            refreshCursor()
-            needsDisplay = true
-            onDone("选字模式：点一块复制一块，拖动选一段；Esc 退出")
+            enterOCRMode(with: observations, onDone: onDone)
         }
+    }
+
+    private func enterOCRMode(
+        with observations: [OCRTextObservation],
+        onDone: @escaping (String) -> Void
+    ) {
+        let r = imageDrawRect
+        // Vision boundingBox：归一化、原点左下（Y 向上）→ 视图坐标
+        ocrBlocks = observations.map { obs in
+            let b = obs.boundingBox
+            return (
+                text: obs.text,
+                frame: CGRect(
+                    x: r.minX + b.minX * r.width,
+                    y: r.minY + b.minY * r.height,
+                    width: b.width * r.width,
+                    height: b.height * r.height
+                )
+            )
+        }
+        ocrMode = true
+        selectedTool = .select
+        selectedID = nil
+        installOCRMontior()
+        refreshCursor()
+        needsDisplay = true
+        postCanvasStateChange()
+        onDone("选字模式：点一块复制一块，拖动选一段；Esc 退出")
     }
 
     /// 拖动/松开事件的队列级兜底：实测选字模式下 mouseDragged/mouseUp
@@ -943,6 +1075,7 @@ final class ConfirmCanvasView: NSView {
         removeOCRMonitor()
         refreshCursor()
         needsDisplay = true
+        postCanvasStateChange()
     }
 
     /// 复制选中块文字（按阅读顺序：从上到下、从左到右）

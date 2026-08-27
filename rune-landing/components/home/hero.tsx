@@ -100,6 +100,8 @@ export default function Hero() {
             className="flex items-start justify-center lg:justify-end"
           >
            
+            {/* Legacy demo accepts an unoptimized static preview. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/hero.png"
               alt="Rune Screenshot"

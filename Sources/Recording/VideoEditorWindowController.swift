@@ -21,14 +21,16 @@ final class VideoEditorWindowController: NSObject, NSWindowDelegate {
 
         let win = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1060, height: 640),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         win.title = "视频编辑器"
         win.contentView = hostingView
+        win.titleVisibility = .hidden
         win.titlebarAppearsTransparent = true
-        win.backgroundColor = RuneTheme.nsBackground
+        win.toolbarStyle = .unifiedCompact
+        win.backgroundColor = .windowBackgroundColor
         win.isReleasedWhenClosed = false
         win.minSize = NSSize(width: 780, height: 520)
         win.delegate = self

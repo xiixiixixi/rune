@@ -1,119 +1,75 @@
 import SwiftUI
 
-/// Rune 设计系统——「石墨仪器 Graphite Instrument」。
+/// Rune 设计系统——「取景玻璃 Viewfinder Glass」。
 ///
-/// 概念：Rune 是一台仪器，不是一叠纸。整机是截后确认条那种石墨机身：
-/// - **机身** 石墨 #1D1E22 是所有窗口与页面的底，发丝机线 #3B3D45 分割功能区；
-/// - **瓷白墨** #EDEEF0 承载文字，次墨与弱墨递减，像刻度盘上的刻字；
-/// - **瓷蓝** 唯一主色——仪器的指示灯：文字与激活态用亮瓷蓝 #8C9BFF，
-///   主按钮底用饱和蓝 #4D63F6（永远配白字）；
-/// - **信号橘** 只出现在录制与危险操作上，是警示灯；
-/// - **裁切角线**（CropMarks）是签名记号：一个裁图工具，身上带着裁切标记；
-/// - 应用内唯一的"纸"是用户的截图本身——深色机身让内容最跳。
-///
-/// 整机钉在深色外观（applyAppearance 恒定 darkAqua）：仪器只有一种机身，
-/// 系统控件与石墨面板永远同声部，外观串色事故从结构上不存在。
-///
-/// 字体见 RuneFont：界面声部 Space Grotesk，数据声部 Space Mono。
+/// 内容始终清晰，玻璃只承载导航、工具和临时操作。颜色、文字和控件跟随
+/// macOS 的明暗外观与辅助功能；macOS 26 使用系统 Liquid Glass（液态玻璃），
+/// macOS 14–15 使用原生 Material（材质）回退。裁切角线仍是 Rune 的产品签名，
+/// 但只用于需要强调“取景/裁剪”的关键表面。
 enum RuneTheme {
-    // MARK: - 色板（石墨·单一声部）
+    // MARK: - 系统动态色
 
-    /// 瓷蓝（选中态、激活工具、强调文字）：仪器指示灯的亮色
-    static let accent = Color(red: 0.549, green: 0.608, blue: 1.0)           // #8C9BFF
-    /// 主按钮底色：饱和蓝 + 白字，对比度 ≥4.7:1
-    static let accentFill = Color(red: 0.302, green: 0.388, blue: 0.965)     // #4D63F6
-    /// 主按钮按压态（深一档）
-    static let accentPressed = Color(red: 0.239, green: 0.318, blue: 0.91)   // #3D51E8
-    /// 主文字（瓷白墨）
-    static let ink = Color(red: 0.929, green: 0.933, blue: 0.941)            // #EDEEF0
-    /// 主文字（同 ink，语义别名）
-    static let textPrimary = ink
-    /// 次要文字（次墨）
-    static let textSecondary = Color(red: 0.651, green: 0.659, blue: 0.686)  // #A6A8AF
-    /// 弱化文字（弱墨）
-    static let textMuted = Color(red: 0.486, green: 0.498, blue: 0.529)      // #7C7F87
-    /// 细线 / 分隔线（机线）
-    static let separator = Color(red: 0.231, green: 0.239, blue: 0.271)      // #3B3D45
-    /// 页面底（机身）
-    static let background = Color(red: 0.114, green: 0.118, blue: 0.133)     // #1D1E22
-    /// 卡面（浮起面）
-    static let card = Color(red: 0.149, green: 0.153, blue: 0.173)           // #26272C
-    /// 瓷蓝淡底（激活底、错误底）
-    static let accentDim = Color(red: 0.549, green: 0.608, blue: 1.0).opacity(0.14)
+    static let accent = Color(nsColor: .controlAccentColor)
+    static let accentFill = Color(nsColor: .controlAccentColor)
+    static let accentPressed = Color(nsColor: .controlAccentColor).opacity(0.82)
+    static let ink = Color.primary
+    static let textPrimary = Color.primary
+    static let textSecondary = Color.secondary
+    static let textMuted = Color(nsColor: .tertiaryLabelColor)
+    static let separator = Color(nsColor: .separatorColor).opacity(0.72)
+    static let background = Color(nsColor: .windowBackgroundColor)
+    static let card = Color(nsColor: .controlBackgroundColor).opacity(0.78)
+    static let accentDim = Color(nsColor: .controlAccentColor).opacity(0.12)
 
-    /// 窗口底色的原生句柄：NSWindow.backgroundColor 直接用这份。
-    static let nsBackground = NSColor(
-        calibratedRed: 0.114, green: 0.118, blue: 0.133, alpha: 1
-    )
-    /// 强调色的原生句柄（NSView 层 contentTintColor / 手绘用）
-    static let nsAccent = NSColor(
-        calibratedRed: 0.549, green: 0.608, blue: 1.0, alpha: 1
-    )
+    static let nsBackground = NSColor.windowBackgroundColor
+    static let nsAccent = NSColor.controlAccentColor
+    static let signal = Color(nsColor: .systemRed)
 
-    /// 信号橘：只给录制圆点与危险操作，仪器的警示灯
-    static let signal = Color(red: 0.91, green: 0.286, blue: 0.165)          // #E8492A
+    // 旧命名作为语义兼容层保留；颜色已统一为系统动态色。
+    static let paperBackground = Color(nsColor: .windowBackgroundColor)
+    static let paperCard = Color(nsColor: .controlBackgroundColor)
+    static let paperInk = Color.primary
+    static let paperTextSecondary = Color.secondary
+    static let paperTextMuted = Color(nsColor: .tertiaryLabelColor)
+    static let paperSeparator = Color(nsColor: .separatorColor).opacity(0.72)
+    static let paperControl = Color(nsColor: .controlBackgroundColor)
+    static let paperAccent = Color(nsColor: .controlAccentColor)
+    static let annotationAccent = Color(nsColor: .controlAccentColor)
+    static let editorWorkspace = Color(nsColor: .underPageBackgroundColor)
 
-    // MARK: - 暖白纸面（设置、编辑器属性面板）
+    static let nsPaperBackground = NSColor.windowBackgroundColor
+    static let nsPaperAccent = NSColor.controlAccentColor
 
-    /// 设置与属性面板不再套用整机石墨色。纸面只承载控制，截图内容仍是主角。
-    static let paperBackground = Color(red: 0.973, green: 0.969, blue: 0.953) // #F8F7F3
-    static let paperCard = Color.white
-    static let paperInk = Color(red: 0.075, green: 0.075, blue: 0.071)        // #131312
-    static let paperTextSecondary = Color(red: 0.31, green: 0.306, blue: 0.286)
-    static let paperTextMuted = Color(red: 0.55, green: 0.537, blue: 0.50)
-    static let paperSeparator = Color(red: 0.89, green: 0.878, blue: 0.835)
-    static let paperControl = Color(red: 0.94, green: 0.933, blue: 0.91)
-    static let paperAccent = paperInk
-    static let annotationAccent = Color(red: 1.0, green: 0.35, blue: 0.27)
-    static let editorWorkspace = Color(red: 0.075, green: 0.082, blue: 0.094)
-
-    static let nsPaperBackground = NSColor(
-        calibratedRed: 0.973, green: 0.969, blue: 0.953, alpha: 1
-    )
-    static let nsPaperAccent = NSColor(
-        calibratedRed: 0.075, green: 0.075, blue: 0.071, alpha: 1
-    )
-
-    // MARK: - 石墨家族别名
-
-    /// 以下别名保留给"悬浮在画面上"的表面（确认条、Toast、录制状态条）。
-    /// 重新设计后全机统一石墨声部，别名与主色板同值，
-    /// 保留命名是为了让悬浮面代码继续读出"这是压在画面上的面"。
-    static let chromeBase = Color(red: 0.114, green: 0.118, blue: 0.133)      // #1D1E22
-    static let chromeElevated = Color(red: 0.149, green: 0.153, blue: 0.173)  // #26272C
-    static let chromeLine = Color(red: 0.231, green: 0.239, blue: 0.271)      // #3B3D45
-    static let chromeText = Color(red: 0.929, green: 0.933, blue: 0.941)      // #EDEEF0
-    static let chromeMuted = Color(red: 0.651, green: 0.659, blue: 0.686)     // #A6A8AF
-    static let chromeBlue = Color(red: 0.549, green: 0.608, blue: 1.0)        // #8C9BFF
-    static let chromeBlueFill = Color(red: 0.302, green: 0.388, blue: 0.965)  // #4D63F6
+    // 悬浮表面使用高对比动态色，真正的透明材质由 runeGlassSurface 提供。
+    static let chromeBase = Color(nsColor: .windowBackgroundColor).opacity(0.92)
+    static let chromeElevated = Color(nsColor: .controlBackgroundColor).opacity(0.72)
+    static let chromeLine = Color(nsColor: .separatorColor).opacity(0.68)
+    static let chromeText = Color.primary
+    static let chromeMuted = Color.secondary
+    static let chromeBlue = Color(nsColor: .controlAccentColor)
+    static let chromeBlueFill = Color(nsColor: .controlAccentColor)
 
     // MARK: - 尺寸
 
     /// 悬浮条标准高度
     static let barHeight: CGFloat = 56
     /// 悬浮条圆角
-    static let barCorner: CGFloat = 14
+    static let barCorner: CGFloat = 18
     /// 控件圆角（按钮、输入）
-    static let buttonCorner: CGFloat = 6
+    static let buttonCorner: CGFloat = 8
     /// 卡片圆角
-    static let cardCorner: CGFloat = 10
+    static let cardCorner: CGFloat = 12
     /// 图标按钮尺寸
     static let iconButtonSize: CGFloat = 38
 
     // MARK: - 组件样式
 
-    /// 悬浮条底：石墨浮面 + 机线细边 + 轻投影
+    /// 悬浮条底：macOS 26 原生玻璃，旧系统使用 Material 回退。
     static var barBackground: some View {
-        RoundedRectangle(cornerRadius: barCorner, style: .continuous)
-            .fill(card)
-            .overlay(
-                RoundedRectangle(cornerRadius: barCorner, style: .continuous)
-                    .strokeBorder(separator, lineWidth: 1)
-            )
-            .shadow(color: .black.opacity(0.07), radius: 14, x: 0, y: 4)
+        RuneGlassBackground(cornerRadius: barCorner, elevation: .floating)
     }
 
-    /// 主按钮（保存/导出/开始）：制图蓝底白字（accentFill 两班都保证白字可读）
+    /// 主按钮（保存/导出/开始）：系统强调色底、白字。
     static func primaryButtonLabel(_ text: String, systemImage: String? = nil) -> some View {
         Group {
             if let systemImage {
@@ -147,7 +103,7 @@ enum RuneTheme {
             .frame(height: 32)
             .background(
                 RoundedRectangle(cornerRadius: buttonCorner, style: .continuous)
-                    .fill(card)
+                    .fill(chromeElevated)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: buttonCorner, style: .continuous)
@@ -155,7 +111,7 @@ enum RuneTheme {
             )
     }
 
-    /// 工具图标：默认次墨，激活 = 瓷蓝图标 + 瓷蓝淡底
+    /// 工具图标：默认使用次要文字色，激活时跟随系统强调色。
     static func toolIcon(_ systemImage: String, active: Bool) -> some View {
         Image(systemName: systemImage)
             .font(RuneFont.swiftUI(size: 18, weight: .medium))
@@ -190,7 +146,7 @@ enum RuneTheme {
         }
     }
 
-    /// 快捷键徽章：Space Mono 数据声部 + 浮面细边——仪器铭牌上的打字机读数
+    /// 快捷键徽章：SF Mono（系统等宽字体）配合轻量浮面和细边。
     static func shortcutBadge(_ text: String) -> some View {
         Text(text)
             .font(RuneFont.mono(size: 10, weight: .medium))
@@ -207,7 +163,7 @@ enum RuneTheme {
             )
     }
 
-    /// 卡片底：石墨浮面 + 1px 机线，供各页面分区使用
+    /// 卡片底：系统控制背景 + 1px 分隔线，供各页面分区使用。
     static var cardBackground: some View {
         RoundedRectangle(cornerRadius: cardCorner, style: .continuous)
             .fill(card)
@@ -217,7 +173,7 @@ enum RuneTheme {
             )
     }
 
-    /// 面板卡：浮面 + 机线 + 可选裁切角线（签名记号，只给重点卡用）
+    /// 面板卡：浮面 + 分隔线 + 可选裁切角线（签名记号，只给重点卡用）。
     static func proofCardBackground(showingCropMarks: Bool = false) -> some View {
         cardBackground
             .shadow(color: .black.opacity(0.035), radius: 8, x: 0, y: 2)
@@ -229,12 +185,79 @@ enum RuneTheme {
             }
     }
 
-    /// 区块图章标签：Space Mono 小号 + 宽字距，像铭刻在面板上的工序章
+    /// 区块标签。保留旧 API，但不再额外拉开字距。
     static func stampLabel(_ text: String) -> some View {
         Text(text)
             .font(RuneFont.mono(size: 10, weight: .medium))
             .foregroundStyle(textMuted)
-            .tracking(1.6)
+    }
+}
+
+// MARK: - 玻璃表面
+
+enum RuneGlassElevation {
+    case embedded
+    case floating
+
+    var shadowOpacity: Double { self == .floating ? 0.16 : 0.05 }
+    var shadowRadius: CGFloat { self == .floating ? 22 : 8 }
+    var shadowY: CGFloat { self == .floating ? 8 : 2 }
+}
+
+/// 单一玻璃实现入口，避免各页面自行拼透明度和模糊。
+struct RuneGlassBackground: View {
+    let cornerRadius: CGFloat
+    var tint: Color? = nil
+    var interactive = false
+    var elevation: RuneGlassElevation = .embedded
+
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+
+        Group {
+            if reduceTransparency {
+                shape.fill(Color(nsColor: .windowBackgroundColor))
+            } else if #available(macOS 26.0, *) {
+                Color.clear
+                    .glassEffect(
+                        Glass.regular.tint(tint).interactive(interactive),
+                        in: shape
+                    )
+            } else {
+                shape.fill(.regularMaterial)
+            }
+        }
+        .overlay(
+            shape.strokeBorder(Color.white.opacity(0.16), lineWidth: 0.5)
+        )
+        .overlay(
+            shape.strokeBorder(RuneTheme.separator.opacity(0.55), lineWidth: 0.5)
+        )
+        .shadow(
+            color: .black.opacity(elevation.shadowOpacity),
+            radius: elevation.shadowRadius,
+            y: elevation.shadowY
+        )
+    }
+}
+
+private struct RuneGlassSurfaceModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    let tint: Color?
+    let interactive: Bool
+    let elevation: RuneGlassElevation
+
+    func body(content: Content) -> some View {
+        content.background {
+            RuneGlassBackground(
+                cornerRadius: cornerRadius,
+                tint: tint,
+                interactive: interactive,
+                elevation: elevation
+            )
+        }
     }
 }
 
@@ -279,6 +302,23 @@ struct CropMarks: Shape {
 }
 
 extension View {
+    /// 为导航、工具和弹层添加统一系统玻璃。不要用于长文本内容卡。
+    func runeGlassSurface(
+        cornerRadius: CGFloat = RuneTheme.cardCorner,
+        tint: Color? = nil,
+        interactive: Bool = false,
+        elevation: RuneGlassElevation = .embedded
+    ) -> some View {
+        modifier(
+            RuneGlassSurfaceModifier(
+                cornerRadius: cornerRadius,
+                tint: tint,
+                interactive: interactive,
+                elevation: elevation
+            )
+        )
+    }
+
     /// 给内容四角加裁切角线（画在内容边界外，需要外层留出约 12pt 空隙）。
     func cropMarks(color: Color = RuneTheme.textMuted, lineWidth: CGFloat = 1) -> some View {
         overlay(
@@ -287,19 +327,8 @@ extension View {
         )
     }
 
-    /// macOS 15+ 会给窗口工具栏自动铺一层玻璃材质，盖住自定义底色；
-    /// 这里把它关掉，让纸面透出来（macOS 14 本就没有这层）。
+    /// 旧调用兼容层。新的设计保留系统工具栏材质，不再隐藏它。
     func toolbarBackgroundHiddenIfAvailable() -> some View {
-        modifier(ToolbarBackgroundHider())
-    }
-}
-
-private struct ToolbarBackgroundHider: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(macOS 15.0, *) {
-            content.toolbarBackground(.hidden, for: .windowToolbar)
-        } else {
-            content
-        }
+        self
     }
 }

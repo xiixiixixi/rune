@@ -58,7 +58,7 @@ const Earth: React.FC<EarthProps> = ({
       markers: [
         // longitude latitude
       ],
-      onRender: (state: Record<string, any>) => {
+      onRender: (state) => {
         // Called on every animation frame.
         // `state` will be an empty object, return updated params.\
         state.phi = phi
@@ -69,7 +69,7 @@ const Earth: React.FC<EarthProps> = ({
     return () => {
       globe.destroy()
     }
-  }, [dark])
+  }, [baseColor, dark, diffuse, glowColor, mapBrightness, mapSamples, markerColor, scale, theta])
 
   return (
     <div className={cn("z-[10] mx-auto flex w-full max-w-[350px] items-center justify-center", className)}>

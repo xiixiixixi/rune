@@ -94,6 +94,14 @@ final class CaptureConfirmController: NSObject {
         canvasWindow = window
         self.canvas = canvas
 
+        #if DEBUG
+        // 第一次拖拽回归：保持画布为 key window，并预选打码工具，供真实鼠标验证。
+        if ProcessInfo.processInfo.arguments.contains("--audit-confirm-first-redaction") {
+            canvas.selectedTool = .blur
+            canvas.refreshCursor()
+        }
+        #endif
+
         // 底部工具栏（同 BurstStatusBar 的 NSPanel 配方，改贴屏幕底部）
         let toolbar = ConfirmToolbarView(controller: self)
         let panel = ToolbarPanel(
@@ -287,6 +295,7 @@ final class CaptureConfirmController: NSObject {
 
     private func closeWindows() {
         removeFocusGuard()
+        canvas?.cancelContentAnalysis()
         toolbarPanel?.orderOut(nil)
         toolbarPanel = nil
         canvasWindow?.orderOut(nil)

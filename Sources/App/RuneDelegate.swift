@@ -67,10 +67,14 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                     return
                 }
                 do {
-                    let result = try await OCRService.shared.recognize(in: cg)
-                    let text = result.text ?? ""
+                    let analysis = try await OCRService.shared.analyzeCapture(in: cg)
+                    let text = analysis.text ?? ""
                     let sample = text.prefix(80)
-                    report("PASS: 识别 \(text.count) 字符｜\(sample)…")
+                    report(
+                        "PASS: 文字块 \(analysis.textBlockCount)｜链接 \(analysis.links.count)｜"
+                        + "条码 \(analysis.barcodes.count)｜敏感信息 \(analysis.sensitiveMatches.count)｜"
+                        + "\(sample)…"
+                    )
                 } catch {
                     report("FAIL: \(error.localizedDescription)")
                 }
@@ -107,6 +111,21 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 RuneFont.runFontSelfTest()
             }
+        } else if ProcessInfo.processInfo.arguments.contains("--audit-update-window") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                let update = RuneUpdate(
+                    version: "0.8.0",
+                    notes: "新增可搜索的素材库\n改进截图与录屏的整理和复用体验\n修复若干稳定性问题",
+                    releasePageURL: URL(string: "https://github.com/xiixiixixi/rune/releases/latest")!,
+                    downloadURL: URL(string: "https://github.com/xiixiixixi/rune/releases/latest/download/Rune-latest.zip")
+                )
+                UpdateWindowController.shared.present(
+                    update,
+                    currentVersion: "0.7.4",
+                    on: NSScreen.main
+                )
+                DebugAuditSnapshot.captureAfter("update-window-redesign.png", delay: 1.2)
+            }
         } else if ProcessInfo.processInfo.arguments.contains("--audit-update-e2e") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 UpdateService.runEndToEndUpdate()
@@ -123,6 +142,14 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
             let state = CGPreflightScreenCaptureAccess() ? "granted" : "denied"
             try? state.write(
                 to: URL(fileURLWithPath: "/tmp/rune-screen-permission-state.txt"),
+                atomically: true,
+                encoding: .utf8
+            )
+            NSApp.terminate(nil)
+        } else if ProcessInfo.processInfo.arguments.contains("--audit-ax-state") {
+            let state = UIElementDetector.isTrusted ? "granted" : "denied"
+            try? state.write(
+                to: URL(fileURLWithPath: "/tmp/rune-accessibility-state.txt"),
                 atomically: true,
                 encoding: .utf8
             )
@@ -262,10 +289,50 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                 )
                 DebugAuditSnapshot.captureAfter("19-pin-redesign.png")
             }
+        } else if let settingsArgument = ProcessInfo.processInfo.arguments.first(
+            where: { $0.hasPrefix("--audit-settings=") }
+        ) {
+            let value = String(settingsArgument.dropFirst("--audit-settings=".count))
+            let section: SettingsSection? = switch value {
+            case "general": .general
+            case "capture": .capture
+            case "recording": .recording
+            case "about": .about
+            default: nil
+            }
+            if value == "history" || value == "videos" {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    CaptureLibraryWindowController.shared.open(on: NSScreen.main)
+                    DebugAuditSnapshot.captureAfter("library-\(value).png", delay: 1.2)
+                }
+            } else if let section {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    SettingsWindowController.shared.open(on: NSScreen.main, section: section)
+                    DebugAuditSnapshot.captureAfter("settings-\(value).png", delay: 1.2)
+                }
+            }
         } else if ProcessInfo.processInfo.arguments.contains("--audit-settings-history") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                SettingsWindowController.shared.open(on: NSScreen.main, section: .history)
-                DebugAuditSnapshot.captureAfter("21-history-redesign.png")
+                CaptureLibraryWindowController.shared.open(on: NSScreen.main)
+                DebugAuditSnapshot.captureAfter("21-library-redesign.png")
+            }
+        } else if let librarySearchArgument = ProcessInfo.processInfo.arguments.first(
+            where: { $0.hasPrefix("--audit-library-search=") }
+        ) {
+            let query = String(
+                librarySearchArgument.dropFirst("--audit-library-search=".count)
+            )
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                CaptureLibraryWindowController.shared.open(
+                    on: NSScreen.main,
+                    searchQuery: query
+                )
+                DebugAuditSnapshot.captureAfter("library-search.png", delay: 1.2)
+            }
+        } else if ProcessInfo.processInfo.arguments.contains("--audit-library") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                CaptureLibraryWindowController.shared.open(on: NSScreen.main)
+                DebugAuditSnapshot.captureAfter("library-redesign.png", delay: 1.2)
             }
         } else if ProcessInfo.processInfo.arguments.contains("--audit-settings") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
@@ -273,13 +340,20 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                 DebugAuditSnapshot.captureAfter("settings-redesign-final.png", delay: 1.2)
             }
         } else if ProcessInfo.processInfo.arguments.contains("--audit-confirm")
-                    || ProcessInfo.processInfo.arguments.contains("--audit-confirm-text") {
+                    || ProcessInfo.processInfo.arguments.contains("--audit-confirm-text")
+                    || ProcessInfo.processInfo.arguments.contains("--audit-confirm-first-redaction") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                guard let url = Bundle.main.url(
+                let contentImageArgument = ProcessInfo.processInfo.arguments.first {
+                    $0.hasPrefix("--audit-confirm-image=")
+                }
+                let url = contentImageArgument.map {
+                    URL(fileURLWithPath: String($0.dropFirst("--audit-confirm-image=".count)))
+                } ?? Bundle.main.url(
                     forResource: "mac-asset-3",
                     withExtension: "jpg",
                     subdirectory: "Backgrounds/mac"
-                ), let image = NSImage(contentsOf: url) else { return }
+                )
+                guard let url, let image = NSImage(contentsOf: url) else { return }
                 var rect = NSRect(origin: .zero, size: image.size)
                 guard let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else { return }
                 let targetIsSecondary = ProcessInfo.processInfo.arguments.contains("--audit-secondary")
@@ -313,7 +387,13 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                     width: CGFloat(cgImage.width) * 0.64,
                     height: CGFloat(cgImage.height) * 0.58
                 ).integral
-                guard let capturedImage = cgImage.cropping(to: crop) else { return }
+                let capturedImage: CGImage
+                if contentImageArgument != nil {
+                    capturedImage = cgImage
+                } else {
+                    guard let cropped = cgImage.cropping(to: crop) else { return }
+                    capturedImage = cropped
+                }
                 Task {
                     _ = await CaptureConfirmController.shared.present(
                         image: capturedImage,
@@ -323,10 +403,12 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                     )
                 }
                 DebugAuditSnapshot.captureAfter(
-                    targetIsSecondary
+                    contentImageArgument != nil
+                        ? "39-confirm-content.png"
+                        : (targetIsSecondary
                         ? "36-confirm-freeze-secondary.png"
-                        : "31-confirm-freeze-redesign.png",
-                    delay: 1.1
+                        : "31-confirm-freeze-redesign.png"),
+                    delay: contentImageArgument == nil ? 1.1 : 3.0
                 )
                 DebugAuditSnapshot.captureWindowLayoutAfter(
                     testsBottomEdge

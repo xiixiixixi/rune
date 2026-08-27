@@ -33,9 +33,6 @@ struct VideoEditorView: View {
 
     var body: some View {
         HSplitView {
-            videoInspector
-                .frame(width: 260)
-
             VStack(spacing: 0) {
                 videoPreview
                     .frame(minWidth: 460, minHeight: 280)
@@ -52,6 +49,9 @@ struct VideoEditorView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
             }
+
+            videoInspector
+                .frame(width: 286)
         }
         .toolbarBackgroundHiddenIfAvailable()
         .toolbar {
@@ -151,7 +151,7 @@ struct VideoEditorView: View {
             }
             .scrollContentBackground(.hidden)
         }
-        .background(RuneTheme.background)
+        .background(.regularMaterial)
     }
 
     // MARK: - Video Preview with Effects
@@ -174,7 +174,7 @@ struct VideoEditorView: View {
             let cornerRadius = config.cornerRadius * min(videoW, videoH)
 
             ZStack {
-                Color(nsColor: .windowBackgroundColor)
+                Color(nsColor: .underPageBackgroundColor)
 
                 ZStack {
                     videoBackground(config.style, size: CGSize(width: canvasW, height: canvasH))
@@ -347,7 +347,6 @@ private struct VideoInspectorSectionHeader: View {
         Text(title)
             .font(RuneFont.swiftUI(size: 11, weight: .semibold))
             .foregroundStyle(.tertiary)
-            .tracking(0.5)
     }
 }
 

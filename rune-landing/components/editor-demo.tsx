@@ -1,231 +1,136 @@
-const COLORS_SOLID = [
-  "transparent",
-  "#000000",
-  "#f5f5f4",
-  "#374151",
-  "#ef4444",
-  "#f97316",
-  "#eab308",
-  "#22c55e",
-  "#3b82f6",
-  "#8b5cf6",
-  "#ec4899",
-  "#06b6d4",
-];
+import {
+  ArrowUpRight,
+  Circle,
+  Crop,
+  EyeOff,
+  MousePointer2,
+  Square,
+  Type,
+} from "lucide-react"
 
-const GRADIENTS = [
-  "linear-gradient(135deg, #a8edea, #fed6e3)",
-  "linear-gradient(135deg, #3b82f6, #8b5cf6)",
-  "linear-gradient(135deg, #f97316, #ec4899)",
-  "linear-gradient(135deg, #06b6d4, #3b82f6)",
-  "linear-gradient(135deg, #8b5cf6, #ec4899)",
-  "linear-gradient(135deg, #ef4444, #f97316)",
-  "linear-gradient(135deg, #22c55e, #06b6d4)",
-  "linear-gradient(135deg, #eab308, #f97316)",
-  "linear-gradient(135deg, #ec4899, #8b5cf6, #3b82f6)",
-  "linear-gradient(135deg, #f97316, #ef4444, #ec4899)",
-  "linear-gradient(135deg, #22c55e, #eab308)",
-  "linear-gradient(135deg, #3b82f6, #06b6d4, #22c55e)",
-];
-
-const TOOLS = [
-  { icon: "↖", label: "Select" },
-  { icon: "□", label: "Rectangle" },
-  { icon: "■", label: "Filled Rect" },
-  { icon: "○", label: "Circle" },
-  { icon: "↗", label: "Arrow" },
-  { icon: "〰", label: "Freehand" },
-  { icon: "✎", label: "Pen" },
-  { icon: "①", label: "Number" },
-  { icon: "◐", label: "Blur" },
-  { icon: "☰", label: "Settings" },
-];
-
-const ACTIVE_TOOL = 0;
-const SELECTED_GRADIENT = 8;
-
-function SliderRow({ label, value, progress }: { label: string; value: string; progress: number }) {
-  return (
-    <div className="mb-2.5">
-      <div className="flex justify-between mb-1">
-        <span className="text-[11px] text-black/40">{label}</span>
-        <span className="text-[11px] text-black/50 font-medium">{value}</span>
-      </div>
-      <div className="h-1 bg-black/[0.06] rounded-sm overflow-hidden">
-        <div
-          className="h-full bg-blue-500 rounded-sm"
-          style={{ width: `${progress}%` }}
-        />
-      </div>
-    </div>
-  );
-}
+const tools = [MousePointer2, Square, ArrowUpRight, Type, EyeOff, Circle]
+const swatches = ["#f2f2f7", "#1c1c1e", "#ff453a", "#ff9f0a", "#30d158", "#0a84ff", "#bf5af2"]
 
 export function EditorPreview() {
   return (
-    <div
-      className="relative w-full font-[-apple-system,BlinkMacSystemFont,'Segoe_UI',sans-serif]"
-      style={{
-        aspectRatio: "1200/760",
-        background: "linear-gradient(145deg, #fce4ec 0%, #e8f5e9 30%, #e3f2fd 60%, #fff3e0 100%)",
-      }}
-    >
-      {/* Window chrome */}
-      <div className="absolute inset-4 sm:inset-5 bg-white rounded-xl shadow-[0_25px_60px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.06)] overflow-hidden flex flex-col">
-        {/* Title bar */}
-        <div className="h-[42px] shrink-0 bg-[#fafafa] border-b border-black/[0.06] flex items-center px-3.5">
-          <div className="flex gap-[7px]">
-            <div className="w-3 h-3 rounded-full bg-[#ff5f57]" />
-            <div className="w-3 h-3 rounded-full bg-[#febc2e]" />
-            <div className="w-3 h-3 rounded-full bg-[#28c840]" />
-          </div>
-          <div className="flex-1 text-center text-xs text-black/40 font-medium tracking-tight">
-            rune_screenshot
-          </div>
-          <div className="flex gap-2">
-            <div className="text-[11px] text-black/30 px-2 py-0.5 bg-black/[0.04] rounded-[5px]">Cancel</div>
-            <div className="text-[11px] text-white px-2 py-0.5 bg-blue-500 rounded-[5px]">Copy</div>
-            <div className="text-[11px] text-white px-2 py-0.5 bg-blue-500 rounded-[5px]">Export</div>
-          </div>
-        </div>
+    <div className="relative aspect-[1200/760] min-h-[360px] w-full bg-secondary p-3 sm:p-5">
+      <div className="glass-surface flex h-full overflow-hidden rounded-xl border shadow-xl">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <WindowToolbar />
 
-        <div className="flex flex-1 min-h-0">
-          {/* Left sidebar */}
-          <div className="w-[240px] shrink-0 border-r border-black/[0.06] bg-[#fdfdfd] p-3.5 overflow-y-auto hidden md:block">
-            {/* Tools */}
-            <div className="mb-5">
-              <div className="text-[10px] font-semibold text-black/30 tracking-widest uppercase mb-2.5">Tools</div>
-              <div className="grid grid-cols-5 gap-1">
-                {TOOLS.map((tool, i) => (
-                  <div
-                    key={i}
-                    className={`w-9 h-9 flex items-center justify-center rounded-lg text-base ${
-                      i === ACTIVE_TOOL
-                        ? "bg-blue-500 text-white"
-                        : "bg-black/[0.03] text-black/45"
-                    }`}
-                  >
-                    {tool.icon}
-                  </div>
-                ))}
-              </div>
-              <div className="mt-2 text-[13px] font-medium text-black/50">Aa</div>
-            </div>
-
-            {/* Effects */}
-            <div className="mb-5">
-              <div className="text-[10px] font-semibold text-black/30 tracking-widest uppercase mb-2.5">Effects</div>
-              <SliderRow label="Padding" value="8%" progress={40} />
-              <SliderRow label="Corner Radius" value="18" progress={45} />
-              <SliderRow label="Shadow" value="36%" progress={55} />
-            </div>
-
-            {/* Layout */}
-            <div className="mb-5">
-              <div className="text-[10px] font-semibold text-black/30 tracking-widest uppercase mb-2.5">Layout</div>
-              <div className="flex justify-between items-center mb-1.5">
-                <span className="text-[11px] text-black/40">Ratio</span>
-                <span className="text-[11px] text-black/50 font-medium">Auto</span>
-              </div>
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-[11px] text-black/40">Align</span>
-              </div>
-              <div className="grid grid-cols-3 gap-[5px] w-20 mx-auto">
-                {Array.from({ length: 9 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className={`w-2 h-2 rounded-full mx-auto ${
-                      i === 4 ? "bg-blue-500" : "bg-black/10"
-                    }`}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Background */}
-            <div>
-              <div className="text-[10px] font-semibold text-black/30 tracking-widest uppercase mb-2.5">Background</div>
-              <div className="text-[10px] text-black/30 mb-1.5">Solid</div>
-              <div className="grid grid-cols-6 gap-1 mb-2.5">
-                {COLORS_SOLID.map((color, i) => (
-                  <div
-                    key={i}
-                    className="w-6 h-6 rounded-md border border-black/[0.08]"
-                    style={{
-                      background:
-                        color === "transparent"
-                          ? "linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%), linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%)"
-                          : color,
-                      backgroundSize: color === "transparent" ? "8px 8px" : undefined,
-                      backgroundPosition: color === "transparent" ? "0 0, 4px 4px" : undefined,
-                    }}
-                  />
-                ))}
-              </div>
-              <div className="text-[10px] text-black/30 mb-1.5">Gradients</div>
-              <div className="grid grid-cols-6 gap-1">
-                {GRADIENTS.map((gradient, i) => (
-                  <div
-                    key={i}
-                    className="w-6 h-6 rounded-md"
-                    style={{
-                      background: gradient,
-                      border:
-                        i === SELECTED_GRADIENT
-                          ? "2px solid #3b82f6"
-                          : "1px solid rgba(0,0,0,0.08)",
-                      boxShadow:
-                        i === SELECTED_GRADIENT
-                          ? "0 0 0 2px rgba(59,130,246,0.3)"
-                          : "none",
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Canvas */}
-          <div className="flex-1 flex items-center justify-center bg-[#f5f5f4] overflow-hidden p-4 sm:p-6">
-            {/* Background + Screenshot */}
-            <div
-              className="w-[78%] rounded-[18px] flex items-center justify-center"
-              style={{
-                aspectRatio: "16/10",
-                background: "linear-gradient(135deg, #ec4899, #8b5cf6, #3b82f6)",
-                padding: "8%",
-                boxShadow: "0 36px 72px rgba(0,0,0,0.3)",
-              }}
-            >
-              {/* Mock screenshot content */}
-              <div className="w-full h-full rounded-[14px] bg-[#1a1a2e] overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.15)]">
-                {/* Mock app title bar */}
-                <div className="h-7 bg-white/[0.06] flex items-center px-2.5 gap-[5px]">
-                  <div className="w-2 h-2 rounded-full bg-[#ff5f57]" />
-                  <div className="w-2 h-2 rounded-full bg-[#febc2e]" />
-                  <div className="w-2 h-2 rounded-full bg-[#28c840]" />
-                  <div className="flex-1 text-center text-[9px] text-white/30">Image Viewer</div>
+          <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[#242426] p-6 sm:p-10">
+            <div className="flex aspect-[16/10] w-[76%] max-w-2xl items-center justify-center rounded-2xl bg-[#3974a8] p-[8%] shadow-2xl">
+              <div className="h-full w-full overflow-hidden rounded-xl border border-white/10 bg-[#111214] shadow-xl">
+                <div className="flex h-7 items-center gap-1.5 border-b border-white/10 bg-white/5 px-2.5">
+                  <span className="size-2 rounded-full bg-[#ff5f57]" />
+                  <span className="size-2 rounded-full bg-[#febc2e]" />
+                  <span className="size-2 rounded-full bg-[#28c840]" />
                 </div>
-
-                {/* Mock content area */}
-                <div className="p-3 h-[calc(100%-28px)]">
-                  <div className="w-full h-full rounded bg-gradient-to-b from-[#16213e] via-[#0f3460] via-[70%] to-[#e94560] flex flex-col items-center justify-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center text-base">
-                      ⌘
-                    </div>
-                    <div className="text-[11px] text-white/60 font-semibold tracking-tight">
-                      Rune
-                    </div>
-                    <div className="text-[8px] text-white/30 max-w-[60%] text-center leading-snug">
-                      Capture, annotate, and beautify your screenshots
-                    </div>
+                <div className="flex h-[calc(100%-1.75rem)] items-center justify-center p-5 text-center">
+                  <div>
+                    <div aria-hidden="true" className="mx-auto flex size-11 items-center justify-center rounded-xl bg-white/10 text-lg text-white">⌘</div>
+                    <p className="mt-3 text-sm font-semibold text-white">Rune</p>
+                    <p className="mt-1 text-xs text-white/50">Capture. Explain. Share.</p>
                   </div>
                 </div>
               </div>
             </div>
+
+            <ToolShelf />
           </div>
         </div>
+
+        <Inspector />
       </div>
     </div>
-  );
+  )
+}
+
+function WindowToolbar() {
+  return (
+    <div className="glass-surface flex h-12 shrink-0 items-center border-b px-3 sm:px-4">
+      <div className="flex gap-1.5">
+        <span className="size-3 rounded-full bg-[#ff5f57]" />
+        <span className="size-3 rounded-full bg-[#febc2e]" />
+        <span className="size-3 rounded-full bg-[#28c840]" />
+      </div>
+      <span className="flex-1 text-center text-xs font-medium text-muted-foreground">Rune editor</span>
+      <div className="flex items-center gap-2">
+        <span className="hidden rounded-md bg-secondary px-2 py-1 text-xs text-muted-foreground sm:inline">Copy</span>
+        <span className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground">Export</span>
+      </div>
+    </div>
+  )
+}
+
+function ToolShelf() {
+  return (
+    <div className="glass-surface absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-2xl border p-1.5 shadow-xl">
+      {tools.map((Icon, index) => (
+        <span
+          key={index}
+          className={`flex size-9 items-center justify-center rounded-xl ${index === 0 ? "bg-primary text-primary-foreground" : "text-foreground"}`}
+        >
+          <Icon className="size-4" aria-hidden="true" />
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function Inspector() {
+  return (
+    <aside className="hidden w-60 shrink-0 border-l border-border/70 bg-card/80 md:block">
+      <div className="grid grid-cols-2 gap-1 border-b border-border/70 p-2">
+        <span className="rounded-lg bg-secondary px-3 py-2 text-center text-xs font-medium">Appearance</span>
+        <span className="px-3 py-2 text-center text-xs text-muted-foreground">Annotate</span>
+      </div>
+
+      <div className="space-y-5 p-4">
+        <section>
+          <div className="mb-3 flex items-center gap-2">
+            <Crop className="size-4 text-muted-foreground" aria-hidden="true" />
+            <h2 className="text-xs font-semibold">Frame</h2>
+          </div>
+          <Slider label="Padding" value="8%" width="40%" />
+          <Slider label="Corner radius" value="18" width="46%" />
+          <Slider label="Shadow" value="36%" width="58%" />
+        </section>
+
+        <section className="border-t border-border/70 pt-4">
+          <h2 className="mb-3 text-xs font-semibold">Background</h2>
+          <div className="grid grid-cols-7 gap-1.5">
+            {swatches.map((swatch, index) => (
+              <span
+                key={swatch}
+                className={`aspect-square rounded-md border ${index === 5 ? "ring-2 ring-primary ring-offset-1 ring-offset-card" : "border-border"}`}
+                style={{ backgroundColor: swatch }}
+              />
+            ))}
+          </div>
+        </section>
+
+        <section className="border-t border-border/70 pt-4">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Ratio</span>
+            <span className="font-medium">Automatic</span>
+          </div>
+        </section>
+      </div>
+    </aside>
+  )
+}
+
+function Slider({ label, value, width }: { label: string; value: string; width: string }) {
+  return (
+    <div className="mb-3">
+      <div className="mb-1.5 flex justify-between text-[11px] text-muted-foreground">
+        <span>{label}</span>
+        <span className="font-mono">{value}</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-secondary">
+        <div className="h-full rounded-full bg-primary" style={{ width }} />
+      </div>
+    </div>
+  )
 }

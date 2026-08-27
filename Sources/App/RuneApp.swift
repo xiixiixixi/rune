@@ -7,8 +7,6 @@ struct RuneApp: App {
     var body: some Scene {
         Settings {
             PreferencesView()
-                .runeTypography()
-                .tint(RuneTheme.accent)
         }
     }
 }

@@ -40,7 +40,7 @@ struct RecordingStatusBarView: View {
             .frame(minWidth: 72, alignment: .leading)
 
             Rectangle()
-                .fill(Color.white.opacity(0.14))
+                .fill(RuneTheme.chromeLine)
                 .frame(width: 1, height: 24)
 
             Button {
@@ -48,10 +48,10 @@ struct RecordingStatusBarView: View {
             } label: {
                 Label(isPaused ? "继续" : "暂停", systemImage: isPaused ? "play.fill" : "pause.fill")
                     .font(RuneFont.swiftUI(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.88))
+                    .foregroundStyle(RuneTheme.chromeText)
                     .padding(.horizontal, 9)
                     .frame(height: 30)
-                    .background(Color.white.opacity(0.09), in: Capsule())
+                    .background(RuneTheme.chromeElevated, in: Capsule())
             }
             .buttonStyle(RecordingControlButtonStyle())
             .accessibilityLabel(isPaused ? "继续录屏" : "暂停录屏")
@@ -70,9 +70,9 @@ struct RecordingStatusBarView: View {
             ) {
                 Image(systemName: "ellipsis")
                     .font(RuneFont.swiftUI(size: 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.82))
+                    .foregroundStyle(RuneTheme.chromeText)
                     .frame(width: 30, height: 30)
-                    .background(Color.white.opacity(0.09), in: Circle())
+                    .background(RuneTheme.chromeElevated, in: Circle())
             }
             .help("更多录屏操作")
             .accessibilityLabel("更多录屏操作")
@@ -94,15 +94,7 @@ struct RecordingStatusBarView: View {
         .padding(.horizontal, 10)
         .frame(height: 48)
         .fixedSize()
-        .background(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .fill(RuneTheme.chromeBase.opacity(0.97))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 13, style: .continuous)
-                        .strokeBorder(RuneTheme.chromeLine, lineWidth: 1)
-                )
-                .shadow(color: .black.opacity(0.34), radius: 12, y: 4)
-        )
+        .runeGlassSurface(cornerRadius: 16, elevation: .floating)
     }
 
     private func formatTime(_ seconds: Int) -> String {

@@ -159,13 +159,7 @@ struct PreviewCardView: View {
             footer
         }
         .frame(width: 248, height: 200)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
-        )
-        .shadow(color: .black.opacity(0.20), radius: 18, y: 7)
+        .runeGlassSurface(cornerRadius: 16, elevation: .floating)
         .frame(width: 272, height: 224, alignment: .bottomTrailing)
         .onHover { hovering in
             if hovering {
@@ -190,6 +184,7 @@ struct PreviewCardView: View {
 
             Text(isVideo ? "录屏已保存" : "截图已保存")
                 .font(RuneFont.swiftUI(size: 12, weight: .semibold))
+                .foregroundStyle(RuneTheme.chromeText)
 
             Spacer()
 
@@ -198,8 +193,9 @@ struct PreviewCardView: View {
             } label: {
                 Image(systemName: "xmark")
                     .font(RuneFont.swiftUI(size: 10, weight: .semibold))
+                    .foregroundStyle(RuneTheme.chromeMuted)
                     .frame(width: 24, height: 24)
-                    .background(Color.primary.opacity(0.055), in: Circle())
+                    .background(RuneTheme.chromeBase, in: Circle())
             }
             .buttonStyle(.plain)
             .help("关闭预览")
@@ -211,7 +207,7 @@ struct PreviewCardView: View {
 
     private var preview: some View {
         ZStack {
-            Color.primary.opacity(0.035)
+            RuneTheme.chromeBase
 
             if let thumbnail {
                 Image(nsImage: thumbnail)
@@ -235,7 +231,7 @@ struct PreviewCardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
+                .strokeBorder(RuneTheme.chromeLine, lineWidth: 1)
         )
         .contentShape(Rectangle())
         .onTapGesture { overlay.openEditor() }
@@ -293,9 +289,9 @@ struct PreviewCardView: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(RuneFont.swiftUI(size: 12, weight: .semibold))
-                .foregroundStyle(.primary.opacity(0.76))
+                .foregroundStyle(RuneTheme.chromeMuted)
                 .frame(width: 32, height: 32)
-                .background(Color.primary.opacity(0.055), in: Circle())
+                .background(RuneTheme.chromeBase, in: Circle())
         }
         .buttonStyle(RuneTheme.RunePressStyle())
         .help(help)

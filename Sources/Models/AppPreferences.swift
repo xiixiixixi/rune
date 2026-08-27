@@ -18,14 +18,14 @@ enum AppPreferences {
     private static let fileNameFormatKey = "bs_fileNameFormat"
     private static let automaticallyChecksForUpdatesKey = "rune_automaticallyChecksForUpdates"
     private static let lastAutomaticUpdateCheckKey = "rune_lastAutomaticUpdateCheck"
+    private static let detectUIElementsKey = "rune_detectUIElements"
 
     // MARK: - Appearance
 
-    /// Rune 是一台石墨仪器：整机钉在深色外观，不提供浅色机身。
-    /// 系统控件（开关、分段、菜单）随之永远渲染深色，与石墨面板同声部。
+    /// 跟随 macOS 系统外观，让玻璃、系统控件和辅助功能保持一致。
     @MainActor
     static func applyAppearance() {
-        NSApp.appearance = NSAppearance(named: .darkAqua)
+        NSApp.appearance = nil
     }
 
     // MARK: - General
@@ -78,6 +78,18 @@ enum AppPreferences {
     static var playSound: Bool {
         get { UserDefaults.standard.object(forKey: playSoundKey) as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: playSoundKey) }
+    }
+
+    /// 类 Snipaste 的窗口内界面区域识别。默认打开逻辑但不主动索权；
+    /// 没有辅助功能权限时自动退回普通窗口识别。
+    static var detectUIElements: Bool {
+        get {
+            if UserDefaults.standard.object(forKey: detectUIElementsKey) == nil {
+                return true
+            }
+            return UserDefaults.standard.bool(forKey: detectUIElementsKey)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: detectUIElementsKey) }
     }
 
     // MARK: - Updates
