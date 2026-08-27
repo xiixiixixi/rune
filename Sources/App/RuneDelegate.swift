@@ -121,7 +121,7 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                 )
                 UpdateWindowController.shared.present(
                     update,
-                    currentVersion: "0.7.4",
+                    currentVersion: "0.7.5",
                     on: NSScreen.main
                 )
                 DebugAuditSnapshot.captureAfter("update-window-redesign.png", delay: 1.2)

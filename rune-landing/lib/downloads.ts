@@ -8,7 +8,7 @@ export interface ReleaseInfo {
 }
 
 export const defaultRelease: ReleaseInfo = {
-  version: "0.7.4",
+  version: "0.7.5",
   appleSilicon: `https://github.com/${REPO}/releases/latest`,
   intel: `https://github.com/${REPO}/releases/latest`,
 }
