@@ -60,12 +60,19 @@ struct UpdateWindowView: View {
     @State private var phase: Phase = .confirming
     @State private var progress: Double = 0
     @State private var errorMessage: String?
+    @State private var recoveryAction: RecoveryAction?
 
     private enum Phase {
         case confirming
         case downloading
         case installing
+        case switchingToInstalledApplication
         case failed
+    }
+
+    private enum RecoveryAction {
+        case openInstalledApplication
+        case openReleasePage
     }
 
     var body: some View {
@@ -123,6 +130,16 @@ struct UpdateWindowView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 14)
+            } else if phase == .switchingToInstalledApplication {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("正在打开应用程序中的 Rune…")
+                        .font(RuneFont.swiftUI(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 14)
             } else if phase == .failed, let errorMessage {
                 Text(errorMessage)
                     .font(RuneFont.swiftUI(size: 11))
@@ -145,13 +162,19 @@ struct UpdateWindowView: View {
                     }
                     .keyboardShortcut(.cancelAction)
 
-                    Button(phase == .failed ? "重试" : "立即更新") {
-                        startUpdate()
+                    Button(primaryButtonTitle) {
+                        if recoveryAction == .openInstalledApplication {
+                            openInstalledApplication()
+                        } else if recoveryAction == .openReleasePage {
+                            NSWorkspace.shared.open(update.releasePageURL)
+                        } else {
+                            startUpdate()
+                        }
                     }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
                     .tint(RuneTheme.accentFill)
-                    .disabled(update.downloadURL == nil)
+                    .disabled(recoveryAction == nil && update.downloadURL == nil)
                 }
             }
             .padding(.top, 14)
@@ -161,8 +184,19 @@ struct UpdateWindowView: View {
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
+    private var primaryButtonTitle: String {
+        if recoveryAction == .openInstalledApplication {
+            return "打开正式版"
+        }
+        if recoveryAction == .openReleasePage {
+            return "手动下载"
+        }
+        return phase == .failed ? "重试" : "立即更新"
+    }
+
     private func startUpdate() {
         errorMessage = nil
+        recoveryAction = nil
         phase = .downloading
         progress = 0
 
@@ -175,8 +209,35 @@ struct UpdateWindowView: View {
                 try UpdateService.installAndRelaunch(zipURL: zipURL)
             } catch {
                 phase = .failed
+                if let updateError = error as? RuneUpdateError,
+                   case .devBuildNotSupported = updateError {
+                    if let installed = UpdateService.installedApplication() {
+                        recoveryAction = .openInstalledApplication
+                        errorMessage = "当前运行的是项目调试副本。已经找到应用程序中的 Rune \(installed.version)，请打开正式版继续更新。"
+                    } else {
+                        recoveryAction = .openReleasePage
+                        errorMessage = "当前运行的是项目调试副本，而且应用程序文件夹中没有 Rune。请下载正式版并拖入应用程序文件夹。"
+                    }
+                } else {
+                    errorMessage = (error as? LocalizedError)?.errorDescription
+                        ?? "更新失败，请稍后再试。"
+                }
+            }
+        }
+    }
+
+    private func openInstalledApplication() {
+        errorMessage = nil
+        phase = .switchingToInstalledApplication
+
+        Task {
+            do {
+                try await UpdateService.openInstalledApplicationAndQuit()
+            } catch {
+                phase = .failed
+                recoveryAction = nil
                 errorMessage = (error as? LocalizedError)?.errorDescription
-                    ?? "更新失败，请稍后再试。"
+                    ?? "无法打开应用程序中的 Rune，请稍后再试。"
             }
         }
     }

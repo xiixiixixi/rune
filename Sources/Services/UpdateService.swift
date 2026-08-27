@@ -8,6 +8,11 @@ struct RuneUpdate: Equatable, Sendable {
     let downloadURL: URL?
 }
 
+struct InstalledRuneApplication: Equatable, Sendable {
+    let url: URL
+    let version: String
+}
+
 enum RuneUpdateCheckResult: Equatable, Sendable {
     case upToDate(latestVersion: String)
     case updateAvailable(RuneUpdate)
@@ -20,6 +25,7 @@ enum RuneUpdateError: LocalizedError {
     case extractionFailed
     case packageRejected
     case devBuildNotSupported
+    case installedCopyMissing
 
     var errorDescription: String? {
         switch self {
@@ -34,7 +40,9 @@ enum RuneUpdateError: LocalizedError {
         case .packageRejected:
             return "更新包校验未通过，已中止安装。"
         case .devBuildNotSupported:
-            return "当前运行的是开发版，请从应用程序文件夹启动 Rune 后再更新。"
+            return "当前运行的是项目调试副本，不能直接覆盖构建目录。"
+        case .installedCopyMissing:
+            return "没有在应用程序文件夹中找到可启动的 Rune。"
         }
     }
 }
@@ -127,7 +135,7 @@ enum UpdateService {
                 // 网络失败不记，等下一个整点自动重试。
                 AppPreferences.lastAutomaticUpdateCheck = Date()
                 guard case let .updateAvailable(update) = result else { return }
-                await UpdateWindowController.shared.present(update, currentVersion: currentVersion)
+                UpdateWindowController.shared.present(update, currentVersion: currentVersion)
             } catch {
                 // 静默失败：不打扰用户，下个小时再试
             }
@@ -227,7 +235,7 @@ enum UpdateService {
     /// 重新启动 → 清理，全程无需用户操作。
     @MainActor static func installAndRelaunch(zipURL: URL) throws {
         let appURL = Bundle.main.bundleURL
-        guard !appURL.path.contains("/.build/") else {
+        guard !isBuildDirectory(appURL) else {
             throw RuneUpdateError.devBuildNotSupported
         }
 
@@ -251,6 +259,66 @@ enum UpdateService {
         installer.arguments = ["-c", script]
         try installer.run()
 
+        NSApp.terminate(nil)
+    }
+
+    /// 调试副本不能安全地覆盖 `.build` 目录，但可以把用户交回已经安装好的 Rune。
+    /// 只接受系统或用户“应用程序”文件夹中、且包标识一致的副本。
+    static func installedApplication() -> InstalledRuneApplication? {
+        let fileManager = FileManager.default
+        let candidates = [
+            URL(fileURLWithPath: "/Applications/Rune.app", isDirectory: true),
+            fileManager.homeDirectoryForCurrentUser
+                .appendingPathComponent("Applications/Rune.app", isDirectory: true),
+        ]
+        let runningURL = Bundle.main.bundleURL.resolvingSymlinksInPath().standardizedFileURL
+        let expectedBundleID = Bundle.main.bundleIdentifier ?? "com.tc.rune"
+
+        for candidate in candidates {
+            let normalized = candidate.resolvingSymlinksInPath().standardizedFileURL
+            guard normalized != runningURL,
+                  fileManager.fileExists(atPath: normalized.path),
+                  let bundle = Bundle(url: normalized),
+                  bundle.bundleIdentifier == expectedBundleID,
+                  let version = bundle.object(
+                    forInfoDictionaryKey: "CFBundleShortVersionString"
+                  ) as? String else { continue }
+            return InstalledRuneApplication(url: normalized, version: version)
+        }
+        return nil
+    }
+
+    static func isBuildDirectory(_ appURL: URL) -> Bool {
+        appURL.standardizedFileURL.pathComponents.contains(".build")
+    }
+
+    /// 打开正式安装版时强制创建新进程，避免 Launch Services 因包标识相同
+    /// 又把当前调试副本激活。清空自动检查时间，让旧版启动后立即继续检查更新。
+    @MainActor static func openInstalledApplicationAndQuit() async throws {
+        guard let installed = installedApplication() else {
+            throw RuneUpdateError.installedCopyMissing
+        }
+
+        AppPreferences.lastAutomaticUpdateCheck = .distantPast
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        configuration.addsToRecentItems = false
+        configuration.createsNewApplicationInstance = true
+        configuration.allowsRunningApplicationSubstitution = false
+
+        try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<Void, Error>) in
+            NSWorkspace.shared.openApplication(
+                at: installed.url,
+                configuration: configuration
+            ) { _, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: ())
+                }
+            }
+        }
         NSApp.terminate(nil)
     }
 
