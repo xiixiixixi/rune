@@ -18,6 +18,7 @@ final class ConfirmCanvasView: NSView {
     private weak var controller: CaptureConfirmController?
     private let dimLayer = CAShapeLayer()
     private var pulseLayers: [CAShapeLayer] = []
+    private var yumGlowLayer: CALayer?
 
     // MARK: - 标注状态（工具栏读写；确认时由控制器读走烘焙）
 
@@ -78,6 +79,7 @@ final class ConfirmCanvasView: NSView {
         super.viewDidMoveToWindow()
         window?.makeFirstResponder(self)
         if window != nil {
+            addYumGlow()
             startFreezePulse()
             beginContentAnalysis()
         } else {
@@ -88,6 +90,52 @@ final class ConfirmCanvasView: NSView {
     override func layout() {
         super.layout()
         layoutFreezeLayers()
+    }
+
+    // MARK: - Yum-Yum 柔光（编辑时刻）
+
+    private func addYumGlow() {
+        yumGlowLayer?.removeFromSuperlayer()
+        guard let hostLayer = layer else { return }
+        let glow = yumYumGlowLayer(frame: bounds)
+        hostLayer.insertSublayer(glow, at: 0)
+        yumGlowLayer = glow
+    }
+
+    private func yumYumGlowLayer(frame: CGRect) -> CALayer {
+        let layer = CALayer()
+        layer.frame = frame
+        layer.opacity = 1
+        for blob in makeYumBlobs(in: frame) {
+            let gradient = CAGradientLayer()
+            gradient.type = .radial
+            gradient.colors = [blob.color.cgColor, NSColor.clear.cgColor]
+            gradient.locations = [0, 1]
+            let center = CGPoint(
+                x: blob.center.x * frame.width,
+                y: blob.center.y * frame.height
+            )
+            gradient.frame = CGRect(
+                x: center.x - blob.radius,
+                y: center.y - blob.radius,
+                width: blob.radius * 2,
+                height: blob.radius * 2
+            )
+            layer.addSublayer(gradient)
+        }
+        return layer
+    }
+
+    private func makeYumBlobs(in frame: CGRect) -> [(color: NSColor, center: CGPoint, radius: CGFloat)] {
+        let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let glow: CGFloat = isDark ? 0.30 : 0.55
+        return [
+            (NSColor(calibratedRed: 0.97, green: 0.63, blue: 0.90, alpha: glow), CGPoint(x: 0.05, y: 1.0), frame.width * 0.40),
+            (NSColor(calibratedRed: 0.50, green: 0.50, blue: 0.95, alpha: glow), CGPoint(x: 0.98, y: 0.45), frame.width * 0.42),
+            (NSColor(calibratedRed: 0.98, green: 0.66, blue: 0.46, alpha: glow * 0.9), CGPoint(x: 0.92, y: 0.0), frame.width * 0.38),
+            (NSColor(calibratedRed: 0.50, green: 0.82, blue: 0.90, alpha: glow * 0.7), CGPoint(x: 0.02, y: 0.0), frame.width * 0.36),
+            (NSColor(calibratedRed: 0.68, green: 0.45, blue: 0.92, alpha: glow * 0.75), CGPoint(x: 0.5, y: 1.0), frame.width * 0.32),
+        ]
     }
 
     // MARK: - 工具栏入口（撤销 / 删除选中）
@@ -299,25 +347,30 @@ final class ConfirmCanvasView: NSView {
 
     private func drawFrozenEdge(around rect: CGRect) {
         guard rect.width > 4, rect.height > 4 else { return }
-        let accent = NSColor(red: 1, green: 0.231, blue: 0.189, alpha: 1)
+        // 确认态沿用选区的冷暖分段细边，不再使用厚重白色圆角框。
+        let edge = rect.insetBy(dx: 1, dy: 1)
+        NSColor.white.withAlphaComponent(0.18).setStroke()
+        let foundation = NSBezierPath(rect: edge)
+        foundation.lineWidth = 0.5
+        foundation.stroke()
 
-        // 外层柔光与内层白线同时存在：红色负责品牌，白线负责在任何画面上都清楚。
-        accent.withAlphaComponent(0.22).setStroke()
-        let glow = NSBezierPath(roundedRect: rect.insetBy(dx: -3, dy: -3), xRadius: 11, yRadius: 11)
-        glow.lineWidth = 6
-        glow.stroke()
+        let cool = NSBezierPath()
+        cool.move(to: CGPoint(x: edge.maxX, y: edge.minY))
+        cool.line(to: CGPoint(x: edge.minX, y: edge.minY))
+        cool.line(to: CGPoint(x: edge.minX, y: edge.maxY))
+        cool.lineWidth = 1.4
+        RuneTheme.nsCyan.setStroke()
+        cool.stroke()
 
-        accent.withAlphaComponent(0.94).setStroke()
-        let accentEdge = NSBezierPath(roundedRect: rect.insetBy(dx: -1, dy: -1), xRadius: 9, yRadius: 9)
-        accentEdge.lineWidth = 1.8
-        accentEdge.stroke()
+        let warm = NSBezierPath()
+        warm.move(to: CGPoint(x: edge.minX, y: edge.maxY))
+        warm.line(to: CGPoint(x: edge.maxX, y: edge.maxY))
+        warm.line(to: CGPoint(x: edge.maxX, y: edge.minY))
+        warm.lineWidth = 1.4
+        RuneTheme.nsMagenta.setStroke()
+        warm.stroke()
 
-        NSColor.white.withAlphaComponent(0.82).setStroke()
-        let whiteEdge = NSBezierPath(roundedRect: rect.insetBy(dx: 1, dy: 1), xRadius: 7, yRadius: 7)
-        whiteEdge.lineWidth = 0.7
-        whiteEdge.stroke()
-
-        // 四角短刻度像快门的定位框，避免使用普通矩形选框的廉价感。
+        // 四角短刻度是快门的定位框，也是 Rune 的裁切角线签名——印在这里。
         let tick = min(18, max(9, min(rect.width, rect.height) * 0.08))
         let inset: CGFloat = 7
         let x0 = rect.minX - inset
@@ -325,13 +378,13 @@ final class ConfirmCanvasView: NSView {
         let y0 = rect.minY - inset
         let y1 = rect.maxY + inset
         let ticks = NSBezierPath()
-        ticks.lineWidth = 2.2
+        ticks.lineWidth = 2
         ticks.lineCapStyle = .round
         ticks.move(to: CGPoint(x: x0, y: y0 + tick)); ticks.line(to: CGPoint(x: x0, y: y0)); ticks.line(to: CGPoint(x: x0 + tick, y: y0))
         ticks.move(to: CGPoint(x: x1 - tick, y: y0)); ticks.line(to: CGPoint(x: x1, y: y0)); ticks.line(to: CGPoint(x: x1, y: y0 + tick))
         ticks.move(to: CGPoint(x: x0, y: y1 - tick)); ticks.line(to: CGPoint(x: x0, y: y1)); ticks.line(to: CGPoint(x: x0 + tick, y: y1))
         ticks.move(to: CGPoint(x: x1 - tick, y: y1)); ticks.line(to: CGPoint(x: x1, y: y1)); ticks.line(to: CGPoint(x: x1, y: y1 - tick))
-        accent.setStroke()
+        RuneTheme.nsAmber.setStroke()
         ticks.stroke()
     }
 
@@ -341,6 +394,12 @@ final class ConfirmCanvasView: NSView {
         guard let hostLayer = layer else { return }
 
         dimLayer.removeFromSuperlayer()
+
+        // 五联柔光层加入暗幕：yum-yum 色带（参考编辑时刻）。
+        let glow = yumYumGlowLayer(frame: bounds)
+        hostLayer.addSublayer(glow)
+        yumGlowLayer = glow
+
         dimLayer.fillRule = .evenOdd
         dimLayer.fillColor = NSColor(
             calibratedRed: 0.015,
@@ -366,29 +425,28 @@ final class ConfirmCanvasView: NSView {
             return
         }
 
-        for delay in [0.02, 0.18] {
-            let pulse = CAShapeLayer()
-            pulse.fillColor = NSColor.clear.cgColor
-            pulse.strokeColor = NSColor(red: 1, green: 0.231, blue: 0.189, alpha: 0.82).cgColor
-            pulse.lineWidth = 1.4
-            pulse.opacity = 0
-            hostLayer.addSublayer(pulse)
-            pulseLayers.append(pulse)
+        // 只有一次轻微的呼吸脉冲：确认「这里已锁定」，然后归于安静。
+        let pulse = CAShapeLayer()
+        pulse.fillColor = NSColor.clear.cgColor
+        pulse.strokeColor = NSColor.white.withAlphaComponent(0.8).cgColor
+        pulse.lineWidth = 1.4
+        pulse.opacity = 0
+        hostLayer.addSublayer(pulse)
+        pulseLayers.append(pulse)
 
-            let scale = CABasicAnimation(keyPath: "transform.scale")
-            scale.fromValue = 1.0
-            scale.toValue = 1.045
-            let fade = CABasicAnimation(keyPath: "opacity")
-            fade.fromValue = 0.78
-            fade.toValue = 0.0
-            let group = CAAnimationGroup()
-            group.animations = [scale, fade]
-            group.duration = 0.72
-            group.beginTime = CACurrentMediaTime() + delay
-            group.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            group.isRemovedOnCompletion = true
-            pulse.add(group, forKey: "freezePulse")
-        }
+        let scale = CABasicAnimation(keyPath: "transform.scale")
+        scale.fromValue = 1.0
+        scale.toValue = 1.03
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 0.6
+        fade.toValue = 0.0
+        let group = CAAnimationGroup()
+        group.animations = [scale, fade]
+        group.duration = 0.6
+        group.beginTime = CACurrentMediaTime() + 0.02
+        group.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        group.isRemovedOnCompletion = true
+        pulse.add(group, forKey: "freezePulse")
         layoutFreezeLayers()
     }
 

@@ -650,7 +650,7 @@ enum AnnotationTool: String, CaseIterable, Identifiable, Codable {
         case .pixelate: "app.background.dotted"
         case .blur: "drop.fill"
         case .spotlight: "light.max"
-        case .text: "textformat"
+        case .text: "t.square"
         }
     }
 

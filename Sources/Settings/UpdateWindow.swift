@@ -24,7 +24,7 @@ final class UpdateWindowController: NSObject {
         let hosting = NSHostingView(rootView: contentView.runeTypography())
 
         let window = NSWindow(
-            contentRect: NSRect(origin: .zero, size: NSSize(width: 380, height: 480)),
+            contentRect: NSRect(origin: .zero, size: NSSize(width: 400, height: 380)),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -33,6 +33,7 @@ final class UpdateWindowController: NSObject {
         window.contentView = hosting
         window.titlebarAppearsTransparent = true
         window.backgroundColor = RuneTheme.nsBackground
+        window.appearance = NSAppearance(named: .darkAqua)
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.center()
@@ -76,14 +77,18 @@ struct UpdateWindowView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 14) {
                 // 应用图标（茄子）
                 Image(nsImage: NSApp.applicationIconImage)
                     .resizable()
                     .interpolation(.high)
-                    .frame(width: 72, height: 72)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .frame(width: 64, height: 64)
+                    .clipShape(RoundedRectangle(cornerRadius: RuneTheme.plateCorner, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: RuneTheme.plateCorner, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.16), lineWidth: 0.5)
+                    )
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("发现新版本 \(update.version)")
@@ -95,20 +100,23 @@ struct UpdateWindowView: View {
                         .lineSpacing(2)
                 }
             }
-            .padding(.bottom, 16)
+            .padding(.bottom, 2)
 
-            Divider()
-
-            ScrollView(showsIndicators: true) {
-                Text(update.notes.isEmpty ? "问题修复与体验优化。" : update.notes)
-                    .font(RuneFont.swiftUI(size: 11.5))
-                    .foregroundStyle(.primary.opacity(0.82))
-                    .lineSpacing(4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 12)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("本次更新", systemImage: "sparkles")
+                        .font(RuneFont.swiftUI(size: 11, weight: .semibold))
+                        .foregroundStyle(RuneTheme.textSecondary)
+                    Text(update.notes.isEmpty ? "问题修复与体验优化。" : update.notes)
+                        .font(RuneFont.swiftUI(size: 11.5))
+                        .foregroundStyle(.primary.opacity(0.86))
+                        .lineSpacing(5)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(14)
             }
-
-            Divider()
+            .frame(maxHeight: 184)
+            .background(RuneCardBackground(cornerRadius: RuneTheme.plateCorner))
 
             if phase == .downloading {
                 VStack(alignment: .leading, spacing: 6) {
@@ -119,7 +127,6 @@ struct UpdateWindowView: View {
                         .font(RuneFont.mono(size: 10))
                         .foregroundStyle(RuneTheme.textSecondary)
                 }
-                .padding(.top, 14)
             } else if phase == .installing {
                 HStack(spacing: 8) {
                     ProgressView()
@@ -129,7 +136,6 @@ struct UpdateWindowView: View {
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 14)
             } else if phase == .switchingToInstalledApplication {
                 HStack(spacing: 8) {
                     ProgressView()
@@ -139,30 +145,34 @@ struct UpdateWindowView: View {
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 14)
             } else if phase == .failed, let errorMessage {
                 Text(errorMessage)
                     .font(RuneFont.swiftUI(size: 11))
                     .foregroundStyle(RuneTheme.signal.opacity(0.9))
-                    .padding(.top, 14)
             }
 
             HStack {
                 if update.downloadURL == nil {
-                    Button("前往手动下载") {
+                    Button {
                         NSWorkspace.shared.open(update.releasePageURL)
+                    } label: {
+                        RuneTheme.secondaryButtonLabel("前往手动下载")
                     }
+                    .buttonStyle(RuneTheme.RunePressStyle())
                 }
 
                 Spacer()
 
                 if phase == .confirming || phase == .failed {
-                    Button("以后再说") {
+                    Button {
                         NSApp.keyWindow?.close()
+                    } label: {
+                        RuneTheme.secondaryButtonLabel("以后再说")
                     }
+                    .buttonStyle(RuneTheme.RunePressStyle())
                     .keyboardShortcut(.cancelAction)
 
-                    Button(primaryButtonTitle) {
+                    Button {
                         if recoveryAction == .openInstalledApplication {
                             openInstalledApplication()
                         } else if recoveryAction == .openReleasePage {
@@ -170,18 +180,19 @@ struct UpdateWindowView: View {
                         } else {
                             startUpdate()
                         }
+                    } label: {
+                        RuneTheme.primaryButtonLabel(primaryButtonTitle)
                     }
                     .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
-                    .tint(RuneTheme.accentFill)
+                    .buttonStyle(RuneTheme.RunePressStyle())
                     .disabled(recoveryAction == nil && update.downloadURL == nil)
                 }
             }
-            .padding(.top, 14)
         }
         .padding(20)
-        .frame(width: 380, height: 480)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(width: 400, height: 380)
+        .background(RuneAmbientBackdrop())
+        .preferredColorScheme(.dark)
     }
 
     private var primaryButtonTitle: String {

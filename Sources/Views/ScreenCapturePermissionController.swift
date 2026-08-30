@@ -126,7 +126,7 @@ final class ScreenCapturePermissionController: NSObject, NSWindowDelegate {
             onLater: { [weak self] in self?.finish(granted: false) }
         )
         let hostingView = NSHostingView(rootView: rootView.runeTypography())
-        let size = NSSize(width: 460, height: 390)
+        let size = NSSize(width: 500, height: 370)
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.titled, .closable, .fullSizeContentView],
@@ -139,6 +139,7 @@ final class ScreenCapturePermissionController: NSObject, NSWindowDelegate {
         window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
         window.backgroundColor = RuneTheme.nsBackground
+        window.appearance = NSAppearance(named: .darkAqua)
         window.contentView = hostingView
         window.delegate = self
         window.collectionBehavior = [.moveToActiveSpace]
@@ -299,19 +300,18 @@ private struct ScreenCapturePermissionGuideView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-                .padding(.top, 34)
+                .padding(.top, 30)
 
-            privacyCard
-                .padding(.top, 22)
-
-            steps
-                .padding(.top, 18)
-
-            status
-                .padding(.top, 18)
+            HStack(alignment: .top, spacing: 16) {
+                steps
+                VStack(alignment: .leading, spacing: 12) {
+                    privacyCard
+                    status
+                }
+            }
+            .padding(.top, 22)
 
             Spacer(minLength: 18)
-            Divider()
 
             HStack(spacing: 10) {
                 Button("稍后") { onLater() }
@@ -322,59 +322,62 @@ private struct ScreenCapturePermissionGuideView: View {
                 Spacer()
 
                 if model.needsRestart {
-                    Button("重新启动 Rune") { onRestart() }
-                        .buttonStyle(.borderedProminent)
+                    Button(action: onRestart) {
+                        RuneTheme.primaryButtonLabel("重新启动 Rune")
+                    }
+                        .buttonStyle(RuneTheme.RunePressStyle())
                         .keyboardShortcut(.defaultAction)
                 } else {
-                    Button("重新检查") { onRecheck() }
-                        .buttonStyle(.bordered)
+                    Button(action: onRecheck) {
+                        RuneTheme.secondaryButtonLabel("重新检查")
+                    }
+                        .buttonStyle(RuneTheme.RunePressStyle())
                         .disabled(model.isChecking)
 
-                    Button("打开系统设置") { onOpenSettings() }
-                        .buttonStyle(.borderedProminent)
+                    Button(action: onOpenSettings) {
+                        RuneTheme.primaryButtonLabel("打开系统设置")
+                    }
+                        .buttonStyle(RuneTheme.RunePressStyle())
                         .keyboardShortcut(.defaultAction)
                 }
             }
-            .padding(.top, 16)
+            .padding(.top, 14)
         }
-        .padding(.horizontal, 28)
-        .padding(.bottom, 22)
-        .frame(width: 460, height: 390)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .tint(RuneTheme.accent)
+        .padding(.horizontal, 26)
+        .padding(.bottom, 20)
+        .frame(width: 500, height: 370)
+        .background(RuneAmbientBackdrop())
+        .preferredColorScheme(.dark)
     }
 
     private var header: some View {
         HStack(alignment: .top, spacing: 16) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(RuneTheme.accent.opacity(0.10))
-                    .frame(width: 58, height: 58)
-                Image(systemName: "macwindow")
-                    .font(RuneFont.swiftUI(size: 27, weight: .medium))
-                    .foregroundStyle(RuneTheme.accent)
-            }
+            Image(systemName: "macwindow")
+                .font(RuneFont.swiftUI(size: 24, weight: .medium))
+                .foregroundStyle(RuneTheme.textSecondary)
+                .frame(width: 40, height: 40)
 
             VStack(alignment: .leading, spacing: 5) {
                 Text("先允许 Rune 看见屏幕")
-                    .font(RuneFont.swiftUI(size: 20, weight: .semibold))
+                    .font(RuneFont.swiftUI(size: 17, weight: .medium))
                     .foregroundStyle(RuneTheme.textPrimary)
                 Text("这是截图、连拍和录屏共同需要的一次设置")
                     .font(RuneFont.swiftUI(size: 13))
                     .foregroundStyle(RuneTheme.textSecondary)
                 Text(model.purpose.continuationText)
                     .font(RuneFont.swiftUI(size: 12, weight: .medium))
-                    .foregroundStyle(RuneTheme.accent)
+                    .foregroundStyle(RuneTheme.textPrimary)
+                    .overlay(alignment: .bottomLeading) {
+                        RuneSelectionUnderline(width: 34)
+                            .offset(y: 4)
+                    }
             }
         }
     }
 
     private var privacyCard: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "lock.shield.fill")
-                .font(RuneFont.swiftUI(size: 15, weight: .medium))
-                .foregroundStyle(RuneTheme.accent)
-                .padding(.top, 1)
+            RuneOpticalIconPlate(systemImage: "lock.shield", size: 26)
             VStack(alignment: .leading, spacing: 3) {
                 Text("只在你主动截图、连拍或录屏时读取画面")
                     .font(RuneFont.swiftUI(size: 12, weight: .semibold))
@@ -385,46 +388,46 @@ private struct ScreenCapturePermissionGuideView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(RuneTheme.accent.opacity(0.055))
-        )
+        .background(RuneCardBackground())
         .accessibilityElement(children: .combine)
     }
 
     private var steps: some View {
-        HStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             permissionStep(number: "1", title: "打开系统设置")
             stepConnector
             permissionStep(number: "2", title: "打开 Rune")
             stepConnector
             permissionStep(number: "3", title: "返回 Rune")
         }
+        .padding(12)
+        .frame(width: 152, alignment: .leading)
+        .background(RuneCardBackground(cornerRadius: RuneTheme.plateCorner))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("授权步骤：打开系统设置，打开 Rune，返回 Rune")
     }
 
     private func permissionStep(number: String, title: String) -> some View {
-        VStack(spacing: 6) {
+        HStack(spacing: 9) {
             Text(number)
-                .font(RuneFont.swiftUI(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
+                .font(RuneFont.swiftUI(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(RuneTheme.primaryOnFill)
                 .frame(width: 24, height: 24)
-                .background(Circle().fill(RuneTheme.accentFill))
+                .background(Circle().fill(RuneTheme.primaryFill))
+                .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
             Text(title)
                 .font(RuneFont.swiftUI(size: 11, weight: .medium))
                 .foregroundStyle(RuneTheme.textPrimary)
                 .lineLimit(1)
         }
-        .frame(width: 106)
+        .frame(height: 30)
     }
 
     private var stepConnector: some View {
         Rectangle()
             .fill(RuneTheme.separator)
-            .frame(height: 1)
-            .frame(maxWidth: .infinity)
-            .offset(y: -10)
+            .frame(width: 1, height: 18)
+            .padding(.leading, 12)
     }
 
     private var status: some View {
@@ -433,18 +436,25 @@ private struct ScreenCapturePermissionGuideView: View {
                 ProgressView()
                     .controlSize(.small)
             } else {
-                Circle()
-                    .fill(model.isGranted ? Color.green : RuneTheme.accent)
-                    .frame(width: 8, height: 8)
+                Image(systemName: model.isGranted ? "checkmark.circle.fill" : "circle.dashed")
+                    .font(RuneFont.swiftUI(size: 14, weight: .medium))
+                    .foregroundStyle(model.isGranted ? Color(nsColor: .systemGreen) : RuneTheme.textMuted)
+                    .accessibilityHidden(true)
             }
-            Text(model.statusText)
-                .font(RuneFont.swiftUI(size: 12, weight: .semibold))
-            if !model.detailText.isEmpty {
-                Text("· \(model.detailText)")
-                    .font(RuneFont.swiftUI(size: 12))
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(model.statusText)
+                    .font(RuneFont.swiftUI(size: 12, weight: .semibold))
+                if !model.detailText.isEmpty {
+                    Text(model.detailText)
+                        .font(RuneFont.swiftUI(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
         }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RuneCardBackground(cornerRadius: RuneTheme.plateCorner))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("权限状态：\(model.statusText)，\(model.detailText)")
     }

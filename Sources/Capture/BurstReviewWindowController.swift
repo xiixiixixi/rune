@@ -42,7 +42,10 @@ final class BurstReviewWindowController: NSObject, NSWindowDelegate {
         )
         window.title = "连拍结果"
         window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
         window.toolbarStyle = .unifiedCompact
+        window.backgroundColor = RuneTheme.nsBackground
+        window.appearance = NSAppearance(named: .darkAqua)
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 620, height: 420)
         window.contentView = hosting
@@ -145,14 +148,14 @@ private struct BurstReviewView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 12) {
             header
-            Divider()
             gallery
-            Divider()
             footer
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .padding(.bottom, 14)
+        .background(RuneAmbientBackdrop())
+        .preferredColorScheme(.dark)
         .onExitCommand(perform: onClose)
         .onDeleteCommand(perform: moveSelectedToTrash)
     }
@@ -160,14 +163,13 @@ private struct BurstReviewView: View {
     private var header: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "camera.fill")
-                .font(RuneFont.swiftUI(size: 22, weight: .semibold))
-                .foregroundStyle(RuneTheme.accent)
-                .frame(width: 34, height: 34)
-                .background(RuneTheme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 9))
+                .font(RuneFont.swiftUI(size: 16, weight: .medium))
+                .foregroundStyle(RuneTheme.textSecondary)
+                .frame(width: 28, height: 28)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("连拍结果")
-                    .font(RuneFont.swiftUI(size: 18, weight: .semibold))
+                    .font(RuneFont.swiftUI(size: 15, weight: .medium))
                 Text("点一下选择画面；右键可以编辑或在访达中查看")
                     .font(RuneFont.swiftUI(size: 11))
                     .foregroundStyle(.secondary)
@@ -178,15 +180,15 @@ private struct BurstReviewView: View {
 
             VStack(alignment: .trailing, spacing: 3) {
                 Text("\(items.count) 张")
-                    .font(RuneFont.swiftUI(size: 15, weight: .semibold, design: .monospaced))
+                    .font(RuneFont.swiftUI(size: 13, weight: .medium, design: .monospaced))
                 Text("已选 \(selected.count) 张")
                     .font(RuneFont.swiftUI(size: 11))
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.horizontal, 22)
-        .padding(.top, 20)
-        .padding(.bottom, 16)
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
+        .padding(.bottom, 2)
     }
 
     @ViewBuilder
@@ -204,7 +206,7 @@ private struct BurstReviewView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 LazyVGrid(
                     columns: [GridItem(.adaptive(minimum: 132, maximum: 180), spacing: 12)],
                     spacing: 12
@@ -215,6 +217,8 @@ private struct BurstReviewView: View {
                 }
                 .padding(18)
             }
+            .background(RuneCardBackground(cornerRadius: RuneTheme.plateCorner))
+            .padding(.horizontal, 16)
         }
     }
 
@@ -234,24 +238,28 @@ private struct BurstReviewView: View {
                     .frame(maxWidth: .infinity, minHeight: 92, maxHeight: 112)
                     .background(Color.black.opacity(0.035))
 
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(RuneFont.swiftUI(size: 18, weight: .semibold))
-                    .foregroundStyle(isSelected ? RuneTheme.accent : .white.opacity(0.92))
-                    .shadow(color: .black.opacity(0.28), radius: 2, y: 1)
+                RuneSelectionMark(isSelected: isSelected, size: 18)
                     .padding(7)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .strokeBorder(isSelected ? RuneTheme.accent : Color.primary.opacity(0.10), lineWidth: isSelected ? 2 : 0.5)
-            )
+            .clipShape(RoundedRectangle(cornerRadius: RuneTheme.plateCorner, style: .continuous))
+            .overlay {
+                if isSelected {
+                    RuneSpectralBorder(cornerRadius: RuneTheme.plateCorner, lineWidth: 1)
+                } else {
+                    RoundedRectangle(cornerRadius: RuneTheme.plateCorner, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
+                }
+            }
             .overlay(alignment: .bottomLeading) {
                 Text(String(format: "%02d", index + 1))
                     .font(RuneFont.swiftUI(size: 9, weight: .semibold, design: .monospaced))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)
-                    .background(.black.opacity(0.62), in: Capsule())
+                    .background(
+                        RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                            .fill(.black.opacity(0.62))
+                    )
                     .padding(7)
             }
         }
@@ -286,21 +294,27 @@ private struct BurstReviewView: View {
 
             Spacer()
 
-            Button("打开文件夹", systemImage: "folder") {
-                onOpenFolder()
-            }
-
             Button("导出所选", systemImage: "square.and.arrow.up") {
                 onExport(items.filter { selected.contains($0) })
             }
             .disabled(selected.isEmpty)
 
-            if !selected.isEmpty, selected.count < items.count {
-                Button("只保留所选") {
-                    keepOnlySelected()
+            Menu {
+                Button("打开文件夹", systemImage: "folder") {
+                    onOpenFolder()
                 }
-                .help("把没有选中的画面移到废纸篓")
+                if !selected.isEmpty, selected.count < items.count {
+                    Divider()
+                    Button("只保留所选", systemImage: "checkmark.circle") {
+                        keepOnlySelected()
+                    }
+                }
+            } label: {
+                RuneTheme.secondaryButtonLabel("更多", systemImage: "ellipsis")
             }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("打开文件夹或只保留所选")
 
             Button {
                 onClose()
@@ -309,8 +323,10 @@ private struct BurstReviewView: View {
             }
             .buttonStyle(RuneTheme.RunePressStyle())
         }
-        .padding(.horizontal, 20)
-        .frame(height: 66)
+        .padding(.horizontal, 12)
+        .frame(height: 52)
+        .background(RuneGlassBackground(cornerRadius: RuneTheme.barCorner, elevation: .floating))
+        .padding(.horizontal, 16)
     }
 
     private func moveSelectedToTrash() {

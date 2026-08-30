@@ -18,6 +18,45 @@ struct AVPlayerRepresentable: NSViewRepresentable {
     }
 }
 
+private struct VideoPreviewLayout {
+    let videoSize: CGSize
+    let canvasSize: CGSize
+
+    static func fitting(
+        videoAspect: CGFloat,
+        paddingFraction: CGFloat,
+        in containerSize: CGSize
+    ) -> VideoPreviewLayout {
+        let safeAspect = max(videoAspect, 0.01)
+        let normalizedVideo = CGSize(width: safeAspect, height: 1)
+        let normalizedPadding = min(normalizedVideo.width, normalizedVideo.height)
+            * max(paddingFraction, 0)
+        let normalizedCanvas = CGSize(
+            width: normalizedVideo.width + normalizedPadding * 2,
+            height: normalizedVideo.height + normalizedPadding * 2
+        )
+        let available = CGSize(
+            width: max(containerSize.width - 40, 1),
+            height: max(containerSize.height - 40, 1)
+        )
+        let scale = min(
+            available.width / normalizedCanvas.width,
+            available.height / normalizedCanvas.height
+        )
+
+        return VideoPreviewLayout(
+            videoSize: CGSize(
+                width: normalizedVideo.width * scale,
+                height: normalizedVideo.height * scale
+            ),
+            canvasSize: CGSize(
+                width: normalizedCanvas.width * scale,
+                height: normalizedCanvas.height * scale
+            )
+        )
+    }
+}
+
 struct VideoEditorView: View {
     private enum InspectorTab: String, CaseIterable, Identifiable {
         case edit = "剪辑"
@@ -37,22 +76,30 @@ struct VideoEditorView: View {
                 videoPreview
                     .frame(minWidth: 460, minHeight: 280)
 
-                Divider()
+                VStack(spacing: 10) {
+                    controlsBar
+                        .padding(.horizontal, 4)
 
-                controlsBar
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 16)
-
-                Divider()
-
-                timelineSection
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
+                    timelineSection
+                }
+                .padding(12)
+                .runeGlassSurface(
+                    cornerRadius: RuneTheme.barCorner,
+                    tint: RuneTheme.glassTint,
+                    interactive: true,
+                    elevation: .floating
+                )
+                .padding(.horizontal, 18)
+                .padding(.bottom, 16)
             }
+            .background(RuneAmbientBackdrop())
 
             videoInspector
-                .frame(width: 286)
+                .frame(width: 288)
+                .padding(12)
+                .background(RuneTheme.workspace)
         }
+        .preferredColorScheme(.dark)
         .toolbarBackgroundHiddenIfAvailable()
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
@@ -79,9 +126,10 @@ struct VideoEditorView: View {
                             .controlSize(.small)
                             .padding(.horizontal, 8)
                     } else {
-                        Label("导出", systemImage: "square.and.arrow.down")
+                        RuneTheme.primaryButtonLabel("导出", systemImage: "square.and.arrow.down")
                     }
                 }
+                .buttonStyle(RuneTheme.RunePressStyle())
                 .disabled(model.isExporting)
                 .keyboardShortcut("s", modifiers: .command)
             }
@@ -93,20 +141,25 @@ struct VideoEditorView: View {
                     .foregroundStyle(RuneTheme.chromeText)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(RuneTheme.chromeBase.opacity(0.92), in: Capsule())
-                    .overlay(Capsule().strokeBorder(RuneTheme.chromeLine, lineWidth: 1))
-                    .padding(.bottom, 60)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .background(
+                        RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
+                            .fill(RuneTheme.chromeBase.opacity(0.96))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
+                            .strokeBorder(RuneTheme.spectralGradient, lineWidth: 0.8)
+                    )
+                    .padding(.bottom, 24)
                     .onAppear {
                         Task {
                             try? await Task.sleep(for: .seconds(1.5))
-                            withAnimation { model.toastMessage = nil }
+                            model.toastMessage = nil
                         }
                     }
             }
         }
         .frame(minWidth: 780, minHeight: 520)
-        .tint(RuneTheme.accent)
+        .tint(RuneTheme.textPrimary)
         .onAppear { model.loadVideo(from: url) }
         .onDisappear { model.cleanup() }
         .alert("把这段录屏移到废纸篓？", isPresented: $confirmsMovingRecordingToTrash) {
@@ -121,15 +174,12 @@ struct VideoEditorView: View {
 
     private var videoInspector: some View {
         VStack(spacing: 0) {
-            Picker("视频工具", selection: $inspectorTab) {
-                ForEach(InspectorTab.allCases) { tab in
-                    Text(tab.rawValue).tag(tab)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            RuneOpticalSegmentedPicker(
+                options: InspectorTab.allCases.map { ($0, $0.rawValue) },
+                selection: $inspectorTab,
+                accessibilityLabel: "视频工具"
+            )
             .padding(10)
-            .accessibilityLabel("视频编辑工具")
 
             Divider()
 
@@ -151,7 +201,11 @@ struct VideoEditorView: View {
             }
             .scrollContentBackground(.hidden)
         }
-        .background(.regularMaterial)
+        .runeGlassSurface(
+            cornerRadius: RuneTheme.cardCorner,
+            tint: RuneTheme.glassTint,
+            elevation: .embedded
+        )
     }
 
     // MARK: - Video Preview with Effects
@@ -164,17 +218,20 @@ struct VideoEditorView: View {
                 ? CGFloat(model.videoWidth) / CGFloat(model.videoHeight)
                 : 16.0 / 9.0
 
-            let shortEdge = min(geo.size.width, geo.size.height) * 0.8
-            let videoW = min(geo.size.width * 0.7, shortEdge * videoAspect)
-            let videoH = videoW / videoAspect
             let effectivePadding = (config.style != .none && config.padding <= 0) ? CGFloat(0.06) : config.padding
-            let pad = min(videoW, videoH) * effectivePadding
-            let canvasW = videoW + pad * 2
-            let canvasH = videoH + pad * 2
+            let layout = VideoPreviewLayout.fitting(
+                videoAspect: videoAspect,
+                paddingFraction: effectivePadding,
+                in: geo.size
+            )
+            let videoW = layout.videoSize.width
+            let videoH = layout.videoSize.height
+            let canvasW = layout.canvasSize.width
+            let canvasH = layout.canvasSize.height
             let cornerRadius = config.cornerRadius * min(videoW, videoH)
 
             ZStack {
-                Color(nsColor: .underPageBackgroundColor)
+                Color.clear
 
                 ZStack {
                     videoBackground(config.style, size: CGSize(width: canvasW, height: canvasH))
@@ -183,7 +240,21 @@ struct VideoEditorView: View {
                     ZStack {
                         Group {
                             if let player = model.player {
-                                AVPlayerRepresentable(player: player)
+                                ZStack {
+                                    AVPlayerRepresentable(player: player)
+
+                                    // AVPlayer 在首帧解码前会短暂显示纯黑；时间轴缩略图已经
+                                    // 来自真实视频，用它承接零秒静止态，播放或拖动后立刻退场。
+                                    if !model.isPlaying,
+                                       model.currentTime <= 0.01,
+                                       let firstFrame = model.previewFrame ?? model.thumbnails.first {
+                                        Image(nsImage: firstFrame)
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fit)
+                                            .frame(width: videoW, height: videoH)
+                                            .clipped()
+                                    }
+                                }
                             } else {
                                 ProgressView()
                             }
@@ -285,7 +356,7 @@ struct VideoEditorView: View {
                 Text(model.formattedDuration)
                     .font(RuneFont.swiftUI(size: 12, design: .monospaced))
                     .monospacedDigit()
-                    .foregroundStyle(RuneTheme.accent)
+                    .foregroundStyle(RuneTheme.textPrimary)
                     .frame(width: 50)
             } else {
                 Text(model.formattedDuration)
@@ -329,9 +400,7 @@ struct VideoEditorView: View {
             model.cleanup()
             NSApp.keyWindow?.close()
         } else {
-            withAnimation {
-                model.toastMessage = "导出失败，请检查保存位置和可用空间"
-            }
+            model.toastMessage = "导出失败，请检查保存位置和可用空间"
         }
         model.isExporting = false
     }
@@ -344,9 +413,7 @@ private struct VideoInspectorSectionHeader: View {
     init(_ title: String) { self.title = title }
 
     var body: some View {
-        Text(title)
-            .font(RuneFont.swiftUI(size: 11, weight: .semibold))
-            .foregroundStyle(.tertiary)
+        RuneTheme.stampLabel(title)
     }
 }
 
@@ -385,7 +452,7 @@ private struct VideoTrimSection: View {
                         }
                         .padding(.vertical, 4)
                         .padding(.horizontal, 8)
-                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
+                        .background(.quaternary, in: RoundedRectangle(cornerRadius: RuneTheme.chipCorner))
                     }
                     .buttonStyle(.plain)
                 }
@@ -399,7 +466,7 @@ private struct VideoTrimSection: View {
                     Spacer()
                     Text(formatTime(model.trimStart))
                         .font(RuneFont.caption2)
-                        .foregroundStyle(model.hasTrim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.quaternary))
+                        .foregroundStyle(.secondary)
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("裁剪开始")
@@ -417,7 +484,7 @@ private struct VideoTrimSection: View {
                     Spacer()
                     Text(formatTime(model.trimEnd))
                         .font(RuneFont.caption2)
-                        .foregroundStyle(model.hasTrim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.quaternary))
+                        .foregroundStyle(.secondary)
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("裁剪结束")
@@ -435,13 +502,13 @@ private struct VideoTrimSection: View {
                     Spacer()
                     Text(formatTime(model.trimmedDuration))
                         .font(RuneFont.caption2)
-                        .foregroundStyle(model.hasTrim ? AnyShapeStyle(RuneTheme.accent) : AnyShapeStyle(.quaternary))
+                        .foregroundStyle(RuneTheme.textPrimary)
                 }
             }
 
-            Text("拖动时间轴上的黄色把手来裁剪视频。")
+                Text("拖动时间轴两侧的把手来裁剪视频。")
                 .font(RuneFont.caption2)
-                .foregroundStyle(.quaternary)
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 14)
@@ -466,8 +533,12 @@ private struct VideoEffectsSection: View {
                         .font(RuneFont.caption2)
                         .foregroundStyle(.tertiary)
                 }
-                Slider(value: $model.config.padding, in: 0.0...0.45)
-                    .controlSize(.small)
+                RuneGlassSlider(
+                    value: $model.config.padding,
+                    in: 0.0...0.45,
+                    accessibilityLabel: "视频边距",
+                    accessibilityValue: "\(Int(model.config.padding * 100))%"
+                )
             }
 
             VStack(spacing: 4) {
@@ -480,8 +551,12 @@ private struct VideoEffectsSection: View {
                         .font(RuneFont.caption2)
                         .foregroundStyle(.tertiary)
                 }
-                Slider(value: $model.config.cornerRadius, in: 0.0...0.12)
-                    .controlSize(.small)
+                RuneGlassSlider(
+                    value: $model.config.cornerRadius,
+                    in: 0.0...0.12,
+                    accessibilityLabel: "视频圆角",
+                    accessibilityValue: "\(Int(model.config.cornerRadius * 1000))"
+                )
             }
 
             VStack(spacing: 4) {
@@ -494,8 +569,12 @@ private struct VideoEffectsSection: View {
                         .font(RuneFont.caption2)
                         .foregroundStyle(.tertiary)
                 }
-                Slider(value: $model.config.shadowStrength, in: 0.0...1.0)
-                    .controlSize(.small)
+                RuneGlassSlider(
+                    value: $model.config.shadowStrength,
+                    in: 0.0...1.0,
+                    accessibilityLabel: "视频阴影",
+                    accessibilityValue: "\(Int(model.config.shadowStrength * 100))%"
+                )
             }
         }
         .padding(.horizontal, 14)
@@ -557,7 +636,7 @@ private struct VideoBackgroundSection: View {
             model.config.style = .none
         } label: {
             ZStack {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
                     .fill(Color.white)
                     .frame(width: 28, height: 28)
                 Path { path in
@@ -566,14 +645,15 @@ private struct VideoBackgroundSection: View {
                 }
                 .stroke(Color.red.opacity(0.6), lineWidth: 1.5)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(
-                        model.config.style == .none ? RuneTheme.accent : Color.primary.opacity(0.12),
-                        lineWidth: model.config.style == .none ? 2 : 0.5
-                    )
-            )
+            .clipShape(RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous))
+            .overlay {
+                if model.config.style == .none {
+                    RuneSpectralBorder(cornerRadius: RuneTheme.chipCorner, lineWidth: 1)
+                } else {
+                    RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+                }
+            }
         }
         .buttonStyle(.plain)
         .accessibilityLabel("无背景")
@@ -588,13 +668,17 @@ private struct VideoBackgroundSection: View {
         return Button {
             model.config.style = .solid(color)
         } label: {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
+            RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
                 .fill(color.color)
                 .frame(width: 28, height: 28)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(isSelected ? RuneTheme.accent : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
-                )
+                .overlay {
+                    if isSelected {
+                        RuneSpectralBorder(cornerRadius: RuneTheme.chipCorner, lineWidth: 1)
+                    } else {
+                        RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+                    }
+                }
         }
         .buttonStyle(.plain)
         .help(color.name)
@@ -610,13 +694,17 @@ private struct VideoBackgroundSection: View {
         return Button {
             model.config.style = .gradient(preset)
         } label: {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
+            RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
                 .fill(preset.swiftUIGradient)
                 .frame(width: 28, height: 28)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(isSelected ? RuneTheme.accent : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
-                )
+                .overlay {
+                    if isSelected {
+                        RuneSpectralBorder(cornerRadius: RuneTheme.chipCorner, lineWidth: 1)
+                    } else {
+                        RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+                    }
+                }
         }
         .buttonStyle(.plain)
         .help(preset.name)
@@ -642,11 +730,15 @@ private struct VideoBackgroundSection: View {
                 }
             }
             .frame(width: 48, height: 36)
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(isSelected ? RuneTheme.accent : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
-            )
+            .clipShape(RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous))
+            .overlay {
+                if isSelected {
+                    RuneSpectralBorder(cornerRadius: RuneTheme.chipCorner, lineWidth: 1)
+                } else {
+                    RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+                }
+            }
         }
         .buttonStyle(.plain)
         .accessibilityLabel("macOS 背景 \(asset.id.split(separator: "-").last ?? "")")
@@ -661,10 +753,9 @@ private struct VideoBackgroundSection: View {
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: 28, height: 28)
-                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .strokeBorder(RuneTheme.accent, lineWidth: 2)
+                            RuneSpectralBorder(cornerRadius: RuneTheme.chipCorner, lineWidth: 1)
                         )
                 }
 
@@ -677,10 +768,9 @@ private struct VideoBackgroundSection: View {
                 Spacer()
 
                 Button { pickCustomWallpaper() } label: {
-                    Text("更换").font(RuneFont.caption2)
+                    RuneTheme.compactButtonLabel("更换")
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.mini)
+                .buttonStyle(RuneTheme.RunePressStyle())
             }
         } else {
             Button { pickCustomWallpaper() } label: {
@@ -690,9 +780,9 @@ private struct VideoBackgroundSection: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 6)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: RuneTheme.chipCorner))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
                         .strokeBorder(Color.primary.opacity(0.08), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
                 )
             }
@@ -734,11 +824,20 @@ private struct VideoCropSection: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 6)
-                    .background(model.isCropping ? AnyShapeStyle(RuneTheme.accent.opacity(0.15)) : AnyShapeStyle(.quaternary), in: RoundedRectangle(cornerRadius: 6))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .strokeBorder(model.isCropping ? RuneTheme.accent : Color.primary.opacity(0.08), lineWidth: model.isCropping ? 1.5 : 0.5)
+                    .background(
+                        model.isCropping
+                            ? AnyShapeStyle(Color.white.opacity(0.08))
+                            : AnyShapeStyle(RuneTheme.graphiteRaised.opacity(0.86)),
+                        in: RoundedRectangle(cornerRadius: RuneTheme.chipCorner)
                     )
+                    .overlay {
+                        if model.isCropping {
+                            RuneSpectralBorder(cornerRadius: RuneTheme.chipCorner, lineWidth: 0.8)
+                        } else {
+                            RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                                .strokeBorder(RuneTheme.separator, lineWidth: 0.5)
+                        }
+                    }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(model.isCropping ? "完成裁剪" : "裁剪画面")
@@ -755,7 +854,7 @@ private struct VideoCropSection: View {
                         }
                         .padding(.vertical, 6)
                         .padding(.horizontal, 10)
-                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+                        .background(.quaternary, in: RoundedRectangle(cornerRadius: RuneTheme.chipCorner))
                     }
                     .buttonStyle(.plain)
                 }

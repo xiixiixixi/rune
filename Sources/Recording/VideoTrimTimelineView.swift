@@ -10,7 +10,7 @@ struct VideoTrimTimelineView: NSViewRepresentable {
         control.setAccessibilityElement(true)
         control.setAccessibilityRole(.group)
         control.setAccessibilityLabel("视频裁剪时间轴")
-        control.setAccessibilityHelp("拖动黄色把手调整开始和结束位置，点击时间轴移动播放位置。")
+        control.setAccessibilityHelp("拖动两侧把手调整开始和结束位置，点击时间轴移动播放位置。")
         return control
     }
 
@@ -50,7 +50,7 @@ final class VideoTrimTimelineControl: NSView {
     private let handleHitSlop: CGFloat = 14
     private let gripBarWidth: CGFloat = 2
     private let gripBarSpacing: CGFloat = 3
-    private let borderWidth: CGFloat = 3
+    private let borderWidth: CGFloat = 1.5
     private let playheadWidth: CGFloat = 2
     private let cornerRadius: CGFloat = 8
     private let dragActivationDistance: CGFloat = 3
@@ -240,11 +240,15 @@ final class VideoTrimTimelineControl: NSView {
         let endX = xPosition(for: model.trimEnd)
         let tl = timelineRect
 
-        // 1. Background
-        ctx.setFillColor(NSColor.black.withAlphaComponent(0.9).cgColor)
+        // 1. 底：安静的图版，1pt 细线勾边——胶片挂在纸面上。
+        ctx.setFillColor(NSColor.underPageBackgroundColor.cgColor)
         let bgPath = CGPath(roundedRect: bounds, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
         ctx.addPath(bgPath)
         ctx.fillPath()
+        ctx.setStrokeColor(NSColor.separatorColor.withAlphaComponent(0.7).cgColor)
+        ctx.setLineWidth(1)
+        ctx.addPath(bgPath)
+        ctx.strokePath()
 
         // 2. Thumbnails
         ctx.saveGState()
@@ -267,7 +271,7 @@ final class VideoTrimTimelineControl: NSView {
         ctx.addPath(clipPath)
         ctx.clip()
 
-        let dimColor = NSColor.black.withAlphaComponent(0.6).cgColor
+        let dimColor = NSColor.black.withAlphaComponent(0.45).cgColor
         if startX > tl.minX {
             ctx.setFillColor(dimColor)
             ctx.fill(CGRect(x: tl.minX, y: 0, width: startX - tl.minX, height: bounds.height))
@@ -278,8 +282,8 @@ final class VideoTrimTimelineControl: NSView {
         }
         ctx.restoreGState()
 
-        // 4. Selection border (top and bottom lines)
-        let selColor = NSColor.systemRed.cgColor
+        // 4. 选区：使用与玻璃检查器一致的光学强调色。
+        let selColor = RuneTheme.nsAccent.cgColor
         ctx.setFillColor(selColor)
         ctx.fill(CGRect(x: startX, y: 0, width: endX - startX, height: borderWidth))
         ctx.fill(CGRect(x: startX, y: bounds.height - borderWidth, width: endX - startX, height: borderWidth))
@@ -310,7 +314,7 @@ final class VideoTrimTimelineControl: NSView {
 
     private func drawHandle(ctx: CGContext, x: CGFloat, isStart: Bool) {
         let handleRect = CGRect(x: x, y: 0, width: handleWidth, height: bounds.height)
-        let handleColor = NSColor.systemRed.cgColor
+        let handleColor = NSColor(RuneTheme.graphiteRaised).withAlphaComponent(0.96).cgColor
 
         let path = CGMutablePath()
         let r = cornerRadius
@@ -336,12 +340,17 @@ final class VideoTrimTimelineControl: NSView {
         ctx.addPath(path)
         ctx.fillPath()
 
+        ctx.setStrokeColor(RuneTheme.nsAccent.cgColor)
+        ctx.setLineWidth(1)
+        ctx.addPath(path)
+        ctx.strokePath()
+
         // Grip bars
         let centerX = handleRect.midX
         let centerY = handleRect.midY
         let barHeight: CGFloat = 16
 
-        ctx.setStrokeColor(NSColor.black.withAlphaComponent(0.4).cgColor)
+        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.85).cgColor)
         ctx.setLineWidth(gripBarWidth)
         ctx.setLineCap(.round)
 

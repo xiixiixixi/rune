@@ -116,7 +116,10 @@ final class RegionSelectionOverlay {
 
     /// 抓定格帧（每屏并行）+ 窗口清单，抓完回填 SelectionView。
     private func fetchOverlayData(for views: [(screen: NSScreen, view: SelectionView)]) async {
-        let shareableContent = (try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true))
+        // 从共享保温缓存取屏幕清单（启动时常驻预热已焐热）：窗口清单和悬停
+        // 高亮即时就绪，不再等 0.5–1.5s 现查——快速单击也能正确命中窗口，
+        // 而不是因清单为空退化成全屏。定格帧仍在下面现抓，保持"此刻"。
+        let shareableContent = (try? await freezeEngine.shareableContent())?.content
         let myBundleID = Bundle.main.bundleIdentifier ?? ""
 
         // SCShareableContent.windows 没有承诺按前后层级排列。真正的窗口层级来自
@@ -236,6 +239,47 @@ final class RegionSelectionOverlay {
         }
     }
 
+
+    // MARK: - 快门签名（选区完成）
+
+    /// 光圈收缩 + 一次触感白色脉冲：ADA "Delight" 的签名动效。
+    /// reduce-motion 跳过；脉冲层挂 OverlayWindow 的 contentView layer。
+    private func fireShutterPulse(in rect: CGRect, on screen: NSScreen) {
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        guard !reduceMotion else { return }
+
+        guard let window = overlayWindows.first,
+              let host = window.contentView else { return }
+
+        let inset = rect.insetBy(dx: -3, dy: -3)
+        let pulse = CAShapeLayer()
+        pulse.fillColor = NSColor.clear.cgColor
+        pulse.strokeColor = NSColor.white.withAlphaComponent(0.9).cgColor
+        pulse.lineWidth = 1.6
+        pulse.frame = inset
+        pulse.path = CGPath(
+            roundedRect: pulse.bounds,
+            cornerWidth: 12,
+            cornerHeight: 12,
+            transform: nil
+        )
+        if host.layer == nil { host.wantsLayer = true }
+        host.layer!.addSublayer(pulse)
+
+        let scale = CABasicAnimation(keyPath: "transform.scale")
+        scale.fromValue = 1.0
+        scale.toValue = 1.045
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 0.88
+        fade.toValue = 0.0
+        let group = CAAnimationGroup()
+        group.animations = [scale, fade]
+        group.duration = 0.64
+        group.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        group.isRemovedOnCompletion = true
+        pulse.add(group, forKey: "shutterPulse")
+    }
+
     private func finishSelection(
         rect: CGRect,
         screen: NSScreen,
@@ -268,7 +312,10 @@ final class RegionSelectionOverlay {
             frozenDisplayFrame: frozenFramesByDisplay[displayID]
         )
 
-        closeOverlays()
+        fireShutterPulse(in: rect, on: screen)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            self.closeOverlays()
+        }
         continuation?.resume(returning: selection)
         continuation = nil
     }
@@ -462,6 +509,12 @@ private final class SelectionView: NSView {
 
     override var acceptsFirstResponder: Bool { true }
 
+    /// 热键触发时 Rune 还是后台应用，而覆盖层刻意只 orderFront 不激活（保住
+    /// 用户开着的菜单进冻结帧）。未激活应用的窗口第一下点击会被系统拿去激活、
+    /// 不派发给视图——表现为"必须点两下"。这里让第一下点击照常激活的同时
+    /// 直接送达视图，选区立即开始（与 ConfirmCanvasView 同一配方）。
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         window?.makeFirstResponder(self)
@@ -541,7 +594,7 @@ private final class SelectionView: NSView {
         }
     }
 
-    /// 悬停高亮：窗口=挖空遮罩+红框；全屏=整屏红框（不用挖空）。
+    /// 悬停高亮：窗口=挖空遮罩+光谱细边；全屏=整屏光谱细边（不用挖空）。
     /// 标签统一画在矩形上方（放不下挪下方）。
     private func drawHighlight(
         rect: CGRect,
@@ -557,12 +610,7 @@ private final class SelectionView: NSView {
             maskPath.fill()
         }
 
-        // 红色圆角描边（Rune点缀红）
-        let accent = NSColor(red: 1.0, green: 0.231, blue: 0.189, alpha: 1)
-        let border = NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8)
-        border.lineWidth = isWindow ? 2.5 : 2
-        accent.setStroke()
-        border.stroke()
+        drawSpectralBorder(rect, lineWidth: isWindow ? 2 : 1.5)
 
         // 标签：尺寸（物理像素）+ 单击提示
         let w = Int(rect.width * screen.backingScaleFactor)
@@ -638,11 +686,8 @@ private final class SelectionView: NSView {
         NSColor.black.withAlphaComponent(0.3).setFill()
         maskPath.fill()
 
-        // 选区边框
-        NSColor.white.setStroke()
-        let borderPath = NSBezierPath(rect: selectionRect)
-        borderPath.lineWidth = 1.5
-        borderPath.stroke()
+        // 选区边框沿用 Rune 的冷暖分段光谱语义。
+        drawSpectralBorder(selectionRect, lineWidth: 1.5)
 
         // 尺寸提示标签（含当前比例模式，让用户看到 Tab 切换效果）
         let w = Int(selectionRect.width * screen.backingScaleFactor)
@@ -670,6 +715,39 @@ private final class SelectionView: NSView {
         NSColor.black.withAlphaComponent(0.7).setFill()
         NSBezierPath(roundedRect: labelRect, xRadius: 4, yRadius: 4).fill()
         label.draw(at: NSPoint(x: labelRect.minX + 6, y: labelRect.minY + 2), withAttributes: attrs)
+    }
+
+    /// 不使用粗重圆角或整圈霓虹：左下是冷色，右上是暖色，像薄玻璃的折射边。
+    private func drawSpectralBorder(_ rect: CGRect, lineWidth: CGFloat) {
+        let inset = rect.insetBy(dx: lineWidth / 2, dy: lineWidth / 2)
+
+        NSColor.white.withAlphaComponent(0.20).setStroke()
+        let foundation = NSBezierPath(rect: inset)
+        foundation.lineWidth = 0.5
+        foundation.stroke()
+
+        let cool = NSBezierPath()
+        cool.move(to: NSPoint(x: inset.maxX, y: inset.minY))
+        cool.line(to: NSPoint(x: inset.minX, y: inset.minY))
+        cool.line(to: NSPoint(x: inset.minX, y: inset.maxY))
+        cool.lineWidth = lineWidth
+        RuneTheme.nsCyan.setStroke()
+        cool.stroke()
+
+        let warm = NSBezierPath()
+        warm.move(to: NSPoint(x: inset.minX, y: inset.maxY))
+        warm.line(to: NSPoint(x: inset.maxX, y: inset.maxY))
+        warm.line(to: NSPoint(x: inset.maxX, y: inset.minY))
+        warm.lineWidth = lineWidth
+        RuneTheme.nsMagenta.setStroke()
+        warm.stroke()
+
+        let highlight = NSBezierPath()
+        highlight.move(to: NSPoint(x: max(inset.midX, inset.maxX - 72), y: inset.maxY))
+        highlight.line(to: NSPoint(x: inset.maxX, y: inset.maxY))
+        highlight.lineWidth = lineWidth
+        RuneTheme.nsAmber.setStroke()
+        highlight.stroke()
     }
 
     // MARK: - Mouse Events

@@ -303,11 +303,7 @@ private struct ScrollCaptureStatusBarView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "rectangle.stack.fill")
-                .font(RuneFont.swiftUI(size: 17, weight: .semibold))
-                .foregroundStyle(RuneTheme.accent)
-                .frame(width: 30, height: 30)
-                .background(RuneTheme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+            RuneOpticalIconPlate(systemImage: "rectangle.stack", size: 30)
                 .help("滚动截图进行中")
 
             VStack(alignment: .leading, spacing: 3) {
@@ -357,7 +353,7 @@ private struct ScrollCaptureStatusBarView: View {
         }
         .padding(.horizontal, 14)
         .frame(height: 60)
-        .runeGlassSurface(cornerRadius: 16, elevation: .floating)
+        .runeGlassSurface(cornerRadius: RuneTheme.barCorner, elevation: .floating)
         .accessibilityElement(children: .contain)
     }
 }

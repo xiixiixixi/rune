@@ -29,6 +29,7 @@ final class OCRResultPanelController: NSObject, NSWindowDelegate {
         )
         panel.isOpaque = false
         panel.backgroundColor = .clear
+        panel.appearance = NSAppearance(named: .darkAqua)
         panel.hasShadow = true
         panel.level = .floating
         panel.hidesOnDeactivate = false
@@ -95,44 +96,35 @@ private struct OCRResultCardView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 12) {
             header
-            Divider().overlay(RuneTheme.separator)
 
-            TextEditor(text: $text)
-                .font(RuneFont.mono(size: 12))
-                .scrollContentBackground(.hidden)
-                .padding(10)
+            OCRPlainTextEditor(text: $text)
                 .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(RuneTheme.card)
+                    RoundedRectangle(cornerRadius: RuneTheme.plateCorner, style: .continuous)
+                        .fill(RuneTheme.workspace.opacity(0.88))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(RuneTheme.separator, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: RuneTheme.plateCorner, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5)
                 )
-                .padding(16)
                 .accessibilityLabel("识别到的文字，可编辑")
 
-            Divider().overlay(RuneTheme.separator)
             footer
         }
-        .runeGlassSurface(cornerRadius: 16, elevation: .floating)
-        .tint(RuneTheme.accent)
+        .padding(14)
+        .runeGlassSurface(cornerRadius: RuneTheme.cardCorner, elevation: .floating)
+        .tint(RuneTheme.textPrimary)
         .onExitCommand(perform: onClose)
     }
 
     private var header: some View {
         HStack(spacing: 10) {
-            Image(systemName: "text.viewfinder")
-                .font(RuneFont.swiftUI(size: 17, weight: .semibold))
-                .foregroundStyle(RuneTheme.accent)
-                .frame(width: 32, height: 32)
-                .background(RuneTheme.accentDim, in: RoundedRectangle(cornerRadius: 6))
+            RuneOpticalIconPlate(systemImage: "text.viewfinder", size: 34)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("识别结果")
-                    .font(RuneFont.swiftUI(size: 15, weight: .semibold))
+                    .font(RuneFont.swiftUI(size: 15, weight: .medium))
                 Text(barcodeCount > 0 ? "包含 \(barcodeCount) 个二维码或条码" : "可以先修正，再复制")
                     .font(RuneFont.swiftUI(size: 11))
                     .foregroundStyle(RuneTheme.textSecondary)
@@ -140,40 +132,25 @@ private struct OCRResultCardView: View {
 
             Spacer()
 
-            Label("完全在本地处理", systemImage: "lock.fill")
+            Label("本地处理", systemImage: "lock.fill")
                 .font(RuneFont.swiftUI(size: 10, weight: .medium))
                 .foregroundStyle(RuneTheme.textSecondary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
-                .background(
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .fill(RuneTheme.background.opacity(0.9))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .strokeBorder(RuneTheme.separator, lineWidth: 1)
-                )
+                .background(Color.white.opacity(0.055), in: Capsule())
 
             Button(action: onClose) {
                 Image(systemName: "xmark")
                     .font(RuneFont.swiftUI(size: 11, weight: .semibold))
                     .foregroundStyle(RuneTheme.textSecondary)
                     .frame(width: 26, height: 26)
-                    .background(
-                        RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .fill(RuneTheme.background.opacity(0.9))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .strokeBorder(RuneTheme.separator, lineWidth: 1)
-                    )
+                    .background(Color.white.opacity(0.055), in: Circle())
             }
             .buttonStyle(.plain)
             .help("关闭（Esc）")
             .accessibilityLabel("关闭识别结果")
         }
-        .padding(.horizontal, 16)
-        .frame(height: 58)
+        .frame(height: 46)
     }
 
     private var footer: some View {
@@ -185,7 +162,7 @@ private struct OCRResultCardView: View {
             if didCopy {
                 Label("已复制", systemImage: "checkmark")
                     .font(RuneFont.swiftUI(size: 11, weight: .medium))
-                    .foregroundStyle(.green)
+                    .foregroundStyle(RuneTheme.textPrimary)
             }
 
             Spacer()
@@ -209,12 +186,81 @@ private struct OCRResultCardView: View {
             .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .keyboardShortcut(.return, modifiers: [.command])
         }
-        .padding(.horizontal, 16)
-        .frame(height: 62)
+        .frame(height: 44)
     }
 }
 
 private final class OCRResultPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+}
+
+/// Native editable text surface with wheel scrolling but no persistent system
+/// scroller. OCR remains fully editable, selectable, undoable and accessible.
+private struct OCRPlainTextEditor: NSViewRepresentable {
+    @Binding var text: String
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.hasVerticalScroller = false
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+
+        let textView = NSTextView()
+        textView.delegate = context.coordinator
+        textView.string = text
+        textView.font = RuneFont.appKit(size: 12)
+        textView.textColor = NSColor(RuneTheme.textPrimary)
+        textView.backgroundColor = .clear
+        textView.drawsBackground = false
+        textView.isRichText = false
+        textView.importsGraphics = false
+        textView.allowsUndo = true
+        textView.isEditable = true
+        textView.isSelectable = true
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.minSize = NSSize(width: 0, height: 0)
+        textView.maxSize = NSSize(
+            width: CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.textContainerInset = NSSize(width: 12, height: 10)
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(
+            width: 0,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.setAccessibilityLabel("识别到的文字，可编辑")
+        scrollView.documentView = textView
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let textView = scrollView.documentView as? NSTextView else { return }
+        context.coordinator.text = $text
+        if textView.string != text {
+            textView.string = text
+        }
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        var text: Binding<String>
+
+        init(text: Binding<String>) {
+            self.text = text
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            text.wrappedValue = textView.string
+        }
+    }
 }

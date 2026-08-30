@@ -25,7 +25,7 @@ final class CaptureLibraryWindowController: NSObject, NSWindowDelegate {
             rootView: CaptureLibraryView(initialSearchText: searchQuery)
         )
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1080, height: 760),
+            contentRect: NSRect(x: 0, y: 0, width: 1160, height: 760),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -33,10 +33,11 @@ final class CaptureLibraryWindowController: NSObject, NSWindowDelegate {
         window.contentView = hostingView
         window.title = "素材库"
         window.titlebarAppearsTransparent = true
-        window.titleVisibility = .visible
+        window.titleVisibility = .hidden
         window.toolbarStyle = .unified
-        window.backgroundColor = .windowBackgroundColor
-        window.minSize = NSSize(width: 940, height: 640)
+        window.backgroundColor = RuneTheme.nsBackground
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.minSize = NSSize(width: 1040, height: 680)
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.collectionBehavior = [.moveToActiveSpace]

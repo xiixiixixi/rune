@@ -151,7 +151,11 @@ struct EditorCanvasView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(
+            YumYumGlow()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .opacity(0.75)
+        )
     }
 
     private func interactionGesture(imageFrame: CGRect, boundaryFrame: CGRect) -> some Gesture {
@@ -332,11 +336,11 @@ private enum AnnotationCanvasCursor: Equatable {
 private struct AnnotationMarqueeSelectionView: View {
     var body: some View {
         Rectangle()
-            .fill(RuneTheme.accent.opacity(0.08))
+            .fill(Color.white.opacity(0.035))
             .overlay {
                 Rectangle()
                     .stroke(
-                        RuneTheme.accent.opacity(0.65),
+                        RuneTheme.spectralGradient,
                         style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])
                     )
             }

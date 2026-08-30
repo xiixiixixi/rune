@@ -60,8 +60,15 @@ final class MenuBarPopoverController: NSObject {
         guard let panel else { return }
 
         let panelWidth = panel.frame.width
-        let panelX = screenRect.midX - panelWidth / 2
-        let panelY = screenRect.minY - panel.frame.height
+        let visibleFrame = buttonWindow.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
+        var panelX = screenRect.maxX - panelWidth + 12
+        if let visibleFrame {
+            panelX = min(
+                max(panelX, visibleFrame.minX + 10),
+                visibleFrame.maxX - panelWidth - 10
+            )
+        }
+        let panelY = screenRect.minY - panel.frame.height - 4
 
         panel.setFrameOrigin(NSPoint(x: panelX, y: panelY))
         panel.alphaValue = 0

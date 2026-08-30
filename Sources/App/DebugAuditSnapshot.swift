@@ -30,17 +30,36 @@ enum DebugAuditSnapshot {
         }
     }
 
+    /// 截图确认模式同时有全屏画布和悬浮工具栏；单独抓最小窗口验证工具栏本身。
+    static func captureSmallestAfter(_ filename: String, delay: TimeInterval = 0.9) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            let candidates = visibleCandidates()
+            guard let window = candidates.min(by: {
+                $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height
+            }) else { return }
+            capture(window, filename: filename)
+        }
+    }
+
     private static func captureFrontmost(_ filename: String) {
-        let candidates = NSApp.windows.filter { window in
+        let candidates = visibleCandidates()
+        guard let window = candidates.max(by: { lhs, rhs in
+            lhs.frame.width * lhs.frame.height < rhs.frame.width * rhs.frame.height
+        }) else { return }
+
+        capture(window, filename: filename)
+    }
+
+    private static func visibleCandidates() -> [NSWindow] {
+        NSApp.windows.filter { window in
             window.isVisible
                 && window.contentView != nil
                 && window.frame.width >= 80
                 && window.frame.height >= 36
         }
-        guard let window = candidates.max(by: { lhs, rhs in
-            lhs.frame.width * lhs.frame.height < rhs.frame.width * rhs.frame.height
-        }) else { return }
+    }
 
+    private static func capture(_ window: NSWindow, filename: String) {
         Task { @MainActor in
             // 低矮无边框悬浮条在窗口服务器中只有透明材质，没有可读前景；视图缓存更准确。
             if window.frame.height <= 140,

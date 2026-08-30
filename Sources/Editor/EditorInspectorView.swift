@@ -7,13 +7,11 @@ struct EditorInspectorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("编辑面板", selection: $panel) {
-                ForEach(InspectorPanel.allCases) { item in
-                    Text(item.title).tag(item)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            RuneOpticalSegmentedPicker(
+                options: InspectorPanel.allCases.map { ($0, $0.title) },
+                selection: $panel,
+                accessibilityLabel: "编辑面板"
+            )
             .padding(12)
 
             Divider()
@@ -23,31 +21,33 @@ struct EditorInspectorView: View {
                     if panel == .annotation {
                     VStack(alignment: .leading, spacing: 5) {
                         Text(model.inspectedTool?.title ?? "选择")
-                            .font(RuneFont.swiftUI(size: 24, weight: .bold))
+                            .font(RuneFont.swiftUI(size: 15, weight: .medium))
                             .foregroundStyle(RuneTheme.paperInk)
 
                         Text(
                             model.selectionCount > 0
                                 ? "正在调整已选标注"
-                                : "工具在画布下方，属性会随选择更新。"
+                                : "工具在画布左侧，属性会随选择更新。"
                         )
                         .font(RuneFont.swiftUI(size: 11))
                         .foregroundStyle(RuneTheme.paperTextMuted)
                     }
                     .padding(.horizontal, 16)
-                    .padding(.top, 20)
+                    .padding(.top, 18)
                     .padding(.bottom, 14)
 
                     if !model.items.isEmpty {
                         Button(role: .destructive) {
                             model.clearAnnotations()
                         } label: {
-                            Label("全部清除", systemImage: "trash")
-                                .font(RuneFont.caption)
+                            RuneTheme.compactButtonLabel(
+                                "全部清除",
+                                systemImage: "trash",
+                                destructive: true
+                            )
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+                        .buttonStyle(RuneTheme.RunePressStyle())
                         .padding(.horizontal, 14)
                         .padding(.bottom, 12)
                     }
@@ -88,14 +88,15 @@ struct EditorInspectorView: View {
                                             .font(RuneFont.caption2)
                                             .foregroundStyle(RuneTheme.paperTextMuted)
                                     }
-                                    Slider(
+                                    RuneGlassSlider(
                                         value: Binding(
                                             get: { model.redactionDensity },
                                             set: { model.setRedactionDensity($0) }
                                         ),
-                                        in: 0.15...1
+                                        in: 0.15...1,
+                                        accessibilityLabel: "马赛克密度",
+                                        accessibilityValue: "\(Int(model.redactionDensity * 100))%"
                                     )
-                                    .controlSize(.small)
                                 }
                             }
                         }
@@ -149,7 +150,11 @@ struct EditorInspectorView: View {
             }
             .scrollContentBackground(.hidden)
         }
-        .background(.regularMaterial)
+        .runeGlassSurface(
+            cornerRadius: RuneTheme.cardCorner,
+            tint: RuneTheme.glassTint,
+            elevation: .embedded
+        )
     }
 }
 
@@ -174,9 +179,7 @@ private struct InspectorSectionHeader: View {
     init(_ title: String) { self.title = title }
 
     var body: some View {
-        Text(title)
-            .font(RuneFont.mono(size: 10, weight: .medium))
-            .foregroundStyle(RuneTheme.paperTextMuted)
+        RuneTheme.stampLabel(title)
     }
 }
 
@@ -262,21 +265,20 @@ private struct AnnotationInspectorToolGrid: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 48)
-            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous))
         }
         .buttonStyle(.plain)
-        .foregroundStyle(selectedTool == tool ? RuneTheme.annotationAccent : .primary.opacity(0.72))
+        .foregroundStyle(selectedTool == tool ? RuneTheme.textPrimary : .primary.opacity(0.72))
         .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(selectedTool == tool ? RuneTheme.annotationAccent.opacity(0.15) : .clear)
+            RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                .fill(selectedTool == tool ? Color.white.opacity(0.055) : .clear)
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .strokeBorder(
-                    selectedTool == tool ? RuneTheme.annotationAccent.opacity(0.35) : .clear,
-                    lineWidth: 0.8
-                )
-        )
+        .overlay {
+            if selectedTool == tool {
+                RuneSpectralBorder(cornerRadius: RuneTheme.chipCorner, lineWidth: 0.7)
+                    .opacity(0.62)
+            }
+        }
         .help(tool.title)
         .accessibilityLabel(tool.title)
     }
@@ -289,14 +291,20 @@ private struct AnnotationInspectorToolGrid: View {
                 .font(RuneFont.swiftUI(size: 12, weight: .medium))
                 .frame(maxWidth: .infinity)
                 .frame(height: 30)
-                .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous))
         }
         .buttonStyle(.plain)
-        .foregroundStyle(selectedTool == tool ? RuneTheme.annotationAccent : .primary.opacity(0.55))
+        .foregroundStyle(selectedTool == tool ? RuneTheme.textPrimary : .primary.opacity(0.55))
         .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(selectedTool == tool ? RuneTheme.annotationAccent.opacity(0.15) : .clear)
+            RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                .fill(selectedTool == tool ? Color.white.opacity(0.055) : .clear)
         )
+        .overlay {
+            if selectedTool == tool {
+                RuneSpectralBorder(cornerRadius: RuneTheme.chipCorner, lineWidth: 0.7)
+                    .opacity(0.58)
+            }
+        }
         .help(tool.title)
         .accessibilityLabel(tool.title)
     }
@@ -332,14 +340,14 @@ private struct AnnotationColorMenu: View {
             .padding(.horizontal, 8)
             .frame(height: 26)
             .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
                     .fill(RuneTheme.paperCard)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
                     .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.5)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("标注颜色：\(selectedSwatch.title)")
@@ -379,8 +387,8 @@ private struct AnnotationColorPopover: View {
                             .overlay {
                                 if selectedSwatch == swatch {
                                     Circle()
-                                        .stroke(RuneTheme.annotationAccent.opacity(0.38), lineWidth: 6)
-                                        .frame(width: 32, height: 32)
+                                        .stroke(RuneTheme.spectralGradient, lineWidth: 1.4)
+                                        .frame(width: 30, height: 30)
                                 }
                             }
                         Text(swatch.title)
@@ -390,11 +398,11 @@ private struct AnnotationColorPopover: View {
                     }
                     .padding(.horizontal, 7)
                     .frame(height: 34)
-                    .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .contentShape(RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous))
                     .background {
                         if selectedSwatch == swatch {
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(RuneTheme.annotationAccent.opacity(0.10))
+                            RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                                .fill(Color.white.opacity(0.05))
                         }
                     }
                 }
@@ -455,14 +463,14 @@ private struct AnnotationStrokeMenu: View {
             .padding(.horizontal, 8)
             .frame(height: 26)
             .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
                     .fill(RuneTheme.paperCard)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
                     .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.5)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous))
         }
         .buttonStyle(.plain)
         .popover(isPresented: $isPresented, arrowEdge: .trailing) {
@@ -475,9 +483,10 @@ private struct AnnotationStrokeMenu: View {
                         ZStack {
                             if strokeWidth == width {
                                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .fill(RuneTheme.annotationAccent.opacity(0.12))
+                                    .fill(Color.white.opacity(0.055))
+                                    .overlay(RuneSpectralBorder(cornerRadius: 8, lineWidth: 0.7))
                             }
-                            StrokePreview(width: width, color: strokeWidth == width ? RuneTheme.annotationAccent : Color.primary.opacity(0.58))
+                            StrokePreview(width: width, color: strokeWidth == width ? RuneTheme.textPrimary : Color.primary.opacity(0.58))
                                 .frame(width: 48, height: 32)
                         }
                         .frame(maxWidth: .infinity)
@@ -582,14 +591,14 @@ private struct AnnotationTextStyleControls: View {
             .padding(.horizontal, 8)
             .frame(height: 26)
             .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
                     .fill(RuneTheme.paperCard)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
                     .stroke(RuneTheme.paperSeparator, lineWidth: 0.5)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous))
         }
     }
 
@@ -617,11 +626,11 @@ private struct AnnotationTextStyleControls: View {
         }
         .frame(height: 26)
         .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
+            RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
                 .fill(RuneTheme.paperCard)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
+            RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
                 .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.5)
         )
     }
@@ -640,8 +649,14 @@ private struct AnnotationTextStyleControls: View {
         }
         .padding(3)
         .frame(height: 34)
-        .background(Capsule().fill(RuneTheme.paperCard))
-        .overlay(Capsule().stroke(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 0.5))
+        .background(
+            RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                .fill(RuneTheme.paperCard)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                .stroke(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 0.5)
+        )
     }
 
     private func styleToggle(_ label: String, isActive: Bool, font: Font, underline: Bool = false, action: @escaping () -> Void) -> some View {
@@ -651,11 +666,19 @@ private struct AnnotationTextStyleControls: View {
                 .underline(underline)
                 .frame(maxWidth: .infinity)
                 .frame(height: 28)
-                .contentShape(Capsule())
+                .contentShape(RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous))
         }
         .buttonStyle(.plain)
-        .foregroundStyle(isActive ? Color.white : Color.primary)
-        .background { if isActive { Capsule().fill(RuneTheme.paperInk) } }
+        .foregroundStyle(isActive ? RuneTheme.textPrimary : Color.primary)
+        .background {
+            if isActive {
+                RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                    .overlay(alignment: .bottom) {
+                        RuneSelectionUnderline(width: 16)
+                    }
+            }
+        }
     }
 
     private var textAlignmentControl: some View {
@@ -667,8 +690,14 @@ private struct AnnotationTextStyleControls: View {
         }
         .padding(3)
         .frame(height: 34)
-        .background(Capsule().fill(RuneTheme.paperCard))
-        .overlay(Capsule().stroke(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 0.5))
+        .background(
+            RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                .fill(RuneTheme.paperCard)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                .stroke(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 0.5)
+        )
     }
 
     private func alignmentButton(_ alignment: NSTextAlignment, _ icon: String) -> some View {
@@ -680,11 +709,19 @@ private struct AnnotationTextStyleControls: View {
                 .font(RuneFont.swiftUI(size: 12, weight: .semibold))
                 .frame(maxWidth: .infinity)
                 .frame(height: 28)
-                .contentShape(Capsule())
+                .contentShape(RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous))
         }
         .buttonStyle(.plain)
-        .foregroundStyle(isSelected ? Color.white : RuneTheme.paperInk)
-        .background { if isSelected { Capsule().fill(RuneTheme.paperInk) } }
+        .foregroundStyle(isSelected ? RuneTheme.textPrimary : RuneTheme.paperInk)
+        .background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                    .overlay(alignment: .bottom) {
+                        RuneSelectionUnderline(width: 16)
+                    }
+            }
+        }
         .accessibilityLabel(alignment.accessibilityName)
     }
 
@@ -787,14 +824,14 @@ private struct LayoutSection: View {
                     .padding(.horizontal, 8)
                     .frame(height: 26)
                     .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
                             .fill(RuneTheme.paperCard)
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
                             .stroke(RuneTheme.paperSeparator, lineWidth: 0.5)
                     )
-                    .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .contentShape(RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous))
                 }
             }
 
@@ -835,10 +872,10 @@ private struct AlignmentGridPicker: View {
                         } label: {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                    .fill(selection == alignment ? RuneTheme.annotationAccent.opacity(0.12) : .clear)
+                                    .fill(selection == alignment ? Color.white.opacity(0.055) : .clear)
 
                                 Circle()
-                                    .fill(selection == alignment ? RuneTheme.annotationAccent : Color.primary.opacity(0.22))
+                                    .fill(selection == alignment ? RuneTheme.textPrimary : Color.primary.opacity(0.22))
                                     .frame(width: selection == alignment ? 9 : 6, height: selection == alignment ? 9 : 6)
                             }
                             .frame(maxWidth: .infinity)
@@ -918,23 +955,24 @@ struct BackgroundPickerSection: View {
             model.updateConfig { $0.style = .none }
         } label: {
             ZStack {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
                     .fill(Color.white)
                     .frame(width: 28, height: 28)
                 Path { path in
                     path.move(to: CGPoint(x: 26, y: 2))
                     path.addLine(to: CGPoint(x: 2, y: 26))
                 }
-                .stroke(Color.red.opacity(0.6), lineWidth: 1.5)
+                .stroke(RuneTheme.signal.opacity(0.75), lineWidth: 1.5)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(
-                        model.config.style == .none ? RuneTheme.annotationAccent : Color.primary.opacity(0.12),
-                        lineWidth: model.config.style == .none ? 2 : 0.5
-                    )
-            )
+            .clipShape(RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous))
+            .overlay {
+                if model.config.style == .none {
+                    RuneSpectralBorder(cornerRadius: RuneTheme.chipCorner, lineWidth: 1)
+                } else {
+                    RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+                }
+            }
         }
         .buttonStyle(.plain)
         .help("无背景")
@@ -950,13 +988,17 @@ struct BackgroundPickerSection: View {
         return Button {
             model.updateConfig { $0.style = .solid(color) }
         } label: {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
+            RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
                 .fill(color.color)
                 .frame(width: 28, height: 28)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(isSelected ? RuneTheme.annotationAccent : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
-                )
+                .overlay {
+                    if isSelected {
+                        RuneSpectralBorder(cornerRadius: RuneTheme.chipCorner, lineWidth: 1)
+                    } else {
+                        RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+                    }
+                }
         }
         .buttonStyle(.plain)
         .help(color.name)
@@ -972,13 +1014,17 @@ struct BackgroundPickerSection: View {
         return Button {
             model.updateConfig { $0.style = .gradient(preset) }
         } label: {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
+            RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
                 .fill(preset.swiftUIGradient)
                 .frame(width: 28, height: 28)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(isSelected ? RuneTheme.annotationAccent : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
-                )
+                .overlay {
+                    if isSelected {
+                        RuneSpectralBorder(cornerRadius: RuneTheme.chipCorner, lineWidth: 1)
+                    } else {
+                        RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+                    }
+                }
         }
         .buttonStyle(.plain)
         .help(preset.name)
@@ -1004,11 +1050,15 @@ struct BackgroundPickerSection: View {
                 }
             }
             .frame(width: 48, height: 36)
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(isSelected ? RuneTheme.annotationAccent : Color.primary.opacity(0.12), lineWidth: isSelected ? 2 : 0.5)
-            )
+            .clipShape(RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous))
+            .overlay {
+                if isSelected {
+                    RuneSpectralBorder(cornerRadius: RuneTheme.chipCorner, lineWidth: 1)
+                } else {
+                    RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+                }
+            }
         }
         .buttonStyle(.plain)
         .accessibilityLabel("macOS 背景 \(asset.id.replacingOccurrences(of: "mac-", with: ""))")
@@ -1023,10 +1073,9 @@ struct BackgroundPickerSection: View {
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: 28, height: 28)
-                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .strokeBorder(RuneTheme.annotationAccent, lineWidth: 2)
+                            RuneSpectralBorder(cornerRadius: RuneTheme.chipCorner, lineWidth: 1)
                         )
                 }
 
@@ -1041,11 +1090,9 @@ struct BackgroundPickerSection: View {
                 Button {
                     pickCustomWallpaper()
                 } label: {
-                    Text("更换")
-                        .font(RuneFont.caption2)
+                    RuneTheme.compactButtonLabel("更换")
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.mini)
+                .buttonStyle(RuneTheme.RunePressStyle())
             }
         } else {
             Button {
@@ -1059,7 +1106,7 @@ struct BackgroundPickerSection: View {
                 .padding(.vertical, 6)
                 .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
                         .strokeBorder(Color.primary.opacity(0.08), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
                 )
             }
@@ -1102,11 +1149,20 @@ private struct ImageCropSection: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 6)
-                    .background(model.isCropping ? AnyShapeStyle(RuneTheme.annotationAccent.opacity(0.15)) : AnyShapeStyle(.quaternary), in: RoundedRectangle(cornerRadius: 6))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .strokeBorder(model.isCropping ? RuneTheme.annotationAccent : Color.primary.opacity(0.08), lineWidth: model.isCropping ? 1.5 : 0.5)
+                    .background(
+                        model.isCropping
+                            ? AnyShapeStyle(Color.white.opacity(0.055))
+                            : AnyShapeStyle(.quaternary),
+                        in: RoundedRectangle(cornerRadius: 6)
                     )
+                    .overlay {
+                        if model.isCropping {
+                            RuneSpectralBorder(cornerRadius: RuneTheme.chipCorner, lineWidth: 0.8)
+                        } else {
+                            RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                        }
+                    }
                 }
                 .buttonStyle(.plain)
 
@@ -1209,10 +1265,15 @@ struct LabeledSlider: View {
                     .font(RuneFont.caption2)
                     .foregroundStyle(RuneTheme.paperTextMuted)
             }
-            Slider(value: $value, in: range) { editing in
-                onEditingChanged?(editing)
-            }
-            .controlSize(.small)
+            RuneGlassSlider(
+                value: $value,
+                in: range,
+                accessibilityLabel: label,
+                accessibilityValue: format(value),
+                onEditingChanged: { editing in
+                    onEditingChanged?(editing)
+                }
+            )
         }
     }
 }

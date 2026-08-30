@@ -22,22 +22,26 @@ struct RecordingStatusBarView: View {
     }
 
     var body: some View {
-        HStack(spacing: 10) {
-            Circle()
-                .fill(isPaused ? RuneTheme.chromeMuted : RuneTheme.signal)
-                .frame(width: 8, height: 8)
+        HStack(spacing: 12) {
+            Image(systemName: "record.circle")
+                .font(RuneFont.swiftUI(size: 15, weight: .medium))
+                .foregroundStyle(RuneTheme.signal)
+                .opacity(isPaused ? 0.35 : 1)
+                .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(isPaused ? "录屏已暂停" : "正在录屏")
-                    .font(RuneFont.swiftUI(size: 11, weight: .semibold))
-                    .foregroundStyle(RuneTheme.chromeText)
+                    .font(RuneFont.swiftUI(size: 10, weight: .medium))
+                    .foregroundStyle(RuneTheme.chromeMuted)
 
-                Text(formatTime(elapsedSeconds))
-                    .font(RuneFont.mono(size: 12, weight: .medium))
-                    .foregroundStyle(RuneTheme.chromeText.opacity(0.72))
-                    .contentTransition(.numericText())
+                DotMatrixText(
+                    text: formatTime(elapsedSeconds),
+                    dotSize: 2.6,
+                    dotSpacing: 1.6,
+                    color: RuneTheme.chromeText.opacity(isPaused ? 0.45 : 0.9)
+                )
             }
-            .frame(minWidth: 72, alignment: .leading)
+            .frame(minWidth: 78, alignment: .leading)
 
             Rectangle()
                 .fill(RuneTheme.chromeLine)
@@ -47,11 +51,14 @@ struct RecordingStatusBarView: View {
                 recorder.togglePause()
             } label: {
                 Label(isPaused ? "继续" : "暂停", systemImage: isPaused ? "play.fill" : "pause.fill")
-                    .font(RuneFont.swiftUI(size: 11, weight: .semibold))
+                    .font(RuneFont.swiftUI(size: 11, weight: .medium))
                     .foregroundStyle(RuneTheme.chromeText)
                     .padding(.horizontal, 9)
                     .frame(height: 30)
-                    .background(RuneTheme.chromeElevated, in: Capsule())
+                    .background(
+                        RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
+                            .fill(RuneTheme.chromeElevated)
+                    )
             }
             .buttonStyle(RecordingControlButtonStyle())
             .accessibilityLabel(isPaused ? "继续录屏" : "暂停录屏")
@@ -69,7 +76,7 @@ struct RecordingStatusBarView: View {
                 }
             ) {
                 Image(systemName: "ellipsis")
-                    .font(RuneFont.swiftUI(size: 12, weight: .semibold))
+                    .font(RuneFont.swiftUI(size: 12, weight: .medium))
                     .foregroundStyle(RuneTheme.chromeText)
                     .frame(width: 30, height: 30)
                     .background(RuneTheme.chromeElevated, in: Circle())
@@ -81,20 +88,24 @@ struct RecordingStatusBarView: View {
                 RecordingStatusBarController.shared.finishRecording()
             } label: {
                 Label("结束", systemImage: "stop.fill")
-                    .font(RuneFont.swiftUI(size: 11, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .font(RuneFont.swiftUI(size: 11, weight: .medium))
+                    .foregroundStyle(RuneTheme.primaryOnFill)
                     .padding(.horizontal, 12)
                     .frame(height: 30)
-                    .background(RuneTheme.chromeBlueFill, in: Capsule())
+                    .background(
+                        RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
+                            .fill(RuneTheme.primaryFill)
+                    )
+                    .shadow(color: .black.opacity(0.14), radius: 8, y: 3)
             }
             .buttonStyle(RecordingControlButtonStyle())
             .keyboardShortcut(.escape, modifiers: [])
             .accessibilityLabel("结束并保存录屏")
         }
-        .padding(.horizontal, 10)
-        .frame(height: 48)
+        .padding(.horizontal, 12)
+        .frame(height: RuneTheme.barHeight - 8)
         .fixedSize()
-        .runeGlassSurface(cornerRadius: 16, elevation: .floating)
+        .runeGlassSurface(cornerRadius: RuneTheme.barCorner, elevation: .floating)
     }
 
     private func formatTime(_ seconds: Int) -> String {
@@ -115,7 +126,6 @@ private struct RecordingControlButtonStyle: ButtonStyle {
         configuration.label
             .opacity(configuration.isPressed ? 0.72 : (isHovered ? 0.88 : 1))
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .animation(.easeOut(duration: 0.10), value: configuration.isPressed)
             .onHover { isHovered = $0 }
     }
 }
@@ -141,7 +151,6 @@ final class RecordingStatusBarController {
             auditElapsedSeconds: auditElapsedSeconds,
             auditPaused: auditPaused
         )
-        .environment(\.colorScheme, .dark)
         .runeTypography()
 
         let hostingView = NSHostingView(rootView: rootView)

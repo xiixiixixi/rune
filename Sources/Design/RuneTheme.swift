@@ -1,75 +1,90 @@
+import AppKit
 import SwiftUI
 
-/// Rune 设计系统——「取景玻璃 Viewfinder Glass」。
+/// Rune 的生产视觉系统：黑色工作面 + 单一嵌入式流体玻璃 + 光谱细边。
 ///
-/// 内容始终清晰，玻璃只承载导航、工具和临时操作。颜色、文字和控件跟随
-/// macOS 的明暗外观与辅助功能；macOS 26 使用系统 Liquid Glass（液态玻璃），
-/// macOS 14–15 使用原生 Material（材质）回退。裁切角线仍是 Rune 的产品签名，
-/// 但只用于需要强调“取景/裁剪”的关键表面。
+/// 视觉效果图只定义外观；所有组件仍由真实的 AppKit / SwiftUI 控件承载。
+/// 玻璃只用于工具、检查器和临时操作，不用于长文本或大面积内容。
 enum RuneTheme {
-    // MARK: - 系统动态色
+    // MARK: - Palette
 
-    static let accent = Color(nsColor: .controlAccentColor)
-    static let accentFill = Color(nsColor: .controlAccentColor)
-    static let accentPressed = Color(nsColor: .controlAccentColor).opacity(0.82)
-    static let ink = Color.primary
-    static let textPrimary = Color.primary
-    static let textSecondary = Color.secondary
-    static let textMuted = Color(nsColor: .tertiaryLabelColor)
-    static let separator = Color(nsColor: .separatorColor).opacity(0.72)
-    static let background = Color(nsColor: .windowBackgroundColor)
-    static let card = Color(nsColor: .controlBackgroundColor).opacity(0.78)
-    static let accentDim = Color(nsColor: .controlAccentColor).opacity(0.12)
+    static let workspace = Color(red: 0.020, green: 0.022, blue: 0.030)
+    static let graphite = Color(red: 0.045, green: 0.050, blue: 0.064)
+    static let graphiteRaised = Color(red: 0.066, green: 0.072, blue: 0.090)
+    static let glassTint = Color(red: 0.075, green: 0.085, blue: 0.115)
 
-    static let nsBackground = NSColor.windowBackgroundColor
-    static let nsAccent = NSColor.controlAccentColor
-    static let signal = Color(nsColor: .systemRed)
+    static let textPrimary = Color(red: 0.945, green: 0.940, blue: 0.955)
+    static let textSecondary = Color(red: 0.650, green: 0.635, blue: 0.680)
+    static let textMuted = Color(red: 0.420, green: 0.410, blue: 0.455)
+    static let separator = Color.white.opacity(0.085)
 
-    // 旧命名作为语义兼容层保留；颜色已统一为系统动态色。
-    static let paperBackground = Color(nsColor: .windowBackgroundColor)
-    static let paperCard = Color(nsColor: .controlBackgroundColor)
-    static let paperInk = Color.primary
-    static let paperTextSecondary = Color.secondary
-    static let paperTextMuted = Color(nsColor: .tertiaryLabelColor)
-    static let paperSeparator = Color(nsColor: .separatorColor).opacity(0.72)
-    static let paperControl = Color(nsColor: .controlBackgroundColor)
-    static let paperAccent = Color(nsColor: .controlAccentColor)
-    static let annotationAccent = Color(nsColor: .controlAccentColor)
-    static let editorWorkspace = Color(nsColor: .underPageBackgroundColor)
+    static let cyan = Color(red: 0.23, green: 0.78, blue: 0.96)
+    static let aubergine = Color(red: 0.46, green: 0.22, blue: 0.77)
+    static let magenta = Color(red: 0.92, green: 0.26, blue: 0.64)
+    static let amber = Color(red: 0.98, green: 0.54, blue: 0.31)
+    static let signal = Color(red: 0.94, green: 0.24, blue: 0.30)
 
-    static let nsPaperBackground = NSColor.windowBackgroundColor
-    static let nsPaperAccent = NSColor.controlAccentColor
+    static let spectralGradient = LinearGradient(
+        colors: [cyan, aubergine, magenta, amber],
+        startPoint: .leading,
+        endPoint: .trailing
+    )
 
-    // 悬浮表面使用高对比动态色，真正的透明材质由 runeGlassSurface 提供。
-    static let chromeBase = Color(nsColor: .windowBackgroundColor).opacity(0.92)
-    static let chromeElevated = Color(nsColor: .controlBackgroundColor).opacity(0.72)
-    static let chromeLine = Color(nsColor: .separatorColor).opacity(0.68)
-    static let chromeText = Color.primary
-    static let chromeMuted = Color.secondary
-    static let chromeBlue = Color(nsColor: .controlAccentColor)
-    static let chromeBlueFill = Color(nsColor: .controlAccentColor)
+    static let accent = aubergine
+    static let accentFill = aubergine
+    static let accentPressed = aubergine.opacity(0.82)
+    static let accentDim = aubergine.opacity(0.14)
+    static let primaryFill = graphiteRaised
+    static let primaryOnFill = textPrimary
+    static let annotationAccent = magenta
+    static let ink = textPrimary
+    static let background = workspace
+    static let card = graphiteRaised
 
-    // MARK: - 尺寸
+    static let nsBackground = NSColor(calibratedRed: 0.020, green: 0.022, blue: 0.030, alpha: 1)
+    static let nsAccent = NSColor(calibratedRed: 0.46, green: 0.22, blue: 0.77, alpha: 1)
+    static let nsCyan = NSColor(calibratedRed: 0.23, green: 0.78, blue: 0.96, alpha: 1)
+    static let nsMagenta = NSColor(calibratedRed: 0.92, green: 0.26, blue: 0.64, alpha: 1)
+    static let nsAmber = NSColor(calibratedRed: 0.98, green: 0.54, blue: 0.31, alpha: 1)
+    static let nsSignal = NSColor(calibratedRed: 0.94, green: 0.24, blue: 0.30, alpha: 1)
 
-    /// 悬浮条标准高度
-    static let barHeight: CGFloat = 56
-    /// 悬浮条圆角
-    static let barCorner: CGFloat = 18
-    /// 控件圆角（按钮、输入）
-    static let buttonCorner: CGFloat = 8
-    /// 卡片圆角
-    static let cardCorner: CGFloat = 12
-    /// 图标按钮尺寸
+    // Historical names retained so existing functional views do not need to fork their logic.
+    static let paperBackground = workspace
+    static let paperCard = graphiteRaised
+    static let paperInk = textPrimary
+    static let paperTextSecondary = textSecondary
+    static let paperTextMuted = textMuted
+    static let paperSeparator = separator
+    static let paperControl = graphiteRaised
+    static let paperAccent = aubergine
+    static let editorWorkspace = workspace
+    static let nsPaperBackground = nsBackground
+    static let nsPaperAccent = nsAccent
+
+    static let chromeBase = Color(red: 0.030, green: 0.033, blue: 0.044)
+    static let chromeElevated = Color(red: 0.070, green: 0.075, blue: 0.095)
+    static let chromeLine = Color.white.opacity(0.10)
+    static let chromeText = textPrimary
+    static let chromeMuted = textSecondary
+    static let chromeBlue = cyan
+    static let chromeBlueFill = aubergine
+
+    // MARK: - Geometry
+
+    static let chipCorner: CGFloat = 5
+    static let buttonCorner: CGFloat = 6
+    static let plateCorner: CGFloat = 8
+    static let cardCorner: CGFloat = 8
+    static let barCorner: CGFloat = 8
+    static let barHeight: CGFloat = 58
     static let iconButtonSize: CGFloat = 38
 
-    // MARK: - 组件样式
+    // MARK: - Shared components
 
-    /// 悬浮条底：macOS 26 原生玻璃，旧系统使用 Material 回退。
     static var barBackground: some View {
         RuneGlassBackground(cornerRadius: barCorner, elevation: .floating)
     }
 
-    /// 主按钮（保存/导出/开始）：系统强调色底、白字。
     static func primaryButtonLabel(_ text: String, systemImage: String? = nil) -> some View {
         Group {
             if let systemImage {
@@ -78,17 +93,24 @@ enum RuneTheme {
                 Text(text)
             }
         }
-        .font(RuneFont.swiftUI(size: 13, weight: .semibold))
-            .foregroundStyle(Color.white)
-            .padding(.horizontal, 16)
-            .frame(height: 32)
-            .background(
-                RoundedRectangle(cornerRadius: buttonCorner, style: .continuous)
-                    .fill(accentFill)
-            )
+        .font(RuneFont.swiftUI(size: 12.5, weight: .semibold))
+        .foregroundStyle(textPrimary)
+        .padding(.horizontal, 15)
+        .frame(height: 34)
+        .background(
+            RoundedRectangle(cornerRadius: buttonCorner, style: .continuous)
+                .fill(graphiteRaised.opacity(0.94))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: buttonCorner, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.14), lineWidth: 0.7)
+        )
+        .overlay(
+            RuneSpectralBorder(cornerRadius: buttonCorner, lineWidth: 0.65)
+                .opacity(0.58)
+        )
     }
 
-    /// 次按钮（取消/复制）：浮面 + 机线细边
     static func secondaryButtonLabel(_ text: String, systemImage: String? = nil) -> some View {
         Group {
             if let systemImage {
@@ -97,114 +119,594 @@ enum RuneTheme {
                 Text(text)
             }
         }
-        .font(RuneFont.swiftUI(size: 13, weight: .medium))
-            .foregroundStyle(textPrimary)
-            .padding(.horizontal, 12)
-            .frame(height: 32)
-            .background(
-                RoundedRectangle(cornerRadius: buttonCorner, style: .continuous)
-                    .fill(chromeElevated)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: buttonCorner, style: .continuous)
-                    .strokeBorder(separator, lineWidth: 1)
-            )
+        .font(RuneFont.swiftUI(size: 12.5, weight: .medium))
+        .foregroundStyle(textSecondary)
+        .padding(.horizontal, 13)
+        .frame(height: 34)
+        .background(
+            RoundedRectangle(cornerRadius: buttonCorner, style: .continuous)
+                .fill(graphiteRaised)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: buttonCorner, style: .continuous)
+                .strokeBorder(separator, lineWidth: 1)
+        )
     }
 
-    /// 工具图标：默认使用次要文字色，激活时跟随系统强调色。
-    static func toolIcon(_ systemImage: String, active: Bool) -> some View {
-        Image(systemName: systemImage)
-            .font(RuneFont.swiftUI(size: 18, weight: .medium))
-            .foregroundStyle(active ? accent : textSecondary)
-            .frame(width: iconButtonSize, height: iconButtonSize)
-            .background(
+    static func compactButtonLabel(
+        _ text: String,
+        systemImage: String? = nil,
+        emphasized: Bool = false,
+        destructive: Bool = false
+    ) -> some View {
+        Group {
+            if let systemImage {
+                Label(text, systemImage: systemImage)
+            } else {
+                Text(text)
+            }
+        }
+        .font(RuneFont.swiftUI(size: 10.5, weight: .medium))
+        .foregroundStyle(
+            destructive
+                ? signal
+                : (emphasized ? textPrimary : textSecondary)
+        )
+        .padding(.horizontal, 10)
+        .frame(height: 28)
+        .background(
+            RoundedRectangle(cornerRadius: buttonCorner, style: .continuous)
+                .fill(graphiteRaised.opacity(emphasized ? 0.96 : 0.82))
+        )
+        .overlay {
+            if emphasized {
+                RuneSpectralBorder(cornerRadius: buttonCorner, lineWidth: 0.65)
+                    .opacity(0.58)
+            } else {
                 RoundedRectangle(cornerRadius: buttonCorner, style: .continuous)
-                    .fill(active ? accentDim : Color.clear)
-            )
-    }
-
-    /// 分组竖线：功能区之间的极淡细线（1×22），自带左右各 13pt 呼吸留白
-    static var groupSeparator: some View {
-        RoundedRectangle(cornerRadius: 0.5)
-            .fill(ink.opacity(0.09))
-            .frame(width: 1, height: 22)
-            .padding(.horizontal, 13)
-    }
-
-    /// 按压反馈：极轻微缩放，像系统按钮一样干脆，不弹跳。
-    struct RunePressStyle: ButtonStyle {
-        @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-        func makeBody(configuration: Configuration) -> some View {
-            configuration.label
-                .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
-                .opacity(configuration.isPressed ? 0.86 : 1)
-                .animation(
-                    reduceMotion ? nil : .easeOut(duration: 0.10),
-                    value: configuration.isPressed
-                )
+                    .strokeBorder(
+                        destructive ? signal.opacity(0.34) : separator,
+                        lineWidth: 0.7
+                    )
+            }
         }
     }
 
-    /// 快捷键徽章：SF Mono（系统等宽字体）配合轻量浮面和细边。
+    static func toolIcon(_ systemImage: String, active: Bool) -> some View {
+        RuneGlyph(systemImage: systemImage, isActive: active)
+            .frame(width: iconButtonSize, height: iconButtonSize)
+    }
+
+    static var hairline: some View {
+        Rectangle().fill(separator).frame(height: 1)
+    }
+
+    static var verticalHairline: some View {
+        Rectangle().fill(separator).frame(width: 1)
+    }
+
+    struct RunePressStyle: ButtonStyle {
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .scaleEffect(configuration.isPressed ? 0.985 : 1)
+                .opacity(configuration.isPressed ? 0.72 : 1)
+        }
+    }
+
     static func shortcutBadge(_ text: String) -> some View {
         Text(text)
-            .font(RuneFont.mono(size: 10, weight: .medium))
-            .foregroundStyle(textSecondary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(card.opacity(0.92))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .strokeBorder(separator, lineWidth: 1)
-            )
+            .font(RuneFont.mono(size: 9.5, weight: .medium))
+            .foregroundStyle(textMuted)
+            .monospacedDigit()
     }
 
-    /// 卡片底：系统控制背景 + 1px 分隔线，供各页面分区使用。
     static var cardBackground: some View {
-        RoundedRectangle(cornerRadius: cardCorner, style: .continuous)
-            .fill(card)
-            .overlay(
-                RoundedRectangle(cornerRadius: cardCorner, style: .continuous)
-                    .strokeBorder(separator, lineWidth: 1)
-            )
+        RuneCardBackground()
     }
 
-    /// 面板卡：浮面 + 分隔线 + 可选裁切角线（签名记号，只给重点卡用）。
     static func proofCardBackground(showingCropMarks: Bool = false) -> some View {
         cardBackground
-            .shadow(color: .black.opacity(0.035), radius: 8, x: 0, y: 2)
-            .overlay {
-                if showingCropMarks {
-                    CropMarks()
-                        .stroke(textMuted.opacity(0.85), lineWidth: 1)
+    }
+
+    static func stampLabel(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(RuneFont.mono(size: 9.5, weight: .medium))
+            .foregroundStyle(textMuted)
+    }
+
+    static func whitePillSelected<Content: View>(
+        selected: Bool,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .foregroundStyle(selected ? textPrimary : textSecondary)
+            .overlay(alignment: .bottom) {
+                if selected {
+                    RuneSelectionUnderline(width: 28)
+                        .offset(y: 2)
                 }
             }
     }
+}
 
-    /// 区块标签。保留旧 API，但不再额外拉开字距。
-    static func stampLabel(_ text: String) -> some View {
-        Text(text)
-            .font(RuneFont.mono(size: 10, weight: .medium))
-            .foregroundStyle(textMuted)
+// MARK: - Brand and icon language
+
+struct RuneBrandIcon: View {
+    var size: CGFloat = 24
+
+    var body: some View {
+        Image(nsImage: NSImage(named: "RuneEggplant") ?? NSImage(named: "AppIcon") ?? NSApp.applicationIconImage)
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
     }
 }
 
-// MARK: - 玻璃表面
+struct RuneGlyph: View {
+    let systemImage: String
+    var isActive = false
+    var size: CGFloat = 16
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .font(RuneFont.swiftUI(size: size, weight: .medium))
+            .symbolRenderingMode(.monochrome)
+            .foregroundStyle(isActive ? RuneTheme.textPrimary : RuneTheme.textSecondary)
+            .overlay(alignment: .topTrailing) {
+                RoundedRectangle(cornerRadius: 0.5)
+                    .fill(isActive ? AnyShapeStyle(RuneTheme.spectralGradient) : AnyShapeStyle(RuneTheme.textMuted))
+                    .frame(width: 4.5, height: 1)
+                    .rotationEffect(.degrees(-22))
+                    .offset(x: 3, y: -2)
+            }
+    }
+}
+
+struct RuneSelectionUnderline: View {
+    var width: CGFloat = 30
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 1)
+            .fill(RuneTheme.spectralGradient)
+            .frame(width: width, height: 2)
+    }
+}
+
+struct RuneSpectralBorder: View {
+    let cornerRadius: CGFloat
+    var lineWidth: CGFloat = 1
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .strokeBorder(RuneTheme.spectralGradient, lineWidth: lineWidth)
+    }
+}
+
+/// A restrained icon container for transient tools and status surfaces. The
+/// glyph stays neutral; the active state is carried by a thin refractive rim.
+struct RuneOpticalIconPlate: View {
+    let systemImage: String
+    var isActive = true
+    var size: CGFloat = 30
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
+                .fill(RuneTheme.graphiteRaised.opacity(0.92))
+
+            if isActive {
+                RuneSpectralBorder(
+                    cornerRadius: RuneTheme.buttonCorner,
+                    lineWidth: 0.7
+                )
+                .opacity(0.62)
+            } else {
+                RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
+                    .strokeBorder(RuneTheme.separator, lineWidth: 0.7)
+            }
+
+            RuneGlyph(systemImage: systemImage, isActive: isActive, size: size * 0.46)
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Shared selection marker for galleries and compact saved-state feedback.
+/// It avoids the old solid-purple check circle while remaining obvious on
+/// photographic content.
+struct RuneSelectionMark: View {
+    let isSelected: Bool
+    var size: CGFloat = 18
+
+    var body: some View {
+        ZStack {
+            if isSelected {
+                RuneOpticalLens(size: size - 3, spectralOpacity: 0.95, showsCaustic: true)
+                Image(systemName: "checkmark")
+                    .font(RuneFont.swiftUI(size: size * 0.46, weight: .bold))
+                    .foregroundStyle(RuneTheme.textPrimary)
+            } else {
+                Circle()
+                    .fill(RuneTheme.graphite.opacity(0.52))
+                    .overlay(Circle().strokeBorder(Color.white.opacity(0.88), lineWidth: 1.2))
+            }
+        }
+        .frame(width: size, height: size)
+        .shadow(color: .black.opacity(0.34), radius: 2, y: 1)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Compact segmented selection for inspector tabs. The selected segment is a
+/// neutral optical inset with a refractive underline, never a solid accent block.
+struct RuneOpticalSegmentedPicker<Selection: Hashable>: View {
+    let options: [(value: Selection, label: String)]
+    @Binding var selection: Selection
+    var accessibilityLabel: String
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(Array(options.enumerated()), id: \.offset) { _, option in
+                let isSelected = option.value == selection
+
+                Button {
+                    selection = option.value
+                } label: {
+                    Text(option.label)
+                        .font(RuneFont.swiftUI(size: 11.5, weight: isSelected ? .semibold : .medium))
+                        .foregroundStyle(isSelected ? RuneTheme.textPrimary : RuneTheme.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 28)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(isSelected ? Color.white.opacity(0.060) : Color.clear)
+                        )
+                        .overlay(alignment: .bottom) {
+                            if isSelected {
+                                RuneSelectionUnderline(width: 22)
+                                    .offset(y: 1)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(accessibilityLabel)，\(option.label)")
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+        }
+        .padding(3)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(RuneTheme.graphite.opacity(0.88))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.7)
+        )
+    }
+}
+
+// MARK: - Spectral glass controls
+
+/// Rune's shared switch treatment. Interaction remains a native SwiftUI
+/// `Toggle`; this style only replaces its visual presentation.
+struct RuneGlassToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button {
+            configuration.isOn.toggle()
+        } label: {
+            RuneGlassSwitchTrack(isOn: configuration.isOn)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(RuneGlassControlPressStyle())
+        .accessibilityValue(configuration.isOn ? "开启" : "关闭")
+    }
+}
+
+extension ToggleStyle where Self == RuneGlassToggleStyle {
+    static var runeGlass: RuneGlassToggleStyle { RuneGlassToggleStyle() }
+}
+
+private struct RuneGlassSwitchTrack: View {
+    let isOn: Bool
+
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        let track = RoundedRectangle(cornerRadius: 7, style: .continuous)
+
+        ZStack {
+            Group {
+                if reduceTransparency {
+                    track.fill(RuneTheme.graphiteRaised)
+                } else {
+                    track.fill(.ultraThinMaterial)
+                }
+            }
+
+            // the moving optical lens, not to a decorative filled switch.
+            track.fill(Color.black.opacity(0.18))
+            track.strokeBorder(Color.white.opacity(isOn ? 0.18 : 0.13), lineWidth: 0.7)
+
+            RuneOpticalLens(
+                size: 16,
+                spectralOpacity: isOn ? 0.95 : 0.28,
+                showsCaustic: isOn
+            )
+                .offset(x: isOn ? 9 : -9)
+        }
+        .frame(width: 38, height: 20)
+        .opacity(isEnabled ? 1 : 0.42)
+    }
+}
+
+private struct RuneGlassControlPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.76 : 1)
+    }
+}
+
+/// A native `Slider` remains in the hierarchy for pointer, keyboard, focus and
+/// accessibility behavior. The overlay provides Rune's spectral liquid-glass
+/// rendering without reimplementing the control's interaction model.
+struct RuneGlassSlider<Value>: View where Value: BinaryFloatingPoint, Value.Stride: BinaryFloatingPoint {
+    @Binding private var value: Value
+
+    private let bounds: ClosedRange<Value>
+    private let step: Value.Stride?
+    private let accessibilityLabel: String
+    private let accessibilityValue: String?
+    private let onEditingChanged: (Bool) -> Void
+
+    @FocusState private var isFocused: Bool
+
+    init(
+        value: Binding<Value>,
+        in bounds: ClosedRange<Value>,
+        step: Value.Stride? = nil,
+        accessibilityLabel: String,
+        accessibilityValue: String? = nil,
+        onEditingChanged: @escaping (Bool) -> Void = { _ in }
+    ) {
+        _value = value
+        self.bounds = bounds
+        self.step = step
+        self.accessibilityLabel = accessibilityLabel
+        self.accessibilityValue = accessibilityValue
+        self.onEditingChanged = onEditingChanged
+    }
+
+    var body: some View {
+        ZStack {
+            nativeSlider
+                .labelsHidden()
+                .opacity(0.001)
+                .focused($isFocused)
+                .accessibilityLabel(accessibilityLabel)
+                .accessibilityValue(accessibilityValue ?? defaultAccessibilityValue)
+
+            RuneGlassSliderVisual(
+                fraction: fraction,
+                isFocused: isFocused
+            )
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+        .frame(minWidth: 62, minHeight: 20)
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private var nativeSlider: some View {
+        if let step {
+            Slider(
+                value: $value,
+                in: bounds,
+                step: step,
+                onEditingChanged: onEditingChanged
+            )
+        } else {
+            Slider(
+                value: $value,
+                in: bounds,
+                onEditingChanged: onEditingChanged
+            )
+        }
+    }
+
+    private var fraction: CGFloat {
+        let lower = Double(bounds.lowerBound)
+        let upper = Double(bounds.upperBound)
+        guard upper > lower else { return 0 }
+        return CGFloat(min(max((Double(value) - lower) / (upper - lower), 0), 1))
+    }
+
+    private var defaultAccessibilityValue: String {
+        "\(Int(fraction * 100))%"
+    }
+}
+
+private struct RuneGlassSliderVisual: View {
+    let fraction: CGFloat
+    let isFocused: Bool
+
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        GeometryReader { proxy in
+            let knobSize: CGFloat = 16
+            let trackHeight: CGFloat = 2
+            let usableWidth = max(0, proxy.size.width - knobSize)
+            let knobX = knobSize / 2 + usableWidth * fraction
+            let track = Capsule()
+
+            ZStack(alignment: .leading) {
+                track
+                    .fill(reduceTransparency ? RuneTheme.graphiteRaised : Color.white.opacity(0.105))
+                .frame(height: trackHeight)
+                .overlay(track.strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+
+                // A short caustic is optically tied to the lens. There is no
+                // coloured progress fill running across the control.
+                Capsule()
+                    .fill(RuneTheme.spectralGradient)
+                    .opacity(reduceTransparency ? 0 : 0.20)
+                    .frame(width: 22, height: 1)
+                    .position(x: knobX, y: proxy.size.height / 2 + 1)
+
+                RuneOpticalLens(
+                    size: knobSize,
+                    spectralOpacity: 0.82,
+                    showsCaustic: true
+                )
+                    .position(x: knobX, y: proxy.size.height / 2)
+
+                if isFocused {
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .strokeBorder(RuneTheme.textPrimary.opacity(0.36), lineWidth: 0.7)
+                        .frame(height: 20)
+                }
+            }
+            .frame(maxHeight: .infinity, alignment: .center)
+        }
+        .opacity(isEnabled ? 1 : 0.42)
+    }
+}
+
+/// The single optical object used by Rune's sliders and switches. Its colour
+/// is confined to the refractive rim and the tiny contact caustic.
+private struct RuneOpticalLens: View {
+    let size: CGFloat
+    let spectralOpacity: Double
+    let showsCaustic: Bool
+
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    var body: some View {
+        ZStack {
+            if showsCaustic && !reduceTransparency {
+                Circle()
+                    .fill(RuneTheme.spectralGradient)
+                    .frame(width: size + 3, height: size + 3)
+                    .opacity(0.18)
+            }
+
+            Circle()
+                .fill(
+                    reduceTransparency
+                        ? AnyShapeStyle(RuneTheme.graphiteRaised)
+                        : AnyShapeStyle(.regularMaterial)
+                )
+                .overlay(
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.20), Color.black.opacity(0.16)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                )
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.38), lineWidth: 0.55))
+                .overlay(
+                    Circle()
+                        .strokeBorder(RuneTheme.spectralGradient, lineWidth: 0.7)
+                        .opacity(reduceTransparency ? 0 : spectralOpacity)
+                )
+                .overlay(alignment: .topLeading) {
+                    Circle()
+                        .fill(Color.white.opacity(0.72))
+                        .frame(width: 2.2, height: 2.2)
+                        .padding(size * 0.23)
+                }
+                .shadow(color: .black.opacity(0.34), radius: 2, y: 1)
+        }
+        .frame(width: size + 3, height: size + 3)
+    }
+}
+
+// MARK: - Opaque reading surface
+
+struct RuneCardBackground: View {
+    var cornerRadius: CGFloat = RuneTheme.cardCorner
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(RuneTheme.graphite.opacity(0.96))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(RuneTheme.separator, lineWidth: 1)
+            )
+    }
+}
+
+// MARK: - Workspace surfaces
+
+struct RuneAmbientBackdrop: View {
+    var body: some View {
+        ZStack {
+            RuneTheme.workspace
+            LinearGradient(
+                colors: [Color.white.opacity(0.018), .clear],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        .ignoresSafeArea()
+    }
+}
+
+/// Compatibility layer for screens that previously rendered full-canvas glows.
+/// The new system keeps refraction contained to the instrument side of the view.
+struct YumYumGlow: View {
+    var body: some View {
+        HStack(spacing: 0) {
+            Color.clear
+            LinearGradient(
+                colors: [.clear, RuneTheme.aubergine.opacity(0.045), RuneTheme.magenta.opacity(0.025)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(maxWidth: 280)
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+}
+
+/// Historical call sites use this for elapsed-time readouts. It now renders a
+/// crisp monospaced value instead of decorative dots.
+struct DotMatrixText: View {
+    let text: String
+    var dotSize: CGFloat = 3
+    var dotSpacing: CGFloat = 1.8
+    var color: Color = .primary
+
+    var body: some View {
+        Text(text)
+            .font(RuneFont.mono(size: max(10, dotSize * 3.5), weight: .medium))
+            .foregroundStyle(color)
+            .monospacedDigit()
+            .accessibilityLabel(text)
+    }
+}
+
+// MARK: - Glass surface
 
 enum RuneGlassElevation {
     case embedded
     case floating
 
-    var shadowOpacity: Double { self == .floating ? 0.16 : 0.05 }
-    var shadowRadius: CGFloat { self == .floating ? 22 : 8 }
-    var shadowY: CGFloat { self == .floating ? 8 : 2 }
+    var shadowOpacity: Double { self == .floating ? 0.28 : 0.08 }
+    var shadowRadius: CGFloat { self == .floating ? 18 : 8 }
+    var shadowY: CGFloat { self == .floating ? 9 : 3 }
 }
 
-/// 单一玻璃实现入口，避免各页面自行拼透明度和模糊。
 struct RuneGlassBackground: View {
     let cornerRadius: CGFloat
     var tint: Color? = nil
@@ -216,30 +718,101 @@ struct RuneGlassBackground: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
 
-        Group {
+        ZStack {
             if reduceTransparency {
-                shape.fill(Color(nsColor: .windowBackgroundColor))
+                shape.fill(RuneTheme.graphiteRaised)
             } else if #available(macOS 26.0, *) {
                 Color.clear
                     .glassEffect(
-                        Glass.regular.tint(tint).interactive(interactive),
+                        Glass.regular.tint(tint ?? RuneTheme.glassTint).interactive(interactive),
                         in: shape
                     )
             } else {
-                shape.fill(.regularMaterial)
+                shape.fill(.ultraThinMaterial)
             }
+
+            shape.fill(RuneTheme.glassTint.opacity(reduceTransparency ? 0.92 : 0.30))
         }
-        .overlay(
-            shape.strokeBorder(Color.white.opacity(0.16), lineWidth: 0.5)
-        )
-        .overlay(
-            shape.strokeBorder(RuneTheme.separator.opacity(0.55), lineWidth: 0.5)
-        )
+        .overlay(RuneSpectralBorder(cornerRadius: cornerRadius, lineWidth: 0.7).opacity(0.48))
+        .overlay(shape.strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5))
         .shadow(
             color: .black.opacity(elevation.shadowOpacity),
             radius: elevation.shadowRadius,
             y: elevation.shadowY
         )
+    }
+}
+
+/// Shared right-side glass stage used by settings, library details, and other
+/// inspector-style surfaces. The content remains functional SwiftUI; only the
+/// material and spatial treatment are shared.
+struct RuneGlassStage<Content: View>: View {
+    let title: String
+    let subtitle: String
+    @ViewBuilder let content: () -> Content
+
+    init(
+        title: String,
+        subtitle: String,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.content = content
+    }
+
+    var body: some View {
+        ZStack {
+            RuneGlassBackground(
+                cornerRadius: 9,
+                tint: RuneTheme.glassTint,
+                elevation: .floating
+            )
+
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(Color.black.opacity(0.40))
+
+            // A restrained internal tint makes the pane feel inserted into the
+            // shell while leaving the reading surface neutral.
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            RuneTheme.cyan.opacity(0.035),
+                            Color.clear,
+                            RuneTheme.aubergine.opacity(0.025),
+                            RuneTheme.amber.opacity(0.025)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            Image(nsImage: NSImage(named: "RuneEggplant") ?? NSImage(named: "AppIcon") ?? NSApp.applicationIconImage)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .saturation(0)
+                .opacity(0.025)
+                .rotationEffect(.degrees(-20))
+                .frame(width: 220, height: 220)
+                .offset(x: 58, y: 190)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text(title)
+                    .font(RuneFont.swiftUI(size: 15, weight: .medium))
+                    .foregroundStyle(RuneTheme.textPrimary)
+                Text(subtitle)
+                    .font(RuneFont.swiftUI(size: 10.5))
+                    .foregroundStyle(RuneTheme.textSecondary)
+                    .padding(.top, 5)
+
+                content()
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 }
 
@@ -261,48 +834,7 @@ private struct RuneGlassSurfaceModifier: ViewModifier {
     }
 }
 
-// MARK: - 裁切角线（签名记号）
-
-/// 印刷校样四角的裁切标记：每角两段短线，分别是卡片两条边的延长线，
-/// 与角留出缺口。画在 rect 边界之外，调用处需外留约 12pt 空隙。
-/// 一个裁图工具，身上带着裁切标记——这是 Rune 的身份记号。
-struct CropMarks: Shape {
-    /// 角线臂长
-    var armLength: CGFloat = 10
-    /// 角线与卡片的间隙
-    var gap: CGFloat = 4
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let xs: [(CGFloat, CGFloat)] = [
-            (rect.minX - gap, rect.minX - gap - armLength),   // 左侧竖臂区间
-            (rect.maxX + gap, rect.maxX + gap + armLength),   // 右侧竖臂区间
-        ]
-        let ys: [(CGFloat, CGFloat)] = [
-            (rect.minY - gap, rect.minY - gap - armLength),   // 上方横臂区间
-            (rect.maxY + gap, rect.maxY + gap + armLength),   // 下方横臂区间
-        ]
-
-        // 横臂：与上下边齐平的延长线
-        for y in [rect.minY, rect.maxY] {
-            for (x0, x1) in xs {
-                path.move(to: CGPoint(x: x0, y: y))
-                path.addLine(to: CGPoint(x: x1, y: y))
-            }
-        }
-        // 竖臂：与左右边齐平的延长线
-        for x in [rect.minX, rect.maxX] {
-            for (y0, y1) in ys {
-                path.move(to: CGPoint(x: x, y: y0))
-                path.addLine(to: CGPoint(x: x, y: y1))
-            }
-        }
-        return path
-    }
-}
-
 extension View {
-    /// 为导航、工具和弹层添加统一系统玻璃。不要用于长文本内容卡。
     func runeGlassSurface(
         cornerRadius: CGFloat = RuneTheme.cardCorner,
         tint: Color? = nil,
@@ -319,16 +851,78 @@ extension View {
         )
     }
 
-    /// 给内容四角加裁切角线（画在内容边界外，需要外层留出约 12pt 空隙）。
-    func cropMarks(color: Color = RuneTheme.textMuted, lineWidth: CGFloat = 1) -> some View {
-        overlay(
-            CropMarks()
-                .stroke(color, lineWidth: lineWidth)
-        )
-    }
-
-    /// 旧调用兼容层。新的设计保留系统工具栏材质，不再隐藏它。
     func toolbarBackgroundHiddenIfAvailable() -> some View {
         self
+    }
+}
+
+// MARK: - AppKit chrome
+
+/// AppKit-only transient panels share the same neutral membrane and spectral
+/// hairline as their SwiftUI counterparts.
+@MainActor
+enum RuneAppKitChrome {
+    private static let spectralLayerName = "RuneSpectralBorder"
+
+    static func installSpectralBorder(
+        on view: NSView,
+        cornerRadius: CGFloat,
+        opacity: Float = 0.58,
+        lineWidth: CGFloat = 0.8
+    ) {
+        view.wantsLayer = true
+        view.layer?.sublayers?
+            .filter { $0.name == spectralLayerName }
+            .forEach { $0.removeFromSuperlayer() }
+
+        let gradient = CAGradientLayer()
+        gradient.name = spectralLayerName
+        gradient.frame = view.bounds
+        gradient.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+        gradient.colors = [
+            RuneTheme.nsCyan.cgColor,
+            RuneTheme.nsAccent.cgColor,
+            RuneTheme.nsMagenta.cgColor,
+            RuneTheme.nsAmber.cgColor,
+        ]
+        gradient.startPoint = CGPoint(x: 0, y: 0.5)
+        gradient.endPoint = CGPoint(x: 1, y: 0.5)
+        gradient.opacity = opacity
+
+        let mask = CAShapeLayer()
+        mask.frame = view.bounds
+        mask.path = CGPath(
+            roundedRect: view.bounds.insetBy(dx: lineWidth / 2, dy: lineWidth / 2),
+            cornerWidth: cornerRadius,
+            cornerHeight: cornerRadius,
+            transform: nil
+        )
+        mask.fillColor = NSColor.clear.cgColor
+        mask.strokeColor = NSColor.white.cgColor
+        mask.lineWidth = lineWidth
+        gradient.mask = mask
+        view.layer?.addSublayer(gradient)
+    }
+
+    static func styleButton(_ button: NSButton, emphasized: Bool) {
+        button.isBordered = false
+        button.wantsLayer = true
+        button.layer?.sublayers?
+            .filter { $0.name == spectralLayerName }
+            .forEach { $0.removeFromSuperlayer() }
+        button.layer?.cornerRadius = RuneTheme.buttonCorner
+        button.layer?.backgroundColor = NSColor(RuneTheme.graphiteRaised)
+            .withAlphaComponent(emphasized ? 0.96 : 0.76)
+            .cgColor
+        button.layer?.borderWidth = 0.7
+        button.layer?.borderColor = NSColor.white.withAlphaComponent(0.12).cgColor
+        if emphasized {
+            installSpectralBorder(
+                on: button,
+                cornerRadius: RuneTheme.buttonCorner,
+                opacity: 0.62,
+                lineWidth: 0.7
+            )
+        }
     }
 }

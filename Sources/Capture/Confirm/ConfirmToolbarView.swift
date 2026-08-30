@@ -6,7 +6,6 @@ import SwiftUI
 struct ConfirmToolbarView: View {
     let controller: CaptureConfirmController
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var activeTool: AnnotationTool = .select
     @State private var swatch: AnnotationSwatch = .mustard
     @State private var widthRaw = 1
@@ -14,7 +13,6 @@ struct ConfirmToolbarView: View {
     @State private var canUndo = false
     @State private var ocrActive = false
     @State private var contentAnalysisState: CaptureContentAnalysisState = .analyzing
-    @State private var appeared = false
 
     private var canvas: ConfirmCanvasView? { controller.canvas }
     private let swatches: [AnnotationSwatch] = [.mustard, .coral, .teal, .indigo, .black, .white]
@@ -35,7 +33,6 @@ struct ConfirmToolbarView: View {
             if showsColorOptions || showsWidthOptions {
                 FreezeSeparator()
                 annotationProperties
-                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
             }
 
             FreezeSeparator()
@@ -66,8 +63,7 @@ struct ConfirmToolbarView: View {
             FreezeToolButton(
                 title: "连拍",
                 help: "沿用当前选区，连续、定数或延时拍摄",
-                icon: "square.stack.3d.up.fill",
-                tint: RuneTheme.chromeBlue
+                icon: "square.stack.3d.up.fill"
             ) {
                 controller.requestBurstCapture()
             }
@@ -115,23 +111,12 @@ struct ConfirmToolbarView: View {
                     }
             }
         )
-        // 签名记号：裁切角线落在工具条四角外侧——一个裁图工具，身上带着裁切标记
-        .padding(13)
-        .overlay(
-            CropMarks(armLength: 11, gap: 3)
-                .stroke(RuneTheme.chromeMuted.opacity(0.6), lineWidth: 1.2)
-        )
         .fixedSize(horizontal: true, vertical: true)
-        .scaleEffect(appeared || reduceMotion ? 1 : 0.975)
-        .offset(y: appeared || reduceMotion ? 0 : -5)
-        .opacity(appeared ? 1 : 0)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: appeared)
         .runeTypography()
         .onAppear {
             canUndo = canvas?.canUndo ?? false
             ocrActive = canvas?.ocrMode ?? false
             contentAnalysisState = canvas?.contentAnalysisState ?? .analyzing
-            appeared = true
         }
         .onReceive(NotificationCenter.default.publisher(for: .confirmCanvasStateDidChange)) { note in
             guard note.object as? ConfirmCanvasView === canvas else { return }
@@ -301,56 +286,72 @@ struct ConfirmToolbarView: View {
     }
 
     private var annotationTools: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 1) {
             FreezeToolButton(
                 title: "选择",
                 help: "选择并移动已经画好的标注，Delete 可以删除",
                 icon: "cursorarrow.rays",
-                isActive: activeTool == .select
+                isActive: activeTool == .select,
+                isCompact: true
             ) { activate(.select) }
 
             FreezeToolButton(
                 title: "方框",
                 help: "拖拽画出一个醒目的矩形框",
                 icon: "rectangle.dashed",
-                isActive: activeTool == .rectangle
+                isActive: activeTool == .rectangle,
+                isCompact: true
             ) { activate(.rectangle) }
 
             FreezeToolButton(
                 title: "箭头",
                 help: "拖拽画一支指向重点的箭头",
                 icon: "arrow.up.right",
-                isActive: activeTool == .arrow
+                isActive: activeTool == .arrow,
+                isCompact: true
             ) { activate(.arrow) }
 
             FreezeToolButton(
                 title: "文字",
                 help: "点击截图任意位置输入说明文字",
                 icon: "character.cursor.ibeam",
-                isActive: activeTool == .text
+                isActive: activeTool == .text,
+                isCompact: true
             ) { activate(.text) }
 
             FreezeToolButton(
                 title: "打码",
                 help: "拖拽框住需要隐藏的隐私内容",
                 icon: "square.grid.3x3.fill",
-                isActive: activeTool == .blur
+                isActive: activeTool == .blur,
+                isCompact: true
             ) { activate(.blur) }
 
             FreezeToolButton(
                 title: "聚光",
                 help: "保留重点区域，其余画面自动压暗",
                 icon: "viewfinder.circle",
-                isActive: activeTool == .spotlight
+                isActive: activeTool == .spotlight,
+                isCompact: true
             ) { activate(.spotlight) }
 
             FreezeToolButton(
                 title: "编号",
                 help: "依次放置 1、2、3…编号圆点",
                 icon: "number.circle",
-                isActive: activeTool == .numberedCircle
+                isActive: activeTool == .numberedCircle,
+                isCompact: true
             ) { activate(.numberedCircle) }
         }
+        .padding(4)
+        .background(
+            RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
+                .fill(Color.white.opacity(0.045))
+                .overlay(
+                    RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
+                        .strokeBorder(RuneTheme.chromeLine.opacity(0.7), lineWidth: 0.5)
+                )
+        )
     }
 
     private var annotationProperties: some View {
@@ -401,7 +402,7 @@ struct ConfirmToolbarView: View {
                                 .frame(width: 15, height: max(2, CGFloat(index + 1) * 2))
                                 .frame(width: 28, height: 34)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
                                         .fill(widthRaw == index ? RuneTheme.chromeText.opacity(0.11) : .clear)
                                 )
                         }
@@ -415,10 +416,10 @@ struct ConfirmToolbarView: View {
         .padding(.horizontal, 6)
         .frame(height: 46)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
                 .fill(RuneTheme.chromeElevated.opacity(0.72))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
                         .strokeBorder(RuneTheme.chromeLine, lineWidth: 1)
                 )
         )
@@ -426,9 +427,7 @@ struct ConfirmToolbarView: View {
 
     private func activate(_ tool: AnnotationTool) {
         canvas?.finishTextEditing()
-        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.14)) {
-            activeTool = tool
-        }
+        activeTool = tool
         if ocrActive {
             ocrActive = false
             canvas?.exitOCRMode()
@@ -449,7 +448,7 @@ struct ConfirmToolbarView: View {
 
 private struct FreezeToolbarBackground: View {
     var body: some View {
-        RuneGlassBackground(cornerRadius: 16, elevation: .floating)
+        RuneGlassBackground(cornerRadius: RuneTheme.barCorner, elevation: .floating)
     }
 }
 
@@ -472,18 +471,12 @@ private struct FreezeContentLabel: View {
                 .lineLimit(1)
                 .monospacedDigit()
         }
-        .foregroundStyle(isActive || hasResult ? RuneTheme.chromeBlue : RuneTheme.chromeText.opacity(0.80))
+        .foregroundStyle(isActive || hasResult ? RuneTheme.primaryOnFill : RuneTheme.chromeText.opacity(0.80))
         .frame(width: 58, height: 46)
         .background(
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .fill(isActive || hasResult ? RuneTheme.chromeBlue.opacity(0.14) : .clear)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .strokeBorder(
-                    isActive || hasResult ? RuneTheme.chromeBlue.opacity(0.40) : .clear,
-                    lineWidth: 0.8
-                )
+            RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
+                .fill(isActive || hasResult ? RuneTheme.primaryFill : .clear)
+                .shadow(color: .black.opacity(isActive || hasResult ? 0.16 : 0), radius: 8, y: 3)
         )
         .overlay(alignment: .topTrailing) {
             Image(systemName: "chevron.down")
@@ -491,7 +484,7 @@ private struct FreezeContentLabel: View {
                 .foregroundStyle(RuneTheme.chromeText.opacity(0.46))
                 .padding(5)
         }
-        .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous))
     }
 }
 
@@ -501,39 +494,38 @@ private struct FreezeToolButton: View {
     let icon: String
     var isActive = false
     var isEnabled = true
+    var isCompact = false
     var tint: Color? = nil
     let action: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovered = false
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 3) {
+            VStack(spacing: isCompact ? 0 : 3) {
                 Image(systemName: icon)
                     .font(RuneFont.swiftUI(size: 16, weight: .medium))
                     .symbolRenderingMode(.monochrome)
                     .frame(height: 19)
 
-                Text(title)
-                    .font(RuneFont.swiftUI(size: 9.5, weight: .medium))
-                    .lineLimit(1)
+                if !isCompact {
+                    Text(title)
+                        .font(RuneFont.swiftUI(size: 9.5, weight: .medium))
+                        .lineLimit(1)
+                }
             }
             .foregroundStyle(foreground)
-            .frame(width: 44, height: 46)
+            .frame(width: isCompact ? 36 : 44, height: isCompact ? 38 : 46)
             .background(
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
                     .fill(background)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
                     .strokeBorder(border, lineWidth: isActive ? 0.8 : 0.5)
             )
-            .shadow(color: isActive ? RuneTheme.chromeBlue.opacity(0.18) : .clear, radius: 8, y: 2)
-            .scaleEffect(isHovered && isEnabled && !reduceMotion ? 1.035 : 1)
-            .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovered)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: isActive)
+            .shadow(color: isActive ? .black.opacity(0.16) : .clear, radius: 8, y: 3)
+            .contentShape(RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous))
         }
         .buttonStyle(FreezePressStyle())
         .disabled(!isEnabled)
@@ -545,21 +537,21 @@ private struct FreezeToolButton: View {
 
     private var foreground: Color {
         if !isEnabled { return RuneTheme.chromeText.opacity(0.24) }
-        if isActive { return tint ?? RuneTheme.chromeBlue }
+        if isActive { return tint ?? RuneTheme.primaryOnFill }
         if let tint { return tint.opacity(isHovered ? 1 : 0.88) }
         return RuneTheme.chromeText.opacity(isHovered ? 1 : 0.80)
     }
 
     private var background: Color {
         if !isEnabled { return RuneTheme.chromeText.opacity(0.018) }
-        if isActive { return RuneTheme.chromeBlue.opacity(0.16) }
-        return isHovered ? RuneTheme.chromeText.opacity(0.09) : .clear
+        if isActive { return tint?.opacity(0.16) ?? RuneTheme.primaryFill }
+        return isHovered ? Color.white.opacity(0.16) : .clear
     }
 
     private var border: Color {
         if !isEnabled { return RuneTheme.chromeLine.opacity(0.4) }
-        if isActive { return RuneTheme.chromeBlue.opacity(0.45) }
-        return isHovered ? RuneTheme.chromeText.opacity(0.14) : .clear
+        if isActive { return .clear }
+        return isHovered ? Color.white.opacity(0.28) : .clear
     }
 }
 
@@ -579,28 +571,28 @@ private struct FreezeEndButton: View {
                 Text(title)
                     .font(RuneFont.swiftUI(size: 11, weight: .semibold))
             }
-            .foregroundStyle(isPrimary ? Color.white : RuneTheme.chromeText.opacity(isHovered ? 1 : 0.82))
-            .padding(.horizontal, isPrimary ? 13 : 10)
+            .foregroundStyle(isPrimary ? RuneTheme.primaryOnFill : RuneTheme.chromeText.opacity(isHovered ? 1 : 0.82))
+            .padding(.horizontal, isPrimary ? 14 : 10)
             .frame(height: 38)
             .background(
-                Capsule()
+                RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
                     .fill(
                         isPrimary
-                            ? RuneTheme.chromeBlueFill
+                            ? RuneTheme.primaryFill
                             : RuneTheme.chromeText.opacity(isHovered ? 0.12 : 0.065)
                     )
             )
             .overlay(
-                Capsule()
+                RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
                     .strokeBorder(
-                        isPrimary ? Color.white.opacity(0.18) : RuneTheme.chromeLine,
+                        isPrimary ? Color.white.opacity(0.6) : RuneTheme.chromeLine,
                         lineWidth: 1
                     )
             )
             .shadow(
-                color: isPrimary ? RuneTheme.chromeBlueFill.opacity(isHovered ? 0.40 : 0.24) : .clear,
-                radius: isHovered ? 10 : 6,
-                y: 3
+                color: isPrimary ? .black.opacity(isHovered ? 0.26 : 0.18) : .clear,
+                radius: isHovered ? 12 : 8,
+                y: 4
             )
         }
         .buttonStyle(FreezePressStyle())
@@ -631,7 +623,6 @@ private struct FreezeSwatch: View {
                     Circle()
                         .strokeBorder(isSelected ? RuneTheme.chromeText.opacity(0.90) : .clear, lineWidth: 1.2)
                 )
-                .scaleEffect(isHovered ? 1.08 : 1)
         }
         .buttonStyle(FreezePressStyle())
         .onHover { isHovered = $0 }
@@ -650,12 +641,9 @@ private struct FreezeSeparator: View {
 }
 
 private struct FreezePressStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.95 : 1)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .opacity(configuration.isPressed ? 0.82 : 1)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.08), value: configuration.isPressed)
     }
 }

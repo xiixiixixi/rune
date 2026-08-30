@@ -479,7 +479,7 @@ private struct PinnedScreenshotView: View {
             // 四角手柄常驻显示（不依赖悬停），提示"角上能拖"。
             ForEach(PinCorner.allCases, id: \.self) { corner in
                 PinCornerHandleDot()
-                    .frame(width: 34, height: 34)
+                    .frame(width: 26, height: 26)
                     .position(corner.point(in: CGSize(width: w, height: h)))
                     .allowsHitTesting(false)
                     .help("拖动按比例缩放贴图")
@@ -521,9 +521,14 @@ private struct PinnedScreenshotView: View {
                 }
             }
             Divider()
-            Slider(value: $interaction.opacity, in: 0.2...1.0, step: 0.1) {
-                Text("透明度：\(Int(interaction.opacity * 100))%")
-            }
+            RuneGlassSlider(
+                value: $interaction.opacity,
+                in: 0.2...1.0,
+                step: 0.1,
+                accessibilityLabel: "贴图透明度",
+                accessibilityValue: "\(Int(interaction.opacity * 100))%"
+            )
+            .frame(width: 160)
             Button("开启鼠标穿透") {
                 interaction.clickThrough = true
             }
@@ -617,9 +622,14 @@ private struct PinnedScreenshotView: View {
                     .font(RuneFont.swiftUI(size: 10))
                     .foregroundStyle(.secondary)
 
-                Slider(value: $interaction.opacity, in: 0.2...1.0, step: 0.1)
+                RuneGlassSlider(
+                    value: $interaction.opacity,
+                    in: 0.2...1.0,
+                    step: 0.1,
+                    accessibilityLabel: "贴图透明度",
+                    accessibilityValue: "\(Int(interaction.opacity * 100))%"
+                )
                     .frame(width: 62)
-                    .controlSize(.mini)
                     .help("透明度 \(Int(interaction.opacity * 100))%")
 
                 RuneMenu(
@@ -661,10 +671,18 @@ private struct PinnedScreenshotView: View {
         }
         .font(RuneFont.swiftUI(size: 11, weight: .semibold))
         .buttonStyle(.plain)
-        .foregroundStyle(.primary.opacity(0.78))
+        .foregroundStyle(RuneTheme.textSecondary)
         .padding(.horizontal, 7)
-        .frame(height: 34)
-        .runeGlassSurface(cornerRadius: 17, elevation: .floating)
+        .frame(height: 36)
+        .background(
+            RoundedRectangle(cornerRadius: RuneTheme.barCorner, style: .continuous)
+                .fill(RuneTheme.workspace.opacity(0.58))
+        )
+        .runeGlassSurface(
+            cornerRadius: RuneTheme.barCorner,
+            tint: RuneTheme.workspace.opacity(0.72),
+            elevation: .floating
+        )
     }
 
     /// 最常用操作：带文字的主按钮，点完短暂显示"已复制"确认。
@@ -676,11 +694,17 @@ private struct PinnedScreenshotView: View {
                 Text(showsCopiedFeedback ? "已复制" : "复制")
                     .font(RuneFont.swiftUI(size: 10, weight: .semibold))
             }
-            .foregroundStyle(RuneTheme.accent)
+            .foregroundStyle(RuneTheme.textPrimary)
             .padding(.horizontal, 9)
             .frame(height: 24)
-            .background(RuneTheme.accent.opacity(0.15), in: Capsule())
-            .animation(.easeInOut(duration: 0.15), value: showsCopiedFeedback)
+            .background(
+                RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
+                    .fill(RuneTheme.graphiteRaised.opacity(0.94))
+            )
+            .overlay(
+                RuneSpectralBorder(cornerRadius: RuneTheme.buttonCorner, lineWidth: 0.65)
+                    .opacity(0.58)
+            )
         }
         .buttonStyle(.plain)
         .help("复制图片到剪贴板")
@@ -718,13 +742,28 @@ final class _PinCornerHandleDotNSView: NSView {
         super.init(frame: frameRect)
         wantsLayer = true
         let dot = CAShapeLayer()
-        dot.fillColor = NSColor.white.cgColor
-        dot.strokeColor = NSColor.black.withAlphaComponent(0.5).cgColor
-        dot.lineWidth = 1
+        dot.name = "RunePinHandleFill"
+        dot.fillColor = NSColor(RuneTheme.graphiteRaised).withAlphaComponent(0.94).cgColor
+        dot.strokeColor = NSColor.white.withAlphaComponent(0.34).cgColor
+        dot.lineWidth = 0.6
         dot.shadowColor = NSColor.black.cgColor
         dot.shadowOpacity = 0.3
         dot.shadowRadius = 2
         layer?.addSublayer(dot)
+
+        let rim = CAGradientLayer()
+        rim.name = "RunePinHandleRim"
+        rim.colors = [
+            RuneTheme.nsCyan.cgColor,
+            RuneTheme.nsAccent.cgColor,
+            RuneTheme.nsMagenta.cgColor,
+            RuneTheme.nsAmber.cgColor,
+        ]
+        rim.startPoint = CGPoint(x: 0, y: 0.5)
+        rim.endPoint = CGPoint(x: 1, y: 0.5)
+        rim.opacity = 0.48
+        rim.mask = CAShapeLayer()
+        layer?.addSublayer(rim)
     }
 
     @available(*, unavailable)
@@ -734,10 +773,18 @@ final class _PinCornerHandleDotNSView: NSView {
 
     override func layout() {
         super.layout()
-        guard let dot = layer?.sublayers?.first as? CAShapeLayer else { return }
+        guard let dot = layer?.sublayers?.first(where: { $0.name == "RunePinHandleFill" }) as? CAShapeLayer,
+              let rim = layer?.sublayers?.first(where: { $0.name == "RunePinHandleRim" }) as? CAGradientLayer,
+              let rimMask = rim.mask as? CAShapeLayer else { return }
         dot.frame = bounds
-        let dotRect = NSRect(x: bounds.midX - 6, y: bounds.midY - 6, width: 12, height: 12)
+        let dotRect = NSRect(x: bounds.midX - 4, y: bounds.midY - 4, width: 8, height: 8)
         dot.path = CGPath(ellipseIn: dotRect, transform: nil)
+        rim.frame = bounds
+        rimMask.frame = bounds
+        rimMask.path = CGPath(ellipseIn: dotRect.insetBy(dx: 0.6, dy: 0.6), transform: nil)
+        rimMask.fillColor = NSColor.clear.cgColor
+        rimMask.strokeColor = NSColor.white.cgColor
+        rimMask.lineWidth = 0.65
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
@@ -767,10 +814,10 @@ enum PinCorner: CaseIterable {
 
     func point(in size: CGSize) -> CGPoint {
         switch self {
-        case .topLeft: CGPoint(x: 10, y: size.height - 10)
-        case .topRight: CGPoint(x: size.width - 10, y: size.height - 10)
-        case .bottomLeft: CGPoint(x: 10, y: 10)
-        case .bottomRight: CGPoint(x: size.width - 10, y: 10)
+        case .topLeft: CGPoint(x: 8, y: size.height - 8)
+        case .topRight: CGPoint(x: size.width - 8, y: size.height - 8)
+        case .bottomLeft: CGPoint(x: 8, y: 8)
+        case .bottomRight: CGPoint(x: size.width - 8, y: 8)
         }
     }
 }

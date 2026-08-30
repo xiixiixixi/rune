@@ -15,6 +15,7 @@ final class VideoEditorModel {
     var isExporting = false
     var toastMessage: String?
     var thumbnails: [NSImage] = []
+    var previewFrame: NSImage?
     var config = BeautifierConfig()
 
     var videoWidth: Int = 0
@@ -47,10 +48,30 @@ final class VideoEditorModel {
         }
         sourceURL = resolvedURL
         config = AppPreferences.defaultBeautifierConfig
-        let asset = AVURLAsset(url: url)
+        let asset = AVURLAsset(url: resolvedURL)
         let item = AVPlayerItem(asset: asset)
         player = AVPlayer(playerItem: item)
         player?.actionAtItemEnd = .pause
+
+        // 首帧单独生成，不等待整条时间轴的 20 张缩略图。
+        Task { [weak self] in
+            let frame = await Task.detached(priority: .userInitiated) {
+                let generator = AVAssetImageGenerator(asset: asset)
+                generator.maximumSize = CGSize(width: 1280, height: 720)
+                generator.appliesPreferredTrackTransform = true
+                let time = CMTime(seconds: 0.05, preferredTimescale: 600)
+                guard let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) else {
+                    return VideoThumbnailBatch(images: [])
+                }
+                return VideoThumbnailBatch(images: [
+                    NSImage(
+                        cgImage: cgImage,
+                        size: NSSize(width: cgImage.width, height: cgImage.height)
+                    ),
+                ])
+            }.value
+            self?.previewFrame = frame.images.first
+        }
 
         Task {
             if let dur = try? await asset.load(.duration) {
@@ -309,6 +330,7 @@ final class VideoEditorModel {
         }
         timeObserver = nil
         player = nil
+        previewFrame = nil
     }
 
     // MARK: - Private

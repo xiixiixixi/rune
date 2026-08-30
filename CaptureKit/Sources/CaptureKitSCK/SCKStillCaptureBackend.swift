@@ -23,7 +23,9 @@ public final class SCKStillCaptureBackend: StillCaptureBackend, @unchecked Senda
 
     /// 屏幕清单缓存：SCShareableContent 查询要 0.5–1.5s（截图卡顿的元凶），
     /// 用 actor 存 5 秒内的快照；prewarm 提前填好，capture 直接命中。
-    private let store = ContentStore()
+    /// 单例共享：编排器的常驻保温（25s 循环）焐热的是同一份缓存，
+    /// 选区界面等其它实例才能零等待命中，而不是各查各的。
+    private let store = ContentStore.shared
 
     public init(excludingBundleIDs: Set<String> = []) {
         var ids = excludingBundleIDs
@@ -34,6 +36,12 @@ public final class SCKStillCaptureBackend: StillCaptureBackend, @unchecked Senda
     }
 
     // MARK: - CaptureEngine
+
+    /// 取屏幕清单（共享保温缓存，命中即返）。prewarm/常驻保温已把快照焐热，
+    /// 调用方（选区界面等）不必再付 0.5–1.5s 的现查成本。
+    public func shareableContent() async throws -> ShareableContentSnapshot {
+        ShareableContentSnapshot(content: try await store.fetch().content)
+    }
 
     /// 预热：填屏幕清单缓存 + 用 1×1 像素不可见小图焐热采集管线。
     /// 在选区 overlay 弹出时调用，拖框期间就完成，松手即拍。
@@ -298,9 +306,17 @@ public final class SCKStillCaptureBackend: StillCaptureBackend, @unchecked Senda
 
 // MARK: - 屏幕清单缓存
 
+/// SCShareableContent 不符合 Sendable，跨隔离区传递需要 Sendable 包装。
+public struct ShareableContentSnapshot: @unchecked Sendable {
+    public let content: SCShareableContent
+}
+
 /// SCShareableContent 不符合 Sendable，用 @unchecked Sendable 包一层存进 actor。
 /// 它本身是不可变快照，跨隔离区只读是安全的。
 private actor ContentStore {
+    /// 全进程共享：编排器常驻保温、选区界面、各截图后端命中同一份缓存。
+    static let shared = ContentStore()
+
     struct Snapshot: @unchecked Sendable {
         let content: SCShareableContent
     }

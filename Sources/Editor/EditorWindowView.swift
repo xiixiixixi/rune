@@ -9,30 +9,32 @@ struct EditorWindowView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            ZStack(alignment: .bottom) {
+            ZStack(alignment: .leading) {
                 EditorCanvasView(model: model)
-                    .padding(.horizontal, 32)
-                    .padding(.top, 28)
-                    .padding(.bottom, 112)
+                    .padding(.leading, 94)
+                    .padding(.trailing, 32)
+                    .padding(.vertical, 28)
                     .frame(minWidth: 620, minHeight: 470)
 
                 EditorToolShelf(model: model)
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 30)
+                    .padding(.leading, 20)
             }
-            .background(RuneTheme.editorWorkspace)
+            .background(
+                ZStack {
+                    RuneAmbientBackdrop()
+                    YumYumGlow()
+                }
+            )
 
             if showsInspector {
-                Rectangle()
-                    .fill(RuneTheme.paperSeparator)
-                    .frame(width: 1)
-
                 EditorInspectorView(model: model)
-                    .frame(width: 286)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    .frame(width: 288)
+                    .padding(12)
+                    .background(RuneTheme.workspace)
             }
         }
-        .tint(RuneTheme.accent)
+        .preferredColorScheme(.dark)
+        .tint(RuneTheme.textPrimary)
         .overlay(alignment: .bottom) {
             if let message = model.toastMessage {
                 Text(message)
@@ -40,14 +42,19 @@ struct EditorWindowView: View {
                     .foregroundStyle(RuneTheme.chromeText)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(RuneTheme.chromeBase.opacity(0.92), in: Capsule())
-                    .overlay(Capsule().strokeBorder(RuneTheme.chromeLine, lineWidth: 1))
-                    .padding(.bottom, 104)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .background(
+                        RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
+                            .fill(RuneTheme.chromeBase.opacity(0.96))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
+                            .strokeBorder(RuneTheme.spectralGradient, lineWidth: 0.8)
+                    )
+                    .padding(.bottom, 24)
                     .onAppear {
                         Task {
                             try? await Task.sleep(for: .seconds(1.5))
-                            withAnimation { model.toastMessage = nil }
+                            model.toastMessage = nil
                         }
                     }
             }
@@ -65,9 +72,7 @@ struct EditorWindowView: View {
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
                 Button {
-                    withAnimation(.easeOut(duration: 0.14)) {
-                        showsInspector.toggle()
-                    }
+                    showsInspector.toggle()
                 } label: {
                     Label(
                         showsInspector ? "隐藏属性" : "显示属性",
@@ -145,10 +150,9 @@ struct EditorWindowView: View {
                 Button {
                     Task { await exportImage() }
                 } label: {
-                    Label("导出", systemImage: "square.and.arrow.down")
+                    RuneTheme.primaryButtonLabel("导出", systemImage: "square.and.arrow.down")
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(RuneTheme.paperInk)
+                .buttonStyle(RuneTheme.RunePressStyle())
                 .keyboardShortcut("s", modifiers: .command)
             }
         }
@@ -168,7 +172,7 @@ struct EditorWindowView: View {
 
     private func exportImage() async {
         guard let rendered = model.renderFinal() else {
-            withAnimation { model.toastMessage = "导出失败，无法生成图片" }
+            model.toastMessage = "导出失败，无法生成图片"
             return
         }
 
@@ -183,7 +187,7 @@ struct EditorWindowView: View {
             AppPreferences.exportFormat.utType as CFString,
             1, nil
         ) else {
-            withAnimation { model.toastMessage = "无法写入保存位置" }
+            model.toastMessage = "无法写入保存位置"
             return
         }
 
@@ -194,7 +198,7 @@ struct EditorWindowView: View {
 
         CGImageDestinationAddImage(dest, rendered, options as CFDictionary)
         guard CGImageDestinationFinalize(dest) else {
-            withAnimation { model.toastMessage = "导出失败，请检查磁盘空间" }
+            model.toastMessage = "导出失败，请检查磁盘空间"
             return
         }
 
@@ -213,7 +217,7 @@ struct EditorWindowView: View {
             }
         }
 
-        withAnimation { model.toastMessage = "已导出" }
+        model.toastMessage = "已导出"
         try? await Task.sleep(for: .seconds(1.0))
         NSApp.keyWindow?.close()
     }
@@ -238,11 +242,11 @@ struct EditorWindowView: View {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.writeObjects([nsImage])
-        withAnimation { model.toastMessage = "已复制到剪贴板" }
+        model.toastMessage = "已复制到剪贴板"
     }
 }
 
-// MARK: - Floating editor tool shelf
+// MARK: - Floating editor tool rail
 
 private struct EditorToolShelf: View {
     @Bindable var model: EditorModel
@@ -253,13 +257,13 @@ private struct EditorToolShelf: View {
     ]
 
     var body: some View {
-        HStack(spacing: 2) {
+        VStack(spacing: 2) {
             ForEach(Array(tools.enumerated()), id: \.element.id) { index, tool in
                 if index == 7 {
                     Rectangle()
                         .fill(RuneTheme.chromeLine)
-                        .frame(width: 1, height: 38)
-                        .padding(.horizontal, 6)
+                        .frame(width: 34, height: 1)
+                        .padding(.vertical, 6)
                 }
 
                 EditorToolShelfButton(
@@ -270,8 +274,8 @@ private struct EditorToolShelf: View {
                 }
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 9)
         .background(RuneTheme.barBackground)
         .fixedSize()
     }
@@ -286,31 +290,33 @@ private struct EditorToolShelfButton: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 4) {
+            ZStack {
                 Image(systemName: tool.systemImage)
-                    .font(RuneFont.swiftUI(size: 17, weight: .medium))
-                Text(tool.title)
-                    .font(RuneFont.swiftUI(size: 10, weight: .semibold))
-                    .lineLimit(1)
+                    .font(RuneFont.swiftUI(size: 16, weight: .medium))
             }
-            .foregroundStyle(isSelected ? RuneTheme.annotationAccent : RuneTheme.chromeText.opacity(isHovered ? 1 : 0.78))
-            .frame(width: 52, height: 52)
+            .foregroundStyle(isSelected ? RuneTheme.textPrimary : RuneTheme.chromeText.opacity(isHovered ? 1 : 0.78))
+            .frame(width: 42, height: 36)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
                     .fill(
                         isSelected
-                            ? RuneTheme.annotationAccent.opacity(0.13)
+                            ? Color.white.opacity(0.055)
                             : (isHovered ? RuneTheme.chromeLine.opacity(0.72) : Color.clear)
                     )
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
                     .strokeBorder(
-                        isSelected ? RuneTheme.annotationAccent.opacity(0.42) : Color.clear,
-                        lineWidth: 1
+                        isSelected ? Color.white.opacity(0.13) : Color.clear,
+                        lineWidth: 0.7
                     )
             )
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(alignment: .bottom) {
+                if isSelected {
+                    RuneSelectionUnderline(width: 16)
+                }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous))
         }
         .buttonStyle(RuneTheme.RunePressStyle())
         .onHover { isHovered = $0 }

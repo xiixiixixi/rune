@@ -70,32 +70,40 @@ final class ToastWindow {
         )
         panel.isOpaque = false
         panel.backgroundColor = .clear
+        panel.appearance = NSAppearance(named: .darkAqua)
         panel.hasShadow = true
         panel.level = .floating
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
-        // 与 Rune 其余结果卡一致的浅色材质；错误和成功都靠图标表达，不整块变色。
+        // 与 Rune 其余结果卡一致的深色流体玻璃；状态靠图标和文案表达。
         let effect = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: panelW, height: panelH))
-        effect.material = .popover
-        effect.blendingMode = .behindWindow
+        effect.material = .hudWindow
+        effect.blendingMode = .withinWindow
         effect.state = .active
+        effect.appearance = NSAppearance(named: .darkAqua)
         effect.wantsLayer = true
-        effect.layer?.cornerRadius = 12
+        effect.layer?.backgroundColor = RuneTheme.nsBackground.withAlphaComponent(0.94).cgColor
+        effect.layer?.cornerRadius = RuneTheme.cardCorner
         effect.layer?.borderWidth = 0.5
-        effect.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.45).cgColor
+        effect.layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
+        RuneAppKitChrome.installSpectralBorder(
+            on: effect,
+            cornerRadius: RuneTheme.cardCorner,
+            opacity: 0.54
+        )
         panel.contentView = effect
 
         let iconView = NSImageView(frame: NSRect(
             x: pad, y: (panelH - iconSize) / 2, width: iconSize, height: iconSize
         ))
         iconView.image = iconImage
-        iconView.contentTintColor = RuneTheme.nsAccent
+        iconView.contentTintColor = NSColor(RuneTheme.textPrimary)
         effect.addSubview(iconView)
 
         let titleField = NSTextField(labelWithString: title)
         titleField.font = RuneFont.appKit(size: 13, weight: .semibold)
-        titleField.textColor = .labelColor
+        titleField.textColor = NSColor(RuneTheme.textPrimary)
         titleField.lineBreakMode = .byTruncatingTail
         titleField.frame = NSRect(
             x: pad + iconSize + gap,
@@ -107,7 +115,7 @@ final class ToastWindow {
 
         let msgField = NSTextField(labelWithString: message)
         msgField.font = RuneFont.appKit(size: 11)
-        msgField.textColor = .secondaryLabelColor
+        msgField.textColor = NSColor(RuneTheme.textSecondary)
         msgField.lineBreakMode = .byCharWrapping
         msgField.maximumNumberOfLines = 2
         msgField.frame = NSRect(
@@ -121,14 +129,7 @@ final class ToastWindow {
         guard let screen = preferredScreen ?? NSScreen.main ?? NSScreen.screens.first else { return }
         let sf = screen.visibleFrame
         panel.setFrameOrigin(NSPoint(x: sf.midX - panelW / 2, y: sf.maxY - panelH - 12))
-        panel.alphaValue = 0
         panel.orderFrontRegardless()
-
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.25
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            panel.animator().alphaValue = 1
-        }
         self.panel = panel
 
         dismissTask = Task {

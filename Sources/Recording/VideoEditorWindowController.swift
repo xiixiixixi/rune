@@ -30,7 +30,8 @@ final class VideoEditorWindowController: NSObject, NSWindowDelegate {
         win.titleVisibility = .hidden
         win.titlebarAppearsTransparent = true
         win.toolbarStyle = .unifiedCompact
-        win.backgroundColor = .windowBackgroundColor
+        win.backgroundColor = RuneTheme.nsBackground
+        win.appearance = NSAppearance(named: .darkAqua)
         win.isReleasedWhenClosed = false
         win.minSize = NSSize(width: 780, height: 520)
         win.delegate = self

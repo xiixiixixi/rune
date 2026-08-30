@@ -1,51 +1,24 @@
+import AppKit
 import SwiftUI
 
-// MARK: - Panel Root
+// MARK: - Panel root
 
 struct MenuBarPanelView: View {
     var dismissPopover: @MainActor () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isVisible = false
-
-    private let arrowWidth: CGFloat = 22
-    private let arrowHeight: CGFloat = 10
-    private let panelRadius: CGFloat = 14
-
     var body: some View {
         MenuBarContentView(dismissPopover: dismissPopover)
-            .runeGlassSurface(
-                cornerRadius: panelRadius,
-                elevation: .floating
+            .background(RuneCardBackground(cornerRadius: RuneTheme.cardCorner))
+            .overlay(
+                RoundedRectangle(cornerRadius: RuneTheme.cardCorner, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
             )
             .padding(1)
-        .offset(y: isVisible || reduceMotion ? 0 : -4)
-        .opacity(isVisible ? 1 : 0)
-        .onAppear {
-            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.12)) {
-                isVisible = true
-            }
-        }
+            .preferredColorScheme(.dark)
     }
 }
 
-private struct PopoverArrow: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let radius: CGFloat = 2.5
-        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.midX - radius, y: rect.minY + radius))
-        path.addQuadCurve(
-            to: CGPoint(x: rect.midX + radius, y: rect.minY + radius),
-            control: CGPoint(x: rect.midX, y: rect.minY)
-        )
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        path.closeSubpath()
-        return path
-    }
-}
-
-// MARK: - Panel Content
+// MARK: - Panel content
 
 struct MenuBarContentView: View {
     var dismissPopover: @MainActor () -> Void
@@ -54,169 +27,170 @@ struct MenuBarContentView: View {
         VStack(spacing: 0) {
             header
 
-            HStack(spacing: 8) {
-                TrayFeatureButton(
-                    title: "截图",
-                    subtitle: "拖选区域或点窗口",
-                    icon: "camera.viewfinder",
-                    shortcut: ShortcutService.shared.displayString(for: .main),
-                    isAccent: true
-                ) {
-                    dismissAndRun(.main)
-                }
-
-                TrayFeatureButton(
-                    title: "连拍",
-                    subtitle: "连续 · 定数 · 延时",
-                    icon: "camera.fill",
-                    shortcut: ShortcutService.shared.displayString(for: .burst),
-                    isAccent: false
-                ) {
-                    dismissAndRunBurst(mode: .burst)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 14)
-
-            TrayDivider()
-
-            LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4),
-                spacing: 8
-            ) {
-                TrayActionButton(title: "滚动长图", icon: "arrow.down.doc") {
-                    dismissAndRunScrollCapture()
-                }
-
-                TrayRecordingMenu(
-                    onFullScreen: { startRecordingFromMenu(mode: .fullScreen) },
-                    onArea: { startRecordingFromMenu(mode: .area) }
-                )
-
-                TrayActionButton(title: "取色", icon: "eyedropper") {
-                    dismissAndRun(.colorPicker)
-                }
-
-                TrayActionButton(title: "文字识别", icon: "text.viewfinder") {
-                    dismissAndRun(.ocr)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-
-            TrayDivider()
-
-            RecentCaptureSection(
-                records: Array(HistoryStore.shared.records.prefix(8)),
-                onOpen: open,
-                onShowAll: openLibrary
-            )
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            commandDeck
+                .padding(.horizontal, 16)
 
             if PinnedScreenshotController.shared.hasPinnedWindows {
-                TrayDivider()
-
-                HStack(spacing: 10) {
-                    Label(
-                        "\(PinnedScreenshotController.shared.pinnedCount) 张贴图",
-                        systemImage: "pin.fill"
-                    )
-                    .font(RuneFont.swiftUI(size: 12, weight: .semibold))
-                    .foregroundStyle(RuneTheme.chromeText)
-
-                    Spacer()
-
-                    if PinnedScreenshotController.shared.hasPassthroughWindows {
-                        Button("恢复交互") {
-                            PinnedScreenshotController.shared.restoreInteractions()
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(RuneTheme.chromeMuted)
-                    }
-
-                    Button("全部关闭") {
-                        PinnedScreenshotController.shared.unpinAll()
-                        dismissPopover()
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(RuneTheme.chromeMuted)
-                }
-                .font(RuneFont.swiftUI(size: 11, weight: .medium))
-                .padding(.horizontal, 16)
-                .frame(height: 48)
+                pinnedRow
+                    .padding(.horizontal, 16)
+                    .padding(.top, 10)
             }
 
-            TrayDivider()
-
-            HStack(spacing: 8) {
-                Button {
-                    openLibrary()
-                } label: {
-                    Label("素材库", systemImage: "square.grid.2x2")
-                        .font(RuneFont.swiftUI(size: 12, weight: .medium))
-                        .foregroundStyle(RuneTheme.chromeMuted)
-                }
-                .buttonStyle(.plain)
-                .help("打开素材库")
-
-                Button {
-                    openSettings()
-                } label: {
-                    Label("设置", systemImage: "gearshape")
-                        .font(RuneFont.swiftUI(size: 12, weight: .medium))
-                        .foregroundStyle(RuneTheme.chromeMuted)
-                }
-                .buttonStyle(.plain)
-                .help("设置 (⌘,)")
-
-                Spacer()
-
-                Text("Rune")
-                    .font(RuneFont.mono(size: 9, weight: .medium))
-                    .foregroundStyle(RuneTheme.chromeMuted.opacity(0.7))
-
-                Button {
-                    NSApplication.shared.terminate(nil)
-                } label: {
-                    Image(systemName: "power")
-                        .font(RuneFont.swiftUI(size: 12, weight: .medium))
-                        .foregroundStyle(RuneTheme.chromeMuted)
-                        .frame(width: 24, height: 24)
-                }
-                .buttonStyle(.plain)
-                .help("退出 Rune (⌘Q)")
-                .accessibilityLabel("退出 Rune")
-            }
+            RecentCaptureLedger(
+                records: Array(HistoryStore.shared.records.prefix(3)),
+                onOpen: open,
+                onShowAll: openLibrary,
+                onCapture: { dismissAndRun(.main) }
+            )
             .padding(.horizontal, 16)
-            .frame(height: 46)
-            .overlay(alignment: .top) {
-                Rectangle()
-                    .fill(RuneTheme.chromeLine)
-                    .frame(height: 1)
-            }
+            .padding(.top, 18)
+            .padding(.bottom, 16)
         }
-        .frame(width: 480)
+        .frame(width: 660)
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
+            RuneBrandIcon(size: 24)
+
             Text("Rune")
-                .font(RuneFont.swiftUI(size: 16, weight: .bold))
+                .font(RuneFont.swiftUI(size: 16, weight: .semibold))
                 .foregroundStyle(RuneTheme.chromeText)
 
             Text("v\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")")
                 .font(RuneFont.mono(size: 9, weight: .medium))
-                .foregroundStyle(RuneTheme.chromeMuted)
+                .foregroundStyle(RuneTheme.textMuted)
 
             Spacer()
 
-            Text("捕捉 · 查找 · 复用")
-                .font(RuneFont.mono(size: 9, weight: .medium))
-                .foregroundStyle(RuneTheme.chromeMuted)
+            Button {
+                NSApplication.shared.terminate(nil)
+            } label: {
+                RuneGlyph(systemImage: "power", size: 13)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("退出 Rune (⌘Q)")
+            .accessibilityLabel("退出 Rune")
         }
         .padding(.horizontal, 18)
-        .frame(height: 52)
+        .frame(height: 50)
+    }
+
+    /// 截图是唯一主入口；其余能力作为同一玻璃仪表台上的辅助命令。
+    private var commandDeck: some View {
+        VStack(spacing: 0) {
+            Button {
+                dismissAndRun(.main)
+            } label: {
+                MenuPrimaryCaptureLabel(
+                    shortcut: ShortcutService.shared.displayString(for: .main)
+                )
+            }
+            .buttonStyle(RuneTheme.RunePressStyle())
+            .help("开始截图 · \(ShortcutService.shared.displayString(for: .main))")
+            .accessibilityLabel("开始截图")
+
+            RuneTheme.hairline
+                .padding(.horizontal, 12)
+
+            HStack(spacing: 0) {
+                MenuCommandButton(
+                    title: "连拍",
+                    icon: "square.stack.3d.up",
+                    shortcut: ShortcutService.shared.displayString(for: .burst)
+                ) {
+                    dismissAndRunBurst(mode: .burst)
+                }
+
+                MenuCommandButton(title: "长图", icon: "arrow.down.doc") {
+                    dismissAndRunScrollCapture()
+                }
+
+                MenuCommandButton(title: "文字", icon: "text.viewfinder") {
+                    dismissAndRun(.ocr)
+                }
+
+                recordingCommand
+
+                MenuCommandButton(
+                    title: "取色",
+                    icon: "eyedropper",
+                    shortcut: ShortcutService.shared.displayString(for: .colorPicker)
+                ) {
+                    dismissAndRun(.colorPicker)
+                }
+
+                MenuCommandButton(title: "素材库", icon: "rectangle.stack") {
+                    openLibrary()
+                }
+
+                MenuCommandButton(title: "设置", icon: "gearshape") {
+                    openSettings()
+                }
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 5)
+        }
+        .runeGlassSurface(
+            cornerRadius: RuneTheme.barCorner,
+            tint: RuneTheme.glassTint,
+            interactive: true,
+            elevation: .embedded
+        )
+    }
+
+    private var recordingCommand: some View {
+        RuneMenu(
+            surface: .chrome,
+            entries: {
+                [
+                    .item(RuneMenuItem("全屏录制", systemImage: "desktopcomputer") {
+                        startRecordingFromMenu(mode: .fullScreen)
+                    }),
+                    .item(RuneMenuItem("区域录制", systemImage: "rectangle.dashed") {
+                        startRecordingFromMenu(mode: .area)
+                    }),
+                ]
+            }
+        ) {
+            MenuCommandLabel(title: "录屏", icon: "record.circle", showsMenu: true)
+        }
+        .help("选择全屏或区域录制")
+        .accessibilityLabel("录屏，选择全屏或区域")
+    }
+
+    private var pinnedRow: some View {
+        HStack(spacing: 10) {
+            RuneGlyph(systemImage: "pin", size: 12)
+
+            Text("\(PinnedScreenshotController.shared.pinnedCount) 张贴图正在桌面显示")
+                .font(RuneFont.swiftUI(size: 11.5, weight: .medium))
+                .foregroundStyle(RuneTheme.textSecondary)
+
+            Spacer()
+
+            if PinnedScreenshotController.shared.hasPassthroughWindows {
+                Button("恢复交互") {
+                    PinnedScreenshotController.shared.restoreInteractions()
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(RuneTheme.textSecondary)
+            }
+
+            Button("全部关闭") {
+                PinnedScreenshotController.shared.unpinAll()
+                dismissPopover()
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(RuneTheme.textSecondary)
+        }
+        .font(RuneFont.swiftUI(size: 10.5, weight: .medium))
+        .padding(.horizontal, 12)
+        .frame(height: 34)
+        .background(RuneTheme.graphite.opacity(0.72))
+        .overlay(alignment: .bottom) { RuneTheme.hairline }
     }
 
     private var originScreen: NSScreen? {
@@ -265,7 +239,6 @@ struct MenuBarContentView: View {
         if record.kind == .recording {
             PreviewOverlay.shared.show(url: HistoryStore.shared.displayURLForRecord(record), on: screen)
         } else {
-            // 截图记录：直接贴到屏幕右下角当缩略图，常用操作（复制等）在贴图工具条上
             PinnedScreenshotController.shared.pin(
                 url: HistoryStore.shared.displayURLForRecord(record),
                 on: screen,
@@ -314,407 +287,313 @@ struct MenuBarContentView: View {
     }
 }
 
-// MARK: - Reusable Controls
+// MARK: - Main command rail
 
-private struct TrayFeatureButton: View {
-    let title: String
-    let subtitle: String
-    let icon: String
+private struct MenuPrimaryCaptureLabel: View {
     let shortcut: String
-    let isAccent: Bool
-    let action: () -> Void
 
     @State private var isHovered = false
 
     var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Image(systemName: icon)
-                        .font(RuneFont.swiftUI(size: 19, weight: .medium))
-                        .foregroundStyle(isAccent ? RuneTheme.accent : RuneTheme.chromeText)
+        HStack(spacing: 13) {
+            RuneOpticalIconPlate(
+                systemImage: "camera.viewfinder",
+                isActive: true,
+                size: 38
+            )
 
-                    Spacer()
-
-                    Text(shortcut)
-                        .font(RuneFont.mono(size: 9, weight: .medium))
-                        .foregroundStyle(RuneTheme.chromeMuted)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(RuneTheme.chromeElevated)
-                        )
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(RuneFont.swiftUI(size: 14, weight: .bold))
-                        .foregroundStyle(RuneTheme.chromeText)
-                    Text(subtitle)
-                        .font(RuneFont.swiftUI(size: 10))
-                        .foregroundStyle(RuneTheme.chromeMuted)
-                        .lineLimit(1)
-                }
+            VStack(alignment: .leading, spacing: 3) {
+                Text("开始截图")
+                    .font(RuneFont.swiftUI(size: 13.5, weight: .semibold))
+                    .foregroundStyle(RuneTheme.textPrimary)
+                Text("拖选区域 · 点击窗口 · 点击桌面")
+                    .font(RuneFont.swiftUI(size: 10.5))
+                    .foregroundStyle(RuneTheme.textSecondary)
             }
-            .padding(12)
-            .frame(maxWidth: .infinity, minHeight: 84, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: RuneTheme.cardCorner, style: .continuous)
-                    .fill(isAccent ? RuneTheme.accentDim : RuneTheme.chromeElevated)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: RuneTheme.cardCorner, style: .continuous)
-                    .strokeBorder(
-                        isAccent
-                            ? RuneTheme.accent.opacity(0.28)
-                            : (isHovered ? RuneTheme.chromeMuted : RuneTheme.chromeLine),
-                        lineWidth: 1
-                    )
-            )
-            .contentShape(RoundedRectangle(cornerRadius: RuneTheme.cardCorner, style: .continuous))
+
+            Spacer(minLength: 14)
+
+            Text(shortcut)
+                .font(RuneFont.mono(size: 10, weight: .medium))
+                .foregroundStyle(RuneTheme.textSecondary)
+                .padding(.horizontal, 9)
+                .frame(height: 26)
+                .background(
+                    RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                        .fill(Color.black.opacity(0.22))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                        .strokeBorder(RuneTheme.separator, lineWidth: 0.7)
+                )
+
+            Image(systemName: "chevron.right")
+                .font(RuneFont.swiftUI(size: 9, weight: .semibold))
+                .foregroundStyle(RuneTheme.textMuted)
         }
-        .buttonStyle(RuneTheme.RunePressStyle())
+        .padding(.horizontal, 14)
+        .frame(height: 62)
+        .background(
+            RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
+                .fill(isHovered ? Color.white.opacity(0.045) : Color.clear)
+        )
+        .contentShape(Rectangle())
         .onHover { isHovered = $0 }
-        .help(title == "连拍" ? "连续、定数或延时拍摄，开始后可暂停或结束" : "拖选区域、点窗口或点桌面截图")
-        .accessibilityLabel("\(title)，\(subtitle)，快捷键 \(shortcut)")
     }
 }
 
-private struct TrayActionButton: View {
+private struct MenuCommandButton: View {
     let title: String
     let icon: String
+    var shortcut: String? = nil
+    var isPrimary = false
     let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            MenuCommandLabel(
+                title: title,
+                icon: icon,
+                shortcut: shortcut,
+                isPrimary: isPrimary
+            )
+        }
+        .buttonStyle(RuneTheme.RunePressStyle())
+        .help(shortcut.map { "\(title) · \($0)" } ?? title)
+        .accessibilityLabel(shortcut.map { "\(title)，快捷键 \($0)" } ?? title)
+    }
+}
+
+private struct MenuCommandLabel: View {
+    let title: String
+    let icon: String
+    var shortcut: String? = nil
+    var isPrimary = false
+    var showsMenu = false
 
     @State private var isHovered = false
 
     var body: some View {
-        Button(action: action) {
-            TrayActionLabel(title: title, icon: icon, isHovered: isHovered)
-        }
-        .buttonStyle(RuneTheme.RunePressStyle())
-        .onHover { isHovered = $0 }
-        .accessibilityLabel(title)
-    }
-}
-
-private struct TrayActionLabel: View {
-    let title: String
-    let icon: String
-    var showsChevron = false
-    var isHovered = false
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(RuneFont.swiftUI(size: 13, weight: .medium))
-                .foregroundStyle(RuneTheme.chromeMuted)
-                .frame(width: 17)
+        VStack(spacing: 4) {
+            RuneGlyph(systemImage: icon, isActive: isPrimary || isHovered, size: 17)
+                .frame(height: 19)
 
             Text(title)
-                .font(RuneFont.swiftUI(size: 12, weight: .medium))
-                .foregroundStyle(RuneTheme.chromeText)
+                .font(RuneFont.swiftUI(size: 10.5, weight: .medium))
+                .foregroundStyle(isHovered || isPrimary ? RuneTheme.textPrimary : RuneTheme.textSecondary)
+                .lineLimit(1)
 
-            Spacer(minLength: 2)
-
-            if showsChevron {
-                Image(systemName: "chevron.down")
-                    .font(RuneFont.swiftUI(size: 8, weight: .bold))
-                    .foregroundStyle(RuneTheme.chromeMuted)
+            Group {
+                if let shortcut, !shortcut.isEmpty {
+                    Text(shortcut)
+                        .font(RuneFont.mono(size: 8, weight: .medium))
+                        .foregroundStyle(RuneTheme.textMuted)
+                        .lineLimit(1)
+                } else if showsMenu {
+                    Image(systemName: "chevron.down")
+                        .font(RuneFont.swiftUI(size: 7, weight: .semibold))
+                        .foregroundStyle(RuneTheme.textMuted)
+                } else {
+                    Color.clear.frame(height: 9)
+                }
             }
+            .frame(height: 9)
         }
-        .padding(.horizontal, 10)
-        .frame(maxWidth: .infinity, minHeight: 38)
+        .frame(maxWidth: .infinity)
+        .frame(height: 52)
         .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(isHovered ? RuneTheme.accentDim : RuneTheme.chromeElevated)
+            RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
+                .fill(isHovered ? Color.white.opacity(0.045) : Color.clear)
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .strokeBorder(isHovered ? RuneTheme.chromeMuted : RuneTheme.chromeLine, lineWidth: 1)
-        )
-        .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-    }
-}
-
-private struct TrayRecordingMenu: View {
-    let onFullScreen: () -> Void
-    let onArea: () -> Void
-
-    @State private var isHovered = false
-
-    var body: some View {
-        RuneMenu(
-            surface: .chrome,
-            entries: {
-                [
-                    .item(RuneMenuItem("全屏录制", systemImage: "desktopcomputer", action: onFullScreen)),
-                    .item(RuneMenuItem("区域录制", systemImage: "rectangle.dashed", action: onArea)),
-                ]
-            }
-        ) {
-            TrayActionLabel(
-                title: "录屏",
-                icon: "record.circle",
-                showsChevron: true,
-                isHovered: isHovered
-            )
-        }
-        .frame(maxWidth: .infinity, minHeight: 38)
+        .contentShape(Rectangle())
         .onHover { isHovered = $0 }
-        .help("选择全屏或区域录制")
-        .accessibilityLabel("录屏，选择全屏或区域")
     }
 }
 
-private struct TrayFullWidthButton: View {
-    let title: String
-    let icon: String
-    let action: () -> Void
+// MARK: - Recent capture ledger
 
-    var body: some View {
-        TrayActionButton(title: title, icon: icon, action: action)
-    }
-}
-
-private struct RecentCaptureSection: View {
+private struct RecentCaptureLedger: View {
     let records: [CaptureRecord]
     let onOpen: (CaptureRecord) -> Void
     let onShowAll: () -> Void
-
-    @State private var thumbnails: [UUID: NSImage] = [:]
-    @State private var hoveredRecordID: UUID?
-    @State private var copiedRecordID: UUID?
+    let onCapture: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                HStack(spacing: 8) {
-                    Image(systemName: "clock.arrow.circlepath")
-                    Text("最近素材")
-                        .font(RuneFont.swiftUI(size: 13, weight: .semibold))
-                    if !records.isEmpty {
-                        Text("\(records.count) 张")
-                            .font(RuneFont.mono(size: 10, weight: .medium))
-                            .foregroundStyle(RuneTheme.chromeMuted)
-                    }
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text("最近素材")
+                    .font(RuneFont.swiftUI(size: 12, weight: .semibold))
+                    .foregroundStyle(RuneTheme.textPrimary)
+
+                if !records.isEmpty {
+                    Text("\(records.count)")
+                        .font(RuneFont.mono(size: 9, weight: .medium))
+                        .foregroundStyle(RuneTheme.textMuted)
                 }
-                .foregroundStyle(RuneTheme.chromeText)
 
                 Spacer()
 
                 Button(action: onShowAll) {
-                    HStack(spacing: 3) {
-                        Text("全部")
+                    HStack(spacing: 4) {
+                        Text("查看全部")
                         Image(systemName: "chevron.right")
-                            .font(RuneFont.swiftUI(size: 8, weight: .bold))
+                            .font(RuneFont.swiftUI(size: 8, weight: .semibold))
                     }
-                    .font(RuneFont.swiftUI(size: 10, weight: .medium))
-                    .foregroundStyle(RuneTheme.chromeMuted)
+                    .font(RuneFont.swiftUI(size: 10.5, weight: .medium))
+                    .foregroundStyle(RuneTheme.textSecondary)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("查看全部记录")
+                .accessibilityLabel("查看全部素材")
             }
+            .padding(.bottom, 10)
 
             if records.isEmpty {
-                HStack(spacing: 8) {
-                    Image(systemName: "photo.stack")
-                        .foregroundStyle(RuneTheme.chromeMuted)
-                    Text("截图和录屏会出现在这里")
-                        .font(RuneFont.swiftUI(size: 11))
-                        .foregroundStyle(RuneTheme.chromeMuted)
+                HStack(spacing: 12) {
+                    RuneGlyph(systemImage: "rectangle.stack", size: 18)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("还没有素材")
+                            .font(RuneFont.swiftUI(size: 11.5, weight: .medium))
+                            .foregroundStyle(RuneTheme.textPrimary)
+                        Text("截图和录屏会按时间出现在这里")
+                            .font(RuneFont.swiftUI(size: 10.5))
+                            .foregroundStyle(RuneTheme.textMuted)
+                    }
+
                     Spacer()
+
+                    Button(action: onCapture) {
+                        RuneTheme.primaryButtonLabel("开始截图")
+                    }
+                    .buttonStyle(RuneTheme.RunePressStyle())
                 }
-                .padding(.horizontal, 10)
-                .frame(height: 120)
-                .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(RuneTheme.chromeElevated)
-                )
+                .frame(height: 64)
+                .overlay(alignment: .bottom) { RuneTheme.hairline }
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(records) { record in
-                            recordTile(record)
-                        }
-                    }
-                    .padding(.vertical, 1)
-                }
-            }
-        }
-    }
+                ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
+                    RecentCaptureLedgerRow(record: record, onOpen: onOpen)
 
-    /// 单个历史瓦片：整块点击=复制（最常用，一步到位）；悬停露出贴图/预览按钮；
-    /// 右键收着"编辑 / 在访达中显示"这些不常用操作。
-    private func recordTile(_ record: CaptureRecord) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            ZStack(alignment: .topTrailing) {
-                Button {
-                    copyRecord(record)
-                } label: {
-                    ZStack {
-                        RuneTheme.chromeElevated
-
-                        if let thumbnail = thumbnails[record.id] {
-                            Image(nsImage: thumbnail)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: tileWidth, height: tileImageHeight)
-                                .clipped()
-                        } else {
-                            ProgressView()
-                                .controlSize(.mini)
-                                .tint(RuneTheme.chromeMuted)
-                        }
-
-                        if record.kind == .recording {
-                            Image(systemName: "play.circle.fill")
-                                .font(RuneFont.swiftUI(size: 24))
-                                .foregroundStyle(.white.opacity(0.92))
-                                .shadow(color: .black.opacity(0.30), radius: 2, y: 1)
-                        }
-                    }
-                    .frame(width: tileWidth, height: tileImageHeight)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(
-                                hoveredRecordID == record.id ? RuneTheme.chromeText.opacity(0.8) : RuneTheme.chromeLine,
-                                lineWidth: 1
-                            )
-                    )
-                    .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                }
-                .buttonStyle(RuneTheme.RunePressStyle())
-                .help("点击复制到剪贴板 · \(record.filename)")
-                .contextMenu {
-                    Button("复制") {
-                        copyRecord(record)
-                    }
-                    if record.kind == .recording {
-                        Button("编辑") {
-                            VideoEditorWindowController.shared.open(url: HistoryStore.shared.displayURLForRecord(record))
-                        }
-                    } else {
-                        Button("编辑") {
-                            EditorWindowController.shared.open(url: HistoryStore.shared.displayURLForRecord(record))
-                        }
-                    }
-                    Button("在访达中显示") {
-                        NSWorkspace.shared.activateFileViewerSelecting([HistoryStore.shared.displayURLForRecord(record)])
-                    }
-                }
-                .task(id: record.id) {
-                    let url = HistoryStore.shared.displayURLForRecord(record)
-                    let kind = record.kind
-                    let thumbnail = await Task.detached {
-                        HistoryStore.renderThumbnailCGImage(at: url, kind: kind, maxSize: 360)
-                    }.value
-                    if let thumbnail {
-                        thumbnails[record.id] = NSImage(
-                            cgImage: thumbnail,
-                            size: NSSize(width: thumbnail.width, height: thumbnail.height)
-                        )
-                    }
-                }
-
-                if hoveredRecordID == record.id || showsAuditQuickActions {
-                    Button {
-                        onOpen(record)
-                    } label: {
-                        Image(systemName: record.kind == .recording ? "play.fill" : "pin.fill")
-                            .font(RuneFont.swiftUI(size: 11, weight: .semibold))
-                            .foregroundStyle(RuneTheme.paperInk)
-                            .frame(width: 28, height: 28)
-                            .background(RuneTheme.paperCard, in: Circle())
-                            .shadow(color: .black.opacity(0.18), radius: 5, y: 2)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(7)
-                    .help(record.kind == .recording ? "预览录屏" : "贴到屏幕右下角并编辑")
-                    .accessibilityLabel(record.kind == .recording ? "预览录屏" : "贴到屏幕右下角并编辑")
-                    .transition(.opacity.animation(.easeInOut(duration: 0.12)))
-                }
-
-                if copiedRecordID == record.id {
-                    Label("已复制到剪贴板", systemImage: "checkmark")
-                        .font(RuneFont.swiftUI(size: 10, weight: .semibold))
-                        .foregroundStyle(RuneTheme.paperInk)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 6)
-                        .background(RuneTheme.paperCard, in: Capsule())
-                        .shadow(color: .black.opacity(0.18), radius: 5, y: 2)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                        .allowsHitTesting(false)
-                }
-            }
-
-            Text(record.createdAt, style: .relative)
-                .font(RuneFont.mono(size: 10, weight: .medium))
-                .foregroundStyle(RuneTheme.chromeMuted)
-                .lineLimit(1)
-        }
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.12)) {
-                hoveredRecordID = hovering ? record.id : nil
-            }
-        }
-    }
-
-    private func copyRecord(_ record: CaptureRecord) {
-        let url = HistoryStore.shared.displayURLForRecord(record)
-        let kind = record.kind
-        let recordID = record.id
-        Task.detached(priority: .userInitiated) {
-            let pasteboard = NSPasteboard.general
-            let didCopy: Bool
-            if kind == .recording {
-                pasteboard.clearContents()
-                didCopy = pasteboard.writeObjects([url as NSURL])
-            } else if let image = NSImage(contentsOf: url) {
-                pasteboard.clearContents()
-                didCopy = pasteboard.writeObjects([image])
-            } else {
-                didCopy = false
-            }
-            await MainActor.run {
-                guard didCopy else {
-                    ToastWindow.shared.show(
-                        title: "复制失败",
-                        message: "无法读取这条历史记录",
-                        systemIcon: "exclamationmark.triangle",
-                        on: MenuBarPopoverController.shared.originScreen
-                    )
-                    return
-                }
-                copiedRecordID = recordID
-                Task {
-                    try? await Task.sleep(for: .milliseconds(1200))
-                    if copiedRecordID == recordID {
-                        copiedRecordID = nil
+                    if index < records.count - 1 {
+                        RuneTheme.hairline
                     }
                 }
             }
         }
-    }
-
-    private let tileWidth: CGFloat = 150
-    private let tileImageHeight: CGFloat = 154
-
-    private var showsAuditQuickActions: Bool {
-        #if DEBUG
-        ProcessInfo.processInfo.arguments.contains("--audit-menu-interactive")
-        #else
-        false
-        #endif
     }
 }
 
-private struct TrayDivider: View {
+private struct RecentCaptureLedgerRow: View {
+    let record: CaptureRecord
+    let onOpen: (CaptureRecord) -> Void
+
+    @State private var thumbnail: NSImage?
+    @State private var isHovered = false
+    @State private var isCopied = false
+
     var body: some View {
-        Rectangle()
-            .fill(RuneTheme.chromeLine)
-            .frame(height: 1)
-            .padding(.horizontal, 16)
+        HStack(spacing: 12) {
+            Button { onOpen(record) } label: {
+                ZStack {
+                    RuneTheme.graphiteRaised
+
+                    if let thumbnail {
+                        Image(nsImage: thumbnail)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                    } else {
+                        ProgressView().controlSize(.mini)
+                    }
+
+                    if record.kind == .recording {
+                        Image(systemName: "play.fill")
+                            .font(RuneFont.swiftUI(size: 10, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(6)
+                            .background(.black.opacity(0.62), in: Circle())
+                    }
+                }
+                .frame(width: 80, height: 45)
+                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .strokeBorder(isHovered ? RuneTheme.cyan.opacity(0.65) : RuneTheme.separator, lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(record.displayName)
+                    .font(RuneFont.swiftUI(size: 11.5, weight: .medium))
+                    .foregroundStyle(RuneTheme.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                HStack(spacing: 6) {
+                    Text(record.createdAt, style: .relative)
+                    Text("·")
+                    Text("\(record.pixelWidth) × \(record.pixelHeight)")
+                }
+                .font(RuneFont.mono(size: 9.5, weight: .regular))
+                .foregroundStyle(RuneTheme.textMuted)
+                .monospacedDigit()
+            }
+
+            Spacer()
+
+            Button {
+                copyRecord()
+            } label: {
+                RuneGlyph(systemImage: isCopied ? "checkmark" : "doc.on.doc", isActive: isCopied, size: 12)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .help(isCopied ? "已复制" : "复制")
+            .accessibilityLabel(isCopied ? "已复制 \(record.displayName)" : "复制 \(record.displayName)")
+
+            Button { onOpen(record) } label: {
+                RuneGlyph(systemImage: record.kind == .recording ? "play" : "pin", size: 12)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .help(record.kind == .recording ? "预览录屏" : "贴到屏幕")
+            .accessibilityLabel(record.kind == .recording ? "预览 \(record.displayName)" : "贴图 \(record.displayName)")
+        }
+        .frame(height: 62)
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+        .task(id: record.id) {
+            let url = HistoryStore.shared.displayURLForRecord(record)
+            let kind = record.kind
+            let cgImage = await Task.detached(priority: .utility) {
+                HistoryStore.renderThumbnailCGImage(at: url, kind: kind, maxSize: 240)
+            }.value
+            if let cgImage {
+                thumbnail = NSImage(
+                    cgImage: cgImage,
+                    size: NSSize(width: cgImage.width, height: cgImage.height)
+                )
+            }
+        }
+    }
+
+    private func copyRecord() {
+        let url = HistoryStore.shared.displayURLForRecord(record)
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        let didCopy: Bool
+        if record.kind == .recording {
+            didCopy = pasteboard.writeObjects([url as NSURL])
+        } else if let image = NSImage(contentsOf: url) {
+            didCopy = pasteboard.writeObjects([image])
+        } else {
+            didCopy = false
+        }
+        guard didCopy else { return }
+        HistoryStore.shared.markUsed(record.id)
+        isCopied = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(1200))
+            isCopied = false
+        }
     }
 }

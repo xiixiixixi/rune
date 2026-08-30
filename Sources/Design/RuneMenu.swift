@@ -108,6 +108,8 @@ struct RunePicker<T: Hashable>: View {
     @Binding var selection: T
     var menuWidth: CGFloat = 208
 
+    @State private var isHovered = false
+
     var body: some View {
         RuneMenu(menuWidth: menuWidth, entries: {
             options.map { option in
@@ -118,30 +120,34 @@ struct RunePicker<T: Hashable>: View {
                 )
             }
         }) {
-            HStack(spacing: 6) {
+            HStack(spacing: 7) {
                 Text(currentLabel)
-                    .font(RuneFont.swiftUI(size: 12))
-                    .foregroundStyle(RuneTheme.paperInk)
+                    .font(RuneFont.swiftUI(size: 12, weight: .medium))
+                    .foregroundStyle(RuneTheme.ink)
                     .lineLimit(1)
                     .truncationMode(.tail)
 
                 Image(systemName: "chevron.up.chevron.down")
                     .font(RuneFont.swiftUI(size: 8, weight: .semibold))
-                    .foregroundStyle(RuneTheme.paperTextMuted)
+                    .foregroundStyle(RuneTheme.textMuted)
             }
-            .padding(.horizontal, 9)
-            .frame(height: 27)
-            .frame(minWidth: 128)
+            .padding(.horizontal, 10)
+            .frame(height: 28)
+            .frame(minWidth: 132, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(RuneTheme.paperCard)
+                RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                    .fill(isHovered ? RuneTheme.card.opacity(0.92) : RuneTheme.card)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(RuneTheme.paperSeparator, lineWidth: 1)
+                RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
+                    .strokeBorder(
+                        isHovered ? RuneTheme.separator.opacity(0.9) : RuneTheme.separator,
+                        lineWidth: 1
+                    )
             )
-            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous))
         }
+        .onHover { isHovered = $0 }
     }
 
     private var currentLabel: String {
@@ -296,7 +302,7 @@ private struct RuneMenuList: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        ScrollView(showsIndicators: entries.count > 12) {
+        ScrollView(showsIndicators: false) {
             VStack(spacing: 0) {
                 ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in
                     switch entry {
@@ -315,7 +321,7 @@ private struct RuneMenuList: View {
         }
         .frame(maxHeight: 360)
         .fixedSize(horizontal: true, vertical: true)
-        .runeGlassSurface(cornerRadius: 12, elevation: .floating)
+        .runeGlassSurface(cornerRadius: 7, elevation: .floating)
         .padding(6)  // 给系统窗影留出内容外的透明边
         .onExitCommand(perform: onDismiss)
     }
@@ -328,20 +334,20 @@ private struct RuneMenuRow: View {
 
     @State private var isHovered = false
 
+    // paper/chrome 词表已合并为单一动态声部（两个枚举值渲染相同）。
+    // 菜单保持中性，光谱只作为选中项的微小折射记号。
     private var titleColor: Color {
-        if item.isDestructive { return RuneTheme.signal }
-        return surface == .paper ? RuneTheme.paperInk : RuneTheme.chromeText
+        item.isDestructive ? RuneTheme.signal : RuneTheme.ink
     }
 
     private var iconColor: Color {
-        if item.isDestructive { return RuneTheme.signal }
-        return surface == .paper ? RuneTheme.paperTextSecondary : RuneTheme.chromeMuted
+        item.isDestructive ? RuneTheme.signal : RuneTheme.textSecondary
     }
 
     private var hoverBackground: Color {
         item.isDestructive
             ? RuneTheme.signal.opacity(0.10)
-            : (surface == .paper ? RuneTheme.paperControl : RuneTheme.chromeBlue.opacity(0.14))
+            : Color.white.opacity(0.055)
     }
 
     var body: some View {
@@ -350,9 +356,7 @@ private struct RuneMenuRow: View {
                 // 对钩槽位：有则画钩，无则留白——选中态对齐在同一条竖线上
                 Image(systemName: "checkmark")
                     .font(RuneFont.swiftUI(size: 10, weight: .bold))
-                    .foregroundStyle(
-                        surface == .paper ? RuneTheme.paperInk : RuneTheme.chromeBlue
-                    )
+                    .foregroundStyle(RuneTheme.spectralGradient)
                     .opacity(item.isSelected ? 1 : 0)
                     .frame(width: 22)
 
@@ -373,19 +377,17 @@ private struct RuneMenuRow: View {
                 if let shortcut = item.shortcut {
                     Text(shortcut)
                         .font(RuneFont.mono(size: 10, weight: .medium))
-                        .foregroundStyle(
-                            surface == .paper ? RuneTheme.paperTextMuted : RuneTheme.chromeMuted
-                        )
+                        .foregroundStyle(RuneTheme.textMuted)
                 }
             }
             .padding(.horizontal, 8)
             .frame(height: 30)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous)
                     .fill(isHovered ? hoverBackground : Color.clear)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: RuneTheme.chipCorner, style: .continuous))
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
@@ -398,7 +400,7 @@ private struct RuneMenuDivider: View {
 
     var body: some View {
         Rectangle()
-            .fill(surface == .paper ? RuneTheme.paperSeparator : RuneTheme.chromeLine)
+            .fill(RuneTheme.separator)
             .frame(height: 1)
             .padding(.horizontal, 10)
             .padding(.vertical, 4)

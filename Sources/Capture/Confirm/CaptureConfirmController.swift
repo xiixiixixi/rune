@@ -17,6 +17,9 @@ final class CaptureConfirmController: NSObject {
     private var targetScreen: NSScreen?
     /// 原始选区（CG 全局点坐标）——「滚动长图」用它重启滚动截图
     private var capturedRegion: CGRect?
+    /// 选区原图与整屏定格帧：工具栏面板按背后画面亮度切外观时取样用
+    private var captureImage: CGImage?
+    private var freezeImage: CGImage?
     /// 焦点守护：点完工具栏按钮后把键盘焦点还给画布（否则 Enter/Esc 失灵）
     private var focusMonitor: Any?
 
@@ -70,6 +73,8 @@ final class CaptureConfirmController: NSObject {
         on screen: NSScreen
     ) {
         targetScreen = screen
+        captureImage = image
+        freezeImage = backgroundImage
         let canvas = ConfirmCanvasView(
             image: image,
             backgroundImage: backgroundImage,
@@ -187,6 +192,29 @@ final class CaptureConfirmController: NSObject {
         if needsMove {
             panel.setFrame(newFrame, display: true)
         }
+        updateToolbarAppearance(for: newFrame)
+    }
+
+    /// 悬浮条底是 Liquid Glass：亮度跟随背后画面，文字颜色跟随窗口外观。
+    /// 采样工具栏背后的合成亮度（选区亮、选区外压暗），切 aqua/darkAqua 让
+    /// 底色和文字同步——否则深色截图底上玻璃变黑、黑字不可见。
+    private func updateToolbarAppearance(for frame: NSRect) {
+        guard let panel = toolbarPanel,
+              let screen = targetScreen,
+              let canvas,
+              let captureImage else { return }
+        let local = frame.offsetBy(dx: -screen.frame.minX, dy: -screen.frame.minY)
+        guard let luminance = ToolbarBackdropAppearance.compositeLuminance(
+            toolbarRect: local,
+            selectionRect: canvas.imageDrawRect,
+            captureImage: captureImage,
+            freezeImage: freezeImage,
+            canvasBounds: canvas.bounds
+        ) else { return }
+        let name = ToolbarBackdropAppearance.appearanceName(forLuminance: luminance)
+        if panel.effectiveAppearance.name != name {
+            panel.appearance = NSAppearance(named: name)
+        }
     }
 
     /// SCK 的选区坐标是“主屏左上为原点”，面板位置使用 AppKit 的“左下为原点”。
@@ -301,6 +329,8 @@ final class CaptureConfirmController: NSObject {
         canvasWindow?.orderOut(nil)
         canvasWindow = nil
         canvas = nil
+        captureImage = nil
+        freezeImage = nil
         targetScreen = nil
     }
 }

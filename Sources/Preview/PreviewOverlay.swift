@@ -2,6 +2,12 @@ import AppKit
 @preconcurrency import AVFoundation
 import SwiftUI
 
+private enum PreviewCardMetrics {
+    static let panelSize = CGSize(width: 304, height: 264)
+    static let cardSize = CGSize(width: 280, height: 240)
+    static let mediaSize = CGSize(width: 256, height: 154)
+}
+
 /// 截图或录屏完成后的轻量结果卡。文件已经保存，卡片只承接下一步动作。
 @MainActor
 @Observable
@@ -83,13 +89,14 @@ final class PreviewOverlay {
 
     private func createPanel() {
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 272, height: 224),
+            contentRect: NSRect(origin: .zero, size: PreviewCardMetrics.panelSize),
             styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         panel.isOpaque = false
         panel.backgroundColor = .clear
+        panel.appearance = NSAppearance(named: .darkAqua)
         panel.hasShadow = false
         panel.level = .floating
         panel.hidesOnDeactivate = false
@@ -109,7 +116,7 @@ final class PreviewOverlay {
         guard let panel, let screen else { return }
 
         let visible = screen.visibleFrame
-        let size = CGSize(width: 272, height: 224)
+        let size = PreviewCardMetrics.panelSize
         let inset: CGFloat = 16
         let x: CGFloat
 
@@ -158,9 +165,16 @@ struct PreviewCardView: View {
             preview
             footer
         }
-        .frame(width: 248, height: 200)
-        .runeGlassSurface(cornerRadius: 16, elevation: .floating)
-        .frame(width: 272, height: 224, alignment: .bottomTrailing)
+        .frame(
+            width: PreviewCardMetrics.cardSize.width,
+            height: PreviewCardMetrics.cardSize.height
+        )
+        .runeGlassSurface(cornerRadius: RuneTheme.cardCorner, elevation: .floating)
+        .frame(
+            width: PreviewCardMetrics.panelSize.width,
+            height: PreviewCardMetrics.panelSize.height,
+            alignment: .bottomTrailing
+        )
         .onHover { hovering in
             if hovering {
                 overlay.pauseAutoDismiss()
@@ -178,9 +192,11 @@ struct PreviewCardView: View {
 
     private var header: some View {
         HStack(spacing: 7) {
-            Image(systemName: isVideo ? "record.circle.fill" : "checkmark.circle.fill")
-                .font(RuneFont.swiftUI(size: 13, weight: .semibold))
-                .foregroundStyle(RuneTheme.accent)
+            if isVideo {
+                RuneOpticalIconPlate(systemImage: "record.circle", size: 22)
+            } else {
+                RuneSelectionMark(isSelected: true, size: 16)
+            }
 
             Text(isVideo ? "录屏已保存" : "截图已保存")
                 .font(RuneFont.swiftUI(size: 12, weight: .semibold))
@@ -202,18 +218,21 @@ struct PreviewCardView: View {
             .accessibilityLabel("关闭预览")
         }
         .padding(.horizontal, 12)
-        .frame(height: 40)
+        .frame(height: 38)
     }
 
     private var preview: some View {
         ZStack {
-            RuneTheme.chromeBase
+            RuneTheme.workspace
 
             if let thumbnail {
                 Image(nsImage: thumbnail)
                     .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: 224, height: 112)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(
+                        width: PreviewCardMetrics.mediaSize.width,
+                        height: PreviewCardMetrics.mediaSize.height
+                    )
                     .clipped()
             } else {
                 ProgressView()
@@ -227,10 +246,13 @@ struct PreviewCardView: View {
                     .shadow(color: .black.opacity(0.34), radius: 4, y: 2)
             }
         }
-        .frame(width: 224, height: 112)
-        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .frame(
+            width: PreviewCardMetrics.mediaSize.width,
+            height: PreviewCardMetrics.mediaSize.height
+        )
+        .clipShape(RoundedRectangle(cornerRadius: RuneTheme.plateCorner, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
+            RoundedRectangle(cornerRadius: RuneTheme.plateCorner, style: .continuous)
                 .strokeBorder(RuneTheme.chromeLine, lineWidth: 1)
         )
         .contentShape(Rectangle())
@@ -245,7 +267,7 @@ struct PreviewCardView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             if isVideo {
                 Button {
                     overlay.openEditor()
@@ -275,7 +297,7 @@ struct PreviewCardView: View {
                 }
             }
 
-            Spacer(minLength: 0)
+            Spacer(minLength: 4)
 
             actionButton("folder", help: "在访达中显示") {
                 overlay.revealInFinder()
@@ -290,8 +312,15 @@ struct PreviewCardView: View {
             Image(systemName: systemName)
                 .font(RuneFont.swiftUI(size: 12, weight: .semibold))
                 .foregroundStyle(RuneTheme.chromeMuted)
-                .frame(width: 32, height: 32)
-                .background(RuneTheme.chromeBase, in: Circle())
+                .frame(width: 34, height: 30)
+                .background(
+                    RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
+                        .fill(Color.white.opacity(0.055))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
+                        .strokeBorder(RuneTheme.chromeLine.opacity(0.8), lineWidth: 0.5)
+                )
         }
         .buttonStyle(RuneTheme.RunePressStyle())
         .help(help)
@@ -309,7 +338,7 @@ struct PreviewCardView: View {
                 let asset = AVURLAsset(url: url)
                 let generator = AVAssetImageGenerator(asset: asset)
                 generator.appliesPreferredTrackTransform = true
-                generator.maximumSize = CGSize(width: 448, height: 224)
+                generator.maximumSize = CGSize(width: 448, height: 252)
                 if let result = try? await generator.image(at: .zero) {
                     let cgImage = result.image
                     let image = NSImage(

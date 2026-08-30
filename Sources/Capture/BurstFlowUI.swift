@@ -33,6 +33,7 @@ final class BurstSetupPanelController {
         )
         panel.isOpaque = false
         panel.backgroundColor = .clear
+        panel.appearance = NSAppearance(named: .darkAqua)
         panel.hasShadow = true
         panel.level = isInteractiveAudit
             ? .normal
@@ -41,29 +42,36 @@ final class BurstSetupPanelController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
         let effect = NSVisualEffectView(frame: NSRect(origin: .zero, size: panelSize))
-        effect.material = .popover
-        effect.blendingMode = .behindWindow
+        effect.material = .hudWindow
+        effect.blendingMode = .withinWindow
         effect.state = .active
+        effect.appearance = NSAppearance(named: .darkAqua)
         effect.wantsLayer = true
-        effect.layer?.cornerRadius = 16
+        effect.layer?.backgroundColor = RuneTheme.nsBackground.withAlphaComponent(0.94).cgColor
+        effect.layer?.cornerRadius = RuneTheme.cardCorner
         effect.layer?.borderWidth = 0.5
-        effect.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.45).cgColor
+        effect.layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
+        RuneAppKitChrome.installSpectralBorder(
+            on: effect,
+            cornerRadius: RuneTheme.cardCorner,
+            opacity: 0.56
+        )
         panel.contentView = effect
 
         let icon = NSImageView(frame: NSRect(x: 18, y: 110, width: 22, height: 22))
         icon.image = NSImage(systemSymbolName: "camera.fill", accessibilityDescription: "连拍")
-        icon.contentTintColor = .controlAccentColor
+        icon.contentTintColor = NSColor(RuneTheme.textSecondary)
         effect.addSubview(icon)
 
         let title = NSTextField(labelWithString: "准备连拍")
-        title.font = RuneFont.appKit(size: 15, weight: .semibold)
-        title.textColor = .labelColor
+        title.font = RuneFont.appKit(size: 14, weight: .medium)
+        title.textColor = NSColor(RuneTheme.textPrimary)
         title.frame = NSRect(x: 48, y: 112, width: 180, height: 20)
         effect.addSubview(title)
 
         let region = NSTextField(labelWithString: "区域 \(regionSizeText)")
         region.font = RuneFont.appKit(size: 11, weight: .medium)
-        region.textColor = .secondaryLabelColor
+        region.textColor = NSColor(RuneTheme.textSecondary)
         region.alignment = .right
         region.frame = NSRect(x: 322, y: 113, width: 180, height: 18)
         region.setAccessibilityLabel("连拍区域尺寸 \(regionSizeText)")
@@ -71,7 +79,7 @@ final class BurstSetupPanelController {
 
         let subtitle = NSTextField(labelWithString: "选一种拍法；开始后会一直显示张数，并可暂停或结束")
         subtitle.font = RuneFont.appKit(size: 11)
-        subtitle.textColor = .secondaryLabelColor
+        subtitle.textColor = NSColor(RuneTheme.textSecondary)
         subtitle.frame = NSRect(x: 18, y: 88, width: 484, height: 17)
         effect.addSubview(subtitle)
 
@@ -83,6 +91,7 @@ final class BurstSetupPanelController {
         )
         segments.selectedSegment = presetMode.segmentIndex
         segments.font = RuneFont.appKit(size: 12, weight: .medium)
+        segments.selectedSegmentBezelColor = NSColor(RuneTheme.graphiteRaised)
         segments.frame = NSRect(x: 18, y: 46, width: 246, height: 30)
         segments.setAccessibilityLabel("连拍拍摄方式")
         effect.addSubview(segments)
@@ -90,7 +99,7 @@ final class BurstSetupPanelController {
 
         let value = NSTextField(labelWithString: "10")
         value.font = RuneFont.appKit(size: 13, weight: .semibold)
-        value.textColor = .labelColor
+        value.textColor = NSColor(RuneTheme.textPrimary)
         value.alignment = .right
         value.frame = NSRect(x: 18, y: 17, width: 38, height: 20)
         effect.addSubview(value)
@@ -107,7 +116,7 @@ final class BurstSetupPanelController {
 
         let detail = NSTextField(labelWithString: "")
         detail.font = RuneFont.appKit(size: 11)
-        detail.textColor = .secondaryLabelColor
+        detail.textColor = NSColor(RuneTheme.textSecondary)
         detail.frame = NSRect(x: 90, y: 18, width: 236, height: 18)
         effect.addSubview(detail)
         detailField = detail
@@ -275,6 +284,7 @@ final class BurstLiveBarController {
         )
         panel.isOpaque = false
         panel.backgroundColor = .clear
+        panel.appearance = NSAppearance(named: .darkAqua)
         panel.hasShadow = true
         panel.level = isInteractiveAudit
             ? .normal
@@ -283,13 +293,20 @@ final class BurstLiveBarController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
         let background = NSVisualEffectView(frame: NSRect(origin: .zero, size: panelSize))
-        background.material = .popover
-        background.blendingMode = .behindWindow
+        background.material = .hudWindow
+        background.blendingMode = .withinWindow
         background.state = .active
+        background.appearance = NSAppearance(named: .darkAqua)
         background.wantsLayer = true
-        background.layer?.cornerRadius = 15
+        background.layer?.backgroundColor = RuneTheme.nsBackground.withAlphaComponent(0.94).cgColor
+        background.layer?.cornerRadius = RuneTheme.barCorner
         background.layer?.borderWidth = 0.5
-        background.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.45).cgColor
+        background.layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
+        RuneAppKitChrome.installSpectralBorder(
+            on: background,
+            cornerRadius: RuneTheme.barCorner,
+            opacity: 0.56
+        )
         panel.contentView = background
 
         let dot = NSView(frame: NSRect(x: 18, y: 26, width: 9, height: 9))
@@ -300,21 +317,21 @@ final class BurstLiveBarController {
 
         let status = NSTextField(labelWithString: mode.liveTitle)
         status.font = RuneFont.appKit(size: 12, weight: .semibold)
-        status.textColor = .labelColor
+        status.textColor = NSColor(RuneTheme.textPrimary)
         status.frame = NSRect(x: 36, y: 32, width: 126, height: 17)
         background.addSubview(status)
         statusField = status
 
         let modeDetail = NSTextField(labelWithString: mode.liveDetail)
         modeDetail.font = RuneFont.appKit(size: 10)
-        modeDetail.textColor = .secondaryLabelColor
+        modeDetail.textColor = NSColor(RuneTheme.textSecondary)
         modeDetail.frame = NSRect(x: 36, y: 13, width: 152, height: 15)
         background.addSubview(modeDetail)
         detailField = modeDetail
 
         let count = NSTextField(labelWithString: "0 张")
         count.font = RuneFont.appKit(size: 19, weight: .semibold)
-        count.textColor = .labelColor
+        count.textColor = NSColor(RuneTheme.textPrimary)
         count.alignment = .right
         count.frame = NSRect(x: 178, y: 18, width: 104, height: 25)
         count.setAccessibilityLabel("已拍 0 张")
@@ -349,7 +366,7 @@ final class BurstLiveBarController {
         )
         more.frame = NSRect(x: 466, y: 17, width: 36, height: 28)
         more.isBordered = false
-        more.contentTintColor = .secondaryLabelColor
+        more.contentTintColor = NSColor(RuneTheme.textSecondary)
         more.setAccessibilityLabel("更多连拍操作")
         more.toolTip = "更多连拍操作"
         background.addSubview(more)
@@ -532,11 +549,9 @@ private func makePrepButton(
 ) -> NSButton {
     let button = NSButton(title: title, target: target, action: action)
     button.frame = frame
-    button.isBordered = true
-    button.bezelStyle = .rounded
-    button.font = RuneFont.appKit(size: 12, weight: .semibold)
-    button.contentTintColor = accent ? .white : .labelColor
-    if accent { button.bezelColor = .controlAccentColor }
+    button.font = RuneFont.appKit(size: 12, weight: .medium)
+    button.contentTintColor = NSColor(RuneTheme.textPrimary)
+    RuneAppKitChrome.styleButton(button, emphasized: accent)
     return button
 }
 
@@ -550,19 +565,17 @@ private func makePanelButton(
 ) -> NSButton {
     let button = NSButton(title: title, target: target, action: action)
     button.frame = frame
-    button.isBordered = true
-    button.bezelStyle = .rounded
-    button.font = RuneFont.appKit(size: 12, weight: .semibold)
-    button.contentTintColor = accent ? .white : .labelColor
-    if accent { button.bezelColor = .controlAccentColor }
+    button.font = RuneFont.appKit(size: 12, weight: .medium)
+    button.contentTintColor = NSColor(RuneTheme.textPrimary)
+    RuneAppKitChrome.styleButton(button, emphasized: accent)
     return button
 }
 
 @MainActor
 private func setPanelButtonTitle(_ button: NSButton, title: String, accent: Bool) {
     button.title = title
-    button.contentTintColor = accent ? .white : .labelColor
-    button.bezelColor = accent ? .controlAccentColor : nil
+    button.contentTintColor = NSColor(RuneTheme.textPrimary)
+    RuneAppKitChrome.styleButton(button, emphasized: accent)
 }
 
 private final class BurstPanel: NSPanel {

@@ -20,10 +20,23 @@ private struct CountdownView: View {
         ZStack {
             Color.clear
 
+            // 倒计时数字坐在一枚玻璃圆片上，像参考里的玻璃镜头。
             Text("\(model.currentNumber)")
-                .font(RuneFont.swiftUI(size: 120, weight: .bold, design: .rounded))
+                .font(RuneFont.swiftUI(size: 64, weight: .medium, design: .rounded))
                 .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.6), radius: 12, x: 0, y: 4)
+                .frame(width: 168, height: 168)
+                .background(
+                    Circle()
+                        .fill(Color.white.opacity(0.14))
+                )
+                .background(
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                )
+                .overlay(
+                    Circle().strokeBorder(Color.white.opacity(0.35), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.35), radius: 24, y: 10)
                 .scaleEffect(model.scale)
                 .opacity(model.opacity)
         }

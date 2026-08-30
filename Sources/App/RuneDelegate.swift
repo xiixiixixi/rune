@@ -1,8 +1,13 @@
 import AppKit
 import ScreenCaptureKit
+import SwiftUI
 
 @MainActor
 final class RuneDelegate: NSObject, NSApplicationDelegate {
+    #if DEBUG
+    private var debugAuditWindow: NSWindow?
+    #endif
+
     /// SCK 可见内容计数（取证用）：nonisolated 侧完成查询，只把 Int 带回主线程。
     nonisolated private static func fetchShareableCounts() async -> (displays: Int, windows: Int, apps: Int) {
         let content = try? await SCShareableContent.excludingDesktopWindows(
@@ -82,6 +87,20 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
             return
         }
 #endif
+
+        #if DEBUG
+        // 选区链路 E2E：跳过 Carbon 热键（键盘注入在这台机器上触发不了热键），
+        // 直接走 performCapture(.main)，其余与热键路径完全一致。用于验证
+        // 未激活状态下第一下点击是否送达（acceptsFirstMouse 修复）。
+        if ProcessInfo.processInfo.arguments.contains("--audit-select") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                Task { @MainActor in
+                    await CaptureOrchestrator.shared.performCapture(.main, on: NSScreen.main)
+                }
+            }
+            return
+        }
+        #endif
 
         // M1 §5：改用 Carbon RegisterEventHotKey，不再需要辅助功能权限，直接注册。
         ShortcutService.shared.registerAll()
@@ -247,8 +266,8 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
         } else if ProcessInfo.processInfo.arguments.contains("--audit-preview") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 guard let url = Bundle.main.url(
-                    forResource: "mac-asset-3",
-                    withExtension: "jpg",
+                    forResource: "mac-asset-7",
+                    withExtension: "png",
                     subdirectory: "Backgrounds/mac"
                 ) else { return }
                 PreviewOverlay.shared.show(url: url, on: NSScreen.main)
@@ -339,6 +358,32 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                 SettingsWindowController.shared.open(on: NSScreen.main)
                 DebugAuditSnapshot.captureAfter("settings-redesign-final.png", delay: 1.2)
             }
+        } else if ProcessInfo.processInfo.arguments.contains("--audit-confirm-toolbar") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                let hosting = NSHostingView(
+                    rootView: ConfirmToolbarView(controller: .shared).runeTypography()
+                )
+                hosting.frame = NSRect(x: 0, y: 0, width: 900, height: 80)
+                let fitting = hosting.fittingSize
+                let panel = NSPanel(
+                    contentRect: NSRect(
+                        origin: .zero,
+                        size: NSSize(width: ceil(fitting.width), height: ceil(fitting.height))
+                    ),
+                    styleMask: [.borderless, .fullSizeContentView],
+                    backing: .buffered,
+                    defer: false
+                )
+                panel.isOpaque = false
+                panel.backgroundColor = .clear
+                panel.appearance = NSAppearance(named: .darkAqua)
+                panel.contentView = hosting
+                panel.isReleasedWhenClosed = false
+                panel.center()
+                panel.makeKeyAndOrderFront(nil)
+                self.debugAuditWindow = panel
+                DebugAuditSnapshot.captureAfter("confirm-toolbar.png", delay: 0.9)
+            }
         } else if ProcessInfo.processInfo.arguments.contains("--audit-confirm")
                     || ProcessInfo.processInfo.arguments.contains("--audit-confirm-text")
                     || ProcessInfo.processInfo.arguments.contains("--audit-confirm-first-redaction") {
@@ -410,6 +455,8 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                         : "31-confirm-freeze-redesign.png"),
                     delay: contentImageArgument == nil ? 1.1 : 3.0
                 )
+                // 先抓小窗，避免全屏窗口的 SCK 截图占住验收队列。
+                DebugAuditSnapshot.captureSmallestAfter("confirm-toolbar.png", delay: 0.7)
                 DebugAuditSnapshot.captureWindowLayoutAfter(
                     testsBottomEdge
                         ? "38-confirm-layout-bottom-edge.txt"
@@ -422,8 +469,8 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
         } else if ProcessInfo.processInfo.arguments.contains("--audit-editor") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 guard let url = Bundle.main.url(
-                    forResource: "mac-asset-3",
-                    withExtension: "jpg",
+                    forResource: "mac-asset-7",
+                    withExtension: "png",
                     subdirectory: "Backgrounds/mac"
                 ) else { return }
                 EditorWindowController.shared.open(url: url, on: NSScreen.main)
