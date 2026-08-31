@@ -177,7 +177,8 @@ struct VideoEditorView: View {
             RuneOpticalSegmentedPicker(
                 options: InspectorTab.allCases.map { ($0, $0.rawValue) },
                 selection: $inspectorTab,
-                accessibilityLabel: "视频工具"
+                accessibilityLabel: "视频工具",
+                animatesSelection: true
             )
             .padding(10)
 

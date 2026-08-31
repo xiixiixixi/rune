@@ -251,6 +251,10 @@ struct EditorWindowView: View {
 private struct EditorToolShelf: View {
     @Bindable var model: EditorModel
 
+    @Namespace private var selectionNamespace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var plateSelectedTool: AnnotationTool = .rectangle
+
     private let tools: [AnnotationTool] = [
         .select, .rectangle, .arrow, .text, .blur, .spotlight,
         .numberedCircle, .ellipse, .line, .filledRectangle, .freehand,
@@ -268,7 +272,9 @@ private struct EditorToolShelf: View {
 
                 EditorToolShelfButton(
                     tool: tool,
-                    isSelected: model.selectedTool == tool
+                    isSelected: model.selectedTool == tool,
+                    showsSelectionPlate: plateSelectedTool == tool,
+                    selectionNamespace: selectionNamespace
                 ) {
                     model.selectTool(tool)
                 }
@@ -278,12 +284,26 @@ private struct EditorToolShelf: View {
         .padding(.vertical, 9)
         .background(RuneTheme.barBackground)
         .fixedSize()
+        .onAppear {
+            plateSelectedTool = model.selectedTool
+        }
+        .onChange(of: model.selectedTool) { _, newTool in
+            if reduceMotion {
+                plateSelectedTool = newTool
+            } else {
+                withAnimation(RuneSelectionMotion.animation) {
+                    plateSelectedTool = newTool
+                }
+            }
+        }
     }
 }
 
 private struct EditorToolShelfButton: View {
     let tool: AnnotationTool
     let isSelected: Bool
+    let showsSelectionPlate: Bool
+    let selectionNamespace: Namespace.ID
     let action: () -> Void
 
     @State private var isHovered = false
@@ -296,24 +316,19 @@ private struct EditorToolShelfButton: View {
             }
             .foregroundStyle(isSelected ? RuneTheme.textPrimary : RuneTheme.chromeText.opacity(isHovered ? 1 : 0.78))
             .frame(width: 42, height: 36)
-            .background(
-                RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
-                    .fill(
-                        isSelected
-                            ? Color.white.opacity(0.055)
-                            : (isHovered ? RuneTheme.chromeLine.opacity(0.72) : Color.clear)
+            .background {
+                if showsSelectionPlate {
+                    RuneLiquidSelectionPlate(
+                        cornerRadius: RuneTheme.buttonCorner,
+                        axis: .vertical
                     )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
-                    .strokeBorder(
-                        isSelected ? Color.white.opacity(0.13) : Color.clear,
-                        lineWidth: 0.7
-                    )
-            )
-            .overlay(alignment: .bottom) {
-                if isSelected {
-                    RuneSelectionUnderline(width: 16)
+                        .matchedGeometryEffect(
+                            id: "editor-tool-selection",
+                            in: selectionNamespace
+                        )
+                } else if isHovered {
+                    RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
+                        .fill(RuneTheme.chromeLine.opacity(0.72))
                 }
             }
             .contentShape(RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous))

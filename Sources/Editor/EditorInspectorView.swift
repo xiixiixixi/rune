@@ -10,7 +10,8 @@ struct EditorInspectorView: View {
             RuneOpticalSegmentedPicker(
                 options: InspectorPanel.allCases.map { ($0, $0.title) },
                 selection: $panel,
-                accessibilityLabel: "编辑面板"
+                accessibilityLabel: "编辑面板",
+                animatesSelection: true
             )
             .padding(12)
 

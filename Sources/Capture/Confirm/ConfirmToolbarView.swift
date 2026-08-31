@@ -13,6 +13,10 @@ struct ConfirmToolbarView: View {
     @State private var canUndo = false
     @State private var ocrActive = false
     @State private var contentAnalysisState: CaptureContentAnalysisState = .analyzing
+    @State private var plateTool: AnnotationTool = .select
+
+    @Namespace private var toolSelectionNamespace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var canvas: ConfirmCanvasView? { controller.canvas }
     private let swatches: [AnnotationSwatch] = [.mustard, .coral, .teal, .indigo, .black, .white]
@@ -292,7 +296,9 @@ struct ConfirmToolbarView: View {
                 help: "选择并移动已经画好的标注，Delete 可以删除",
                 icon: "cursorarrow.rays",
                 isActive: activeTool == .select,
-                isCompact: true
+                showsSelectionPlate: plateTool == .select,
+                isCompact: true,
+                selectionNamespace: toolSelectionNamespace
             ) { activate(.select) }
 
             FreezeToolButton(
@@ -300,7 +306,9 @@ struct ConfirmToolbarView: View {
                 help: "拖拽画出一个醒目的矩形框",
                 icon: "rectangle.dashed",
                 isActive: activeTool == .rectangle,
-                isCompact: true
+                showsSelectionPlate: plateTool == .rectangle,
+                isCompact: true,
+                selectionNamespace: toolSelectionNamespace
             ) { activate(.rectangle) }
 
             FreezeToolButton(
@@ -308,7 +316,9 @@ struct ConfirmToolbarView: View {
                 help: "拖拽画一支指向重点的箭头",
                 icon: "arrow.up.right",
                 isActive: activeTool == .arrow,
-                isCompact: true
+                showsSelectionPlate: plateTool == .arrow,
+                isCompact: true,
+                selectionNamespace: toolSelectionNamespace
             ) { activate(.arrow) }
 
             FreezeToolButton(
@@ -316,7 +326,9 @@ struct ConfirmToolbarView: View {
                 help: "点击截图任意位置输入说明文字",
                 icon: "character.cursor.ibeam",
                 isActive: activeTool == .text,
-                isCompact: true
+                showsSelectionPlate: plateTool == .text,
+                isCompact: true,
+                selectionNamespace: toolSelectionNamespace
             ) { activate(.text) }
 
             FreezeToolButton(
@@ -324,7 +336,9 @@ struct ConfirmToolbarView: View {
                 help: "拖拽框住需要隐藏的隐私内容",
                 icon: "square.grid.3x3.fill",
                 isActive: activeTool == .blur,
-                isCompact: true
+                showsSelectionPlate: plateTool == .blur,
+                isCompact: true,
+                selectionNamespace: toolSelectionNamespace
             ) { activate(.blur) }
 
             FreezeToolButton(
@@ -332,7 +346,9 @@ struct ConfirmToolbarView: View {
                 help: "保留重点区域，其余画面自动压暗",
                 icon: "viewfinder.circle",
                 isActive: activeTool == .spotlight,
-                isCompact: true
+                showsSelectionPlate: plateTool == .spotlight,
+                isCompact: true,
+                selectionNamespace: toolSelectionNamespace
             ) { activate(.spotlight) }
 
             FreezeToolButton(
@@ -340,7 +356,9 @@ struct ConfirmToolbarView: View {
                 help: "依次放置 1、2、3…编号圆点",
                 icon: "number.circle",
                 isActive: activeTool == .numberedCircle,
-                isCompact: true
+                showsSelectionPlate: plateTool == .numberedCircle,
+                isCompact: true,
+                selectionNamespace: toolSelectionNamespace
             ) { activate(.numberedCircle) }
         }
         .padding(4)
@@ -428,6 +446,13 @@ struct ConfirmToolbarView: View {
     private func activate(_ tool: AnnotationTool) {
         canvas?.finishTextEditing()
         activeTool = tool
+        if reduceMotion {
+            plateTool = tool
+        } else {
+            withAnimation(RuneSelectionMotion.animation) {
+                plateTool = tool
+            }
+        }
         if ocrActive {
             ocrActive = false
             canvas?.exitOCRMode()
@@ -494,8 +519,10 @@ private struct FreezeToolButton: View {
     let icon: String
     var isActive = false
     var isEnabled = true
+    var showsSelectionPlate = false
     var isCompact = false
     var tint: Color? = nil
+    var selectionNamespace: Namespace.ID? = nil
     let action: () -> Void
 
     @State private var isHovered = false
@@ -516,10 +543,7 @@ private struct FreezeToolButton: View {
             }
             .foregroundStyle(foreground)
             .frame(width: isCompact ? 36 : 44, height: isCompact ? 38 : 46)
-            .background(
-                RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
-                    .fill(background)
-            )
+            .background { buttonBackground }
             .overlay(
                 RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
                     .strokeBorder(border, lineWidth: isActive ? 0.8 : 0.5)
@@ -533,6 +557,21 @@ private struct FreezeToolButton: View {
         .help("\(title)：\(help)")
         .accessibilityLabel(title)
         .accessibilityHint(help)
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+    }
+
+    @ViewBuilder
+    private var buttonBackground: some View {
+        if showsSelectionPlate, let selectionNamespace {
+            RuneLiquidSelectionPlate(cornerRadius: RuneTheme.buttonCorner)
+                .matchedGeometryEffect(
+                    id: "confirm-tool-selection",
+                    in: selectionNamespace
+                )
+        } else {
+            RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
+                .fill(background)
+        }
     }
 
     private var foreground: Color {
@@ -544,6 +583,7 @@ private struct FreezeToolButton: View {
 
     private var background: Color {
         if !isEnabled { return RuneTheme.chromeText.opacity(0.018) }
+        if selectionNamespace != nil { return isHovered ? Color.white.opacity(0.16) : .clear }
         if isActive { return tint?.opacity(0.16) ?? RuneTheme.primaryFill }
         return isHovered ? Color.white.opacity(0.16) : .clear
     }

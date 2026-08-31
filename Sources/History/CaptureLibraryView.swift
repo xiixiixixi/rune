@@ -29,6 +29,10 @@ struct CaptureLibraryView: View {
     @State private var selectedRecordID: UUID?
     @FocusState private var searchIsFocused: Bool
 
+    @Namespace private var sidebarSelectionNamespace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var plateSelectedSection: CaptureLibrarySection = .all
+
     init(
         initialSection: CaptureLibrarySection = .all,
         initialSearchText: String = ""
@@ -79,9 +83,17 @@ struct CaptureLibraryView: View {
         .onAppear {
             HistoryStore.shared.indexMissingSearchMetadata()
             selectedRecordID = selectedRecordID ?? visibleRecords.first?.id
+            plateSelectedSection = selectedSection
         }
-        .onChange(of: selectedSection) { _, _ in
+        .onChange(of: selectedSection) { _, newSection in
             selectedRecordID = visibleRecords.first?.id
+            if reduceMotion {
+                plateSelectedSection = newSection
+            } else {
+                withAnimation(RuneSelectionMotion.animation) {
+                    plateSelectedSection = newSection
+                }
+            }
         }
         .onChange(of: searchText) { _, _ in
             if let selectedRecordID,
@@ -111,7 +123,9 @@ struct CaptureLibraryView: View {
                     LibrarySectionRow(
                         section: section,
                         isSelected: selectedSection == section,
-                        count: count(for: section)
+                        showsSelectionPlate: plateSelectedSection == section,
+                        count: count(for: section),
+                        selectionNamespace: sidebarSelectionNamespace
                     ) {
                         selectedSection = section
                     }
@@ -322,7 +336,9 @@ struct CaptureLibraryView: View {
 private struct LibrarySectionRow: View {
     let section: CaptureLibrarySection
     let isSelected: Bool
+    let showsSelectionPlate: Bool
     let count: Int
+    let selectionNamespace: Namespace.ID
     let action: () -> Void
 
     @State private var isHovered = false
@@ -347,23 +363,16 @@ private struct LibrarySectionRow: View {
             .padding(.horizontal, 12)
             .frame(height: 42)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(
-                        isSelected
-                            ? Color.white.opacity(0.052)
-                            : (isHovered ? Color.white.opacity(0.035) : Color.clear)
-                    )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(isSelected ? Color.white.opacity(0.13) : Color.clear, lineWidth: 0.7)
-            )
-            .overlay(alignment: .leading) {
-                if isSelected {
-                    Rectangle()
-                        .fill(RuneTheme.spectralGradient)
-                        .frame(width: 1.5, height: 22)
+            .background {
+                if showsSelectionPlate {
+                    RuneLiquidSelectionPlate(cornerRadius: 6, axis: .vertical)
+                        .matchedGeometryEffect(
+                            id: "library-sidebar-selection",
+                            in: selectionNamespace
+                        )
+                } else if isHovered {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.white.opacity(0.035))
                 }
             }
             .contentShape(Rectangle())

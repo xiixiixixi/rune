@@ -273,6 +273,77 @@ struct RuneSelectionUnderline: View {
     }
 }
 
+/// The small, persistent glass object that travels between mutually exclusive
+/// controls. The content stays put; only this compositor-backed surface moves.
+/// This keeps the liquid treatment meaningful instead of turning every button
+/// into a separate glass card.
+enum RuneSelectionAxis: Equatable {
+    case horizontal
+    case vertical
+}
+
+struct RuneLiquidSelectionPlate: View {
+    var cornerRadius: CGFloat = RuneTheme.buttonCorner
+    var axis: RuneSelectionAxis = .horizontal
+
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isSettled = false
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+
+        ZStack {
+            if reduceTransparency {
+                shape.fill(RuneTheme.graphiteRaised)
+            } else if #available(macOS 26.0, *) {
+                Color.clear
+                    .glassEffect(
+                        Glass.regular.tint(RuneTheme.glassTint).interactive(),
+                        in: shape
+                    )
+            } else {
+                shape.fill(.ultraThinMaterial)
+            }
+
+            shape.fill(Color.white.opacity(reduceTransparency ? 0.045 : 0.065))
+        }
+        .overlay(shape.strokeBorder(Color.white.opacity(0.17), lineWidth: 0.7))
+        .overlay(alignment: .top) {
+            Capsule()
+                .fill(Color.white.opacity(reduceTransparency ? 0.08 : 0.22))
+                .frame(height: 0.7)
+                .padding(.horizontal, 9)
+                .padding(.top, 1)
+        }
+        .overlay(alignment: .bottom) {
+            RuneSelectionUnderline(width: 20)
+                .opacity(reduceTransparency ? 0 : 0.72)
+        }
+        .shadow(color: .black.opacity(0.24), radius: 6, y: 2)
+        .scaleEffect(
+            x: reduceMotion || isSettled ? 1 : (axis == .horizontal ? 1.08 : 0.97),
+            y: reduceMotion || isSettled ? 1 : (axis == .vertical ? 1.08 : 0.97)
+        )
+        .opacity(reduceMotion || isSettled ? 1 : 0.94)
+        .onAppear {
+            guard !reduceMotion else {
+                isSettled = true
+                return
+            }
+            withAnimation(RuneSelectionMotion.animation) {
+                isSettled = true
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+enum RuneSelectionMotion {
+    static let duration = 0.18
+    static let animation = Animation.easeOut(duration: duration)
+}
+
 struct RuneSpectralBorder: View {
     let cornerRadius: CGFloat
     var lineWidth: CGFloat = 1
@@ -345,11 +416,17 @@ struct RuneOpticalSegmentedPicker<Selection: Hashable>: View {
     let options: [(value: Selection, label: String)]
     @Binding var selection: Selection
     var accessibilityLabel: String
+    var animatesSelection = false
+
+    @Namespace private var selectionNamespace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var plateSelection: Selection?
 
     var body: some View {
         HStack(spacing: 2) {
             ForEach(Array(options.enumerated()), id: \.offset) { _, option in
                 let isSelected = option.value == selection
+                let showsSelectionPlate = option.value == (plateSelection ?? selection)
 
                 Button {
                     selection = option.value
@@ -359,14 +436,22 @@ struct RuneOpticalSegmentedPicker<Selection: Hashable>: View {
                         .foregroundStyle(isSelected ? RuneTheme.textPrimary : RuneTheme.textSecondary)
                         .frame(maxWidth: .infinity)
                         .frame(height: 28)
-                        .background(
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .fill(isSelected ? Color.white.opacity(0.060) : Color.clear)
-                        )
-                        .overlay(alignment: .bottom) {
-                            if isSelected {
-                                RuneSelectionUnderline(width: 22)
-                                    .offset(y: 1)
+                        .background {
+                            if animatesSelection {
+                                if showsSelectionPlate {
+                                    RuneLiquidSelectionPlate(cornerRadius: 5)
+                                        .matchedGeometryEffect(
+                                            id: "rune-optical-segment-selection",
+                                            in: selectionNamespace
+                                        )
+                                }
+                            } else if isSelected {
+                                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                    .fill(Color.white.opacity(0.060))
+                                    .overlay(alignment: .bottom) {
+                                        RuneSelectionUnderline(width: 22)
+                                            .offset(y: 1)
+                                    }
                             }
                         }
                         .contentShape(Rectangle())
@@ -385,6 +470,18 @@ struct RuneOpticalSegmentedPicker<Selection: Hashable>: View {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.7)
         )
+        .onAppear {
+            plateSelection = selection
+        }
+        .onChange(of: selection) { _, newSelection in
+            if animatesSelection && !reduceMotion {
+                withAnimation(RuneSelectionMotion.animation) {
+                    plateSelection = newSelection
+                }
+            } else {
+                plateSelection = newSelection
+            }
+        }
     }
 }
 
