@@ -49,11 +49,11 @@ enum RuneUpdateError: LocalizedError {
 
 enum UpdateService {
     /// 版本探测与更新包都走"不计 API 限额"的通道：
-    /// - 版本：仓库 main 分支的 version.json（raw 直链，几 KB）
+    /// - 版本：latest release 的 version.json（几 KB，与更新包同一次发布）
     /// - 更新包：latest release 的固定名资产 Rune-latest.zip（下载走 CDN）
     /// GitHub 匿名 API 每小时只有 60 次/共享 IP，实测常被挤占，不可用。
     private static let remoteVersionURL = URL(
-        string: "https://raw.githubusercontent.com/xiixiixixi/rune/main/version.json"
+        string: "https://github.com/xiixiixixi/rune/releases/latest/download/version.json"
     )!
     private static let latestDownloadURL = URL(
         string: "https://github.com/xiixiixixi/rune/releases/latest/download/Rune-latest.zip"
@@ -94,16 +94,16 @@ enum UpdateService {
         )
     }
 
-    /// 自动检查策略：启动时立即查一次；运行期间每小时核对一次到期时间
-    /// （Rune 常驻菜单栏，可能连续运行数天不重启，只在启动时查会永远错过新版）。
-    /// 真正发起检查仍受"每天最多一次"限制；检查失败不占当天额度，下个小时整点重试。
+    /// 自动检查策略：每次启动都立即检查；Rune 常驻期间每小时再检查一次。
+    /// 已是最新版时完全静默，只有发现新版才展示更新窗口。
     @MainActor private static var periodicCheckTimer: Timer?
     @MainActor private static var isAutomaticCheckInFlight = false
-    private static let automaticCheckInterval: TimeInterval = 24 * 60 * 60
-    private static let periodicTickInterval: TimeInterval = 60 * 60
+    private static let automaticCheckInterval: TimeInterval = 60 * 60
+    private static let periodicTickInterval: TimeInterval = 15 * 60
+    private static let repeatedPresentationInterval: TimeInterval = 24 * 60 * 60
 
-    @MainActor static func scheduleAutomaticCheckIfNeeded() {
-        performAutomaticCheckIfDue()
+    @MainActor static func scheduleAutomaticChecks(currentVersionOverride: String? = nil) {
+        performAutomaticCheck(force: true, currentVersionOverride: currentVersionOverride)
 
         guard periodicCheckTimer == nil else { return }
         periodicCheckTimer = Timer.scheduledTimer(
@@ -111,33 +111,43 @@ enum UpdateService {
             repeats: true
         ) { _ in
             Task { @MainActor in
-                performAutomaticCheckIfDue()
+                performAutomaticCheck(force: false)
             }
         }
     }
 
-    @MainActor private static func performAutomaticCheckIfDue() {
-        guard AppPreferences.automaticallyChecksForUpdates else { return }
+    @MainActor private static func performAutomaticCheck(
+        force: Bool,
+        currentVersionOverride: String? = nil
+    ) {
         guard !isAutomaticCheckInFlight else { return }
-        guard Date().timeIntervalSince(AppPreferences.lastAutomaticUpdateCheck)
-            >= automaticCheckInterval else { return }
+        if !force {
+            guard Date().timeIntervalSince(AppPreferences.lastAutomaticUpdateCheck)
+                >= automaticCheckInterval else { return }
+        }
         isAutomaticCheckInFlight = true
 
-        let currentVersion = Bundle.main.object(
+        let bundledVersion = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
         ) as? String ?? "0"
+        let currentVersion = currentVersionOverride ?? bundledVersion
 
         Task {
             defer { isAutomaticCheckInFlight = false }
             do {
                 let result = try await check(currentVersion: currentVersion)
-                // 只有拿到明确结论（有新版或已是最新）才记入当天额度；
-                // 网络失败不记，等下一个整点自动重试。
+                // 只有拿到明确结论才记录时间；网络失败不占间隔，15 分钟后重试。
                 AppPreferences.lastAutomaticUpdateCheck = Date()
                 guard case let .updateAvailable(update) = result else { return }
+                let alreadyPresentedRecently = AppPreferences.lastPresentedUpdateVersion == update.version
+                    && Date().timeIntervalSince(AppPreferences.lastUpdatePresentationDate)
+                        < repeatedPresentationInterval
+                guard !alreadyPresentedRecently else { return }
+                AppPreferences.lastPresentedUpdateVersion = update.version
+                AppPreferences.lastUpdatePresentationDate = Date()
                 UpdateWindowController.shared.present(update, currentVersion: currentVersion)
             } catch {
-                // 静默失败：不打扰用户，下个小时再试
+                // 静默失败：不打扰用户，下一次 15 分钟轮询再试。
             }
         }
     }

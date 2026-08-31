@@ -16,8 +16,9 @@ enum AppPreferences {
     private static let recordingShowCursorKey = "bs_recordingShowCursor"
     private static let recordingCaptureAudioKey = "bs_recordingCaptureAudio"
     private static let fileNameFormatKey = "bs_fileNameFormat"
-    private static let automaticallyChecksForUpdatesKey = "rune_automaticallyChecksForUpdates"
     private static let lastAutomaticUpdateCheckKey = "rune_lastAutomaticUpdateCheck"
+    private static let lastPresentedUpdateVersionKey = "rune_lastPresentedUpdateVersion"
+    private static let lastUpdatePresentationDateKey = "rune_lastUpdatePresentationDate"
     private static let detectUIElementsKey = "rune_detectUIElements"
 
     // MARK: - Appearance
@@ -94,17 +95,6 @@ enum AppPreferences {
 
     // MARK: - Updates
 
-    /// 默认开启（用户要求的自动更新）；只在检查时读版本号，不上传任何数据。
-    static var automaticallyChecksForUpdates: Bool {
-        get {
-            if UserDefaults.standard.object(forKey: automaticallyChecksForUpdatesKey) == nil {
-                return true
-            }
-            return UserDefaults.standard.bool(forKey: automaticallyChecksForUpdatesKey)
-        }
-        set { UserDefaults.standard.set(newValue, forKey: automaticallyChecksForUpdatesKey) }
-    }
-
     static var lastAutomaticUpdateCheck: Date {
         get {
             let timestamp = UserDefaults.standard.double(forKey: lastAutomaticUpdateCheckKey)
@@ -114,6 +104,24 @@ enum AppPreferences {
             UserDefaults.standard.set(
                 newValue.timeIntervalSince1970,
                 forKey: lastAutomaticUpdateCheckKey
+            )
+        }
+    }
+
+    static var lastPresentedUpdateVersion: String? {
+        get { UserDefaults.standard.string(forKey: lastPresentedUpdateVersionKey) }
+        set { UserDefaults.standard.set(newValue, forKey: lastPresentedUpdateVersionKey) }
+    }
+
+    static var lastUpdatePresentationDate: Date {
+        get {
+            let timestamp = UserDefaults.standard.double(forKey: lastUpdatePresentationDateKey)
+            return timestamp > 0 ? Date(timeIntervalSince1970: timestamp) : .distantPast
+        }
+        set {
+            UserDefaults.standard.set(
+                newValue.timeIntervalSince1970,
+                forKey: lastUpdatePresentationDateKey
             )
         }
     }

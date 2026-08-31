@@ -2686,9 +2686,6 @@ struct VideosTab: View {
 // MARK: - About
 
 struct AboutTab: View {
-    @AppStorage("rune_automaticallyChecksForUpdates")
-    private var automaticallyChecksForUpdates = true
-
     @State private var updateState: UpdateViewState = .idle
     @State private var showsLicenses = false
 
@@ -2840,20 +2837,20 @@ struct AboutTab: View {
 
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("自动检查更新")
+                            Text("自动更新检测")
                                 .font(RuneFont.swiftUI(size: 11.5, weight: .medium))
                                 .foregroundStyle(RuneTheme.textPrimary)
-                            Text("每天最多查询一次版本号")
+                            Text("启动时检查 · 运行期间每小时检查")
                                 .font(RuneFont.swiftUI(size: 9.5))
                                 .foregroundStyle(RuneTheme.textMuted)
                         }
 
                         Spacer(minLength: 8)
 
-                        Toggle("自动检查更新", isOn: $automaticallyChecksForUpdates)
-                            .toggleStyle(.runeGlass)
-                            .labelsHidden()
-                            .accessibilityLabel("自动检查更新")
+                        Label("已开启", systemImage: "checkmark.circle.fill")
+                            .font(RuneFont.swiftUI(size: 10.5, weight: .medium))
+                            .foregroundStyle(RuneTheme.cyan)
+                            .accessibilityLabel("自动更新检测已开启")
                     }
                     .padding(.top, 15)
                 }

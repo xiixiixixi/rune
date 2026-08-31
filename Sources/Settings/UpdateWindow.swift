@@ -15,8 +15,9 @@ final class UpdateWindowController: NSObject {
 
     func present(_ update: RuneUpdate, currentVersion: String, on screen: NSScreen? = nil) {
         if let window {
-            window.orderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
             return
         }
 
@@ -38,8 +39,9 @@ final class UpdateWindowController: NSObject {
         window.delegate = self
         window.center()
         self.window = window
-        window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
     }
 }
 

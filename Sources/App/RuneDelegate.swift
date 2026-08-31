@@ -532,7 +532,14 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
         }
         #endif
 
-        UpdateService.scheduleAutomaticCheckIfNeeded()
+        #if DEBUG
+        let automaticUpdateAuditVersion = ProcessInfo.processInfo.arguments.contains(
+            "--audit-auto-update-startup"
+        ) ? "0.0.1" : nil
+        UpdateService.scheduleAutomaticChecks(currentVersionOverride: automaticUpdateAuditVersion)
+        #else
+        UpdateService.scheduleAutomaticChecks()
+        #endif
     }
 
 

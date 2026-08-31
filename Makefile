@@ -106,7 +106,8 @@ dmg: release ## 创建本地安装包 + 自动更新包
 	@echo "==> 正在创建自动更新包（zip）…"
 	@ditto -c -k --keepParent "$(APP_RELEASE)" "$(DMG_DIR)/Rune-$(VERSION).zip"
 	@cp "$(DMG_DIR)/Rune-$(VERSION).zip" "$(DMG_DIR)/Rune-latest.zip"
-	@echo "==> $(DMG_DIR)/Rune-$(VERSION).zip（含固定名副本 Rune-latest.zip 供应用内更新）"
+	@cp version.json "$(DMG_DIR)/version.json"
+	@echo "==> $(DMG_DIR)/Rune-$(VERSION).zip（含 Rune-latest.zip 与 version.json 供应用内更新）"
 
 clean: ## Remove build artifacts
 	@echo "==> Cleaning..."
