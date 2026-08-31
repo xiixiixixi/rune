@@ -408,10 +408,17 @@ private struct AnnotationTextBoxView: NSViewRepresentable {
         textView.isSelectable = isEditing
         updateTextViewFrame(textView, in: scrollView)
 
-        if textView.string != text {
+        let isNativeEditing = isEditing && textView.window?.firstResponder === textView
+        if textView.string != text, !isNativeEditing {
             let selectedRanges = textView.selectedRanges
             textView.string = text
-            textView.selectedRanges = selectedRanges
+            let length = (textView.string as NSString).length
+            textView.selectedRanges = selectedRanges.map { value in
+                let range = value.rangeValue
+                let location = min(range.location, length)
+                let upperBound = min(range.location + range.length, length)
+                return NSValue(range: NSRange(location: location, length: upperBound - location))
+            }
         }
 
         applyStyle(to: textView)

@@ -366,6 +366,10 @@ final class EditorModel {
         updateItem(id: id) { item in item.text = text }
     }
 
+    func text(for id: AnnotationItem.ID) -> String {
+        items.first(where: { $0.id == id })?.text ?? ""
+    }
+
     func setTextViewContentSize(_ size: CGSize, for id: AnnotationItem.ID, imageFrame: CGRect, allowedBounds: CGRect) {
         guard interaction == nil else { return }
         guard imageFrame.width > 0, imageFrame.height > 0 else { return }

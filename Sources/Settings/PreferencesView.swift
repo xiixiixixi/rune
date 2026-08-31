@@ -1601,10 +1601,7 @@ struct CaptureSettingsTab: View {
                         detail: "预览自动收起前保留多久。",
                         showsDivider: false
                     ) {
-                        VStack(alignment: .trailing, spacing: 5) {
-                            Text("\(Int(overlayDismissDelay)) 秒")
-                                .font(RuneFont.mono(size: 9.5, weight: .medium))
-                                .foregroundStyle(RuneTheme.textSecondary)
+                        HStack(spacing: 10) {
                             RuneGlassSlider(
                                 value: $overlayDismissDelay,
                                 in: 2...15,
@@ -1612,7 +1609,12 @@ struct CaptureSettingsTab: View {
                                 accessibilityLabel: "预览停留时间",
                                 accessibilityValue: "\(Int(overlayDismissDelay)) 秒"
                             )
-                                .frame(width: 154)
+                            .frame(width: 126)
+
+                            Text("\(Int(overlayDismissDelay)) 秒")
+                                .font(RuneFont.mono(size: 9.5, weight: .medium))
+                                .foregroundStyle(RuneTheme.textSecondary)
+                                .frame(width: 34, alignment: .trailing)
                         }
                     }
             }
@@ -1663,9 +1665,6 @@ struct CaptureSettingsTab: View {
                 .id(shortcutResetID)
 
                 HStack {
-                    Text("关闭开关会停用对应快捷键。")
-                        .font(RuneFont.swiftUI(size: 10.5))
-                        .foregroundStyle(RuneTheme.textMuted)
                     Spacer()
                     ResetButton("恢复默认快捷键") {
                         restoreDefaultShortcuts()
@@ -1974,26 +1973,12 @@ struct ShortcutRow: View {
 
             Spacer()
 
-            Toggle("", isOn: Binding(
-                get: { shortcut?.enabled ?? false },
-                set: { enabled in
-                    shortcut?.enabled = enabled
-                    if let s = shortcut {
-                        ShortcutService.shared.saveShortcut(s, for: action)
-                        ShortcutService.shared.registerAll()
-                    }
-                }
-            ))
-            .toggleStyle(.runeGlass)
-            .labelsHidden()
-            .accessibilityLabel(label)
-
             if isRecording {
                 ShortcutRecorderView { keyCode, modifiers in
                     shortcut = ShortcutService.Shortcut(
                         keyCode: keyCode,
                         modifiers: modifiers,
-                        enabled: shortcut?.enabled ?? true
+                        enabled: true
                     )
                     if let s = shortcut {
                         ShortcutService.shared.saveShortcut(s, for: action)
@@ -2043,7 +2028,13 @@ struct ShortcutRow: View {
                 .frame(height: 0.5)
         }
         .onAppear {
-            shortcut = ShortcutService.shared.loadShortcut(for: action) ?? defaultShortcut
+            var loaded = ShortcutService.shared.loadShortcut(for: action) ?? defaultShortcut
+            if !loaded.enabled {
+                loaded.enabled = true
+                ShortcutService.shared.saveShortcut(loaded, for: action)
+                ShortcutService.shared.registerAll()
+            }
+            shortcut = loaded
         }
     }
 

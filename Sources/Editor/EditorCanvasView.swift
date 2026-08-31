@@ -82,7 +82,7 @@ struct EditorCanvasView: View {
                             isEditingText: item.id == model.editingTextItemID,
                             allowsRedactionPreviewCaching: !(model.isTransformingExistingAnnotation && model.selectedItemIDs.contains(item.id)),
                             text: Binding(
-                                get: { item.text },
+                                get: { model.text(for: item.id) },
                                 set: { model.setText($0, for: item.id) }
                             ),
                             onCommitText: model.commitTextEditing,
