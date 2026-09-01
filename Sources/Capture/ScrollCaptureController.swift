@@ -37,6 +37,8 @@ final class ScrollCaptureController {
     private(set) var mode: ScrollCaptureMode = .automatic
     private(set) var isPaused = false
     private(set) var isFinishing = false
+    private(set) var isAwaitingStart = false
+    private(set) var livePreviewImage: NSImage?
 
     private let engine = SCKStillCaptureBackend()
     private var captureTask: Task<Void, Never>?
@@ -92,13 +94,13 @@ final class ScrollCaptureController {
         isActive = true
         isPaused = false
         isFinishing = false
+        isAwaitingStart = true
         capturedFrameCount = 0
         stitchedHeight = 0
-        statusMessage = mode == .automatic
-            ? "区域已锁定，正在准备自动滚动"
-            : "区域已锁定，请在选区内向下滚动"
+        livePreviewImage = nil
+        statusMessage = "区域已锁定，正在准备长图"
 
-        ScrollCaptureStatusBarController.shared.show(on: screen)
+        ScrollCaptureStatusBarController.shared.show(on: screen, targetRect: pointsRect)
         activateTargetApplication()
 
         // 等待目标应用重新成为前台，也确保选区/确认蒙层已从 WindowServer 退场。
@@ -115,13 +117,10 @@ final class ScrollCaptureController {
             displayID = first.displayID
             capturedFrameCount = 1
             stitchedHeight = first.image.height
-            if mode == .automatic {
-                prepareAutomaticCursor()
-                statusMessage = "自动向下滚动中；Esc 可提前完成"
-            } else {
-                statusMessage = manualCaptureInstruction
-            }
-            beginPolling()
+            updateLivePreview()
+            statusMessage = mode == .automatic
+                ? "点击“开始滚动”，或先调整到内容顶部"
+                : "点击“开始滚动”，随后在选区内慢慢滚动"
         } catch {
             isActive = false
             ScrollCaptureStatusBarController.shared.dismiss()
@@ -132,6 +131,24 @@ final class ScrollCaptureController {
         }
     }
 
+    /// 飞书式两段确认：选区锁定后先保留边界和首帧预览，用户明确开始才滚动。
+    /// 这样误选窗口或滚动容器时可以直接取消，不会一松手就把页面带走。
+    func beginCapture() {
+        guard isActive, isAwaitingStart, previousImage != nil, !isFinishing else { return }
+        isAwaitingStart = false
+        isPaused = false
+        unchangedRounds = 0
+        mismatchRounds = 0
+        hasObservedGrowth = false
+        if mode == .automatic {
+            prepareAutomaticCursor()
+            statusMessage = "自动向下滚动中；可随时暂停或完成"
+        } else {
+            statusMessage = manualCaptureInstruction
+        }
+        beginPolling()
+    }
+
     func stop() async {
         guard isActive, !isFinishing else { return }
         guard !segments.isEmpty else {
@@ -140,6 +157,7 @@ final class ScrollCaptureController {
         }
         isFinishing = true
         isActive = false
+        isAwaitingStart = false
         captureTask?.cancel()
         captureTask = nil
         restoreAutomaticCursor()
@@ -167,13 +185,22 @@ final class ScrollCaptureController {
         captureTask = nil
         isActive = false
         isFinishing = false
+        isAwaitingStart = false
         restoreAutomaticCursor()
         ScrollCaptureStatusBarController.shared.dismiss()
         reset()
     }
 
+    func handleEscape() async {
+        if isAwaitingStart {
+            cancel()
+        } else {
+            await stop()
+        }
+    }
+
     func togglePause() {
-        guard isActive, !isFinishing else { return }
+        guard isActive, !isAwaitingStart, !isFinishing else { return }
         isPaused.toggle()
         statusMessage = isPaused
             ? "已暂停；画面不会继续滚动或拼接"
@@ -200,14 +227,13 @@ final class ScrollCaptureController {
         unchangedRounds = 0
         mismatchRounds = 0
         hasObservedGrowth = false
-        prepareAutomaticCursor()
         activateTargetApplication()
-        statusMessage = "自动向下滚动中；Esc 可提前完成"
-    }
-
-    func resumeAfterDialog() {
-        guard isActive else { return }
-        activateTargetApplication()
+        if isAwaitingStart {
+            statusMessage = "已切换自动滚动；点击“开始滚动”"
+        } else {
+            prepareAutomaticCursor()
+            statusMessage = "自动向下滚动中；可随时暂停或完成"
+        }
     }
 
     private func beginPolling() {
@@ -316,6 +342,7 @@ final class ScrollCaptureController {
             self.previousImage = next.image
             capturedFrameCount += 1
             stitchedHeight += appendedRows
+            updateLivePreview()
             statusMessage = mode == .automatic
                 ? "自动滚动中：已拼接 \(capturedFrameCount) 段"
                 : "手动滚动中：已拼接 \(capturedFrameCount) 段"
@@ -442,6 +469,54 @@ final class ScrollCaptureController {
         return context.makeImage()
     }
 
+    /// 实时预览只合成低分辨率缩略图，避免每次追加都重建数万像素高的成片。
+    private func updateLivePreview() {
+        guard let first = segments.first else {
+            livePreviewImage = nil
+            return
+        }
+        let totalHeight = segments.reduce(0) { $0 + $1.height }
+        let maxWidth: CGFloat = 300
+        let maxHeight: CGFloat = 860
+        let scale = min(
+            maxWidth / CGFloat(first.width),
+            maxHeight / CGFloat(totalHeight),
+            1
+        )
+        let width = max(1, Int((CGFloat(first.width) * scale).rounded()))
+        let height = max(1, Int((CGFloat(totalHeight) * scale).rounded()))
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
+        ) else { return }
+
+        context.interpolationQuality = .medium
+        var y = CGFloat(height)
+        for segment in segments {
+            let segmentHeight = CGFloat(segment.height) * scale
+            y -= segmentHeight
+            context.draw(
+                segment,
+                in: CGRect(
+                    x: 0,
+                    y: y,
+                    width: CGFloat(segment.width) * scale,
+                    height: segmentHeight
+                )
+            )
+        }
+        guard let image = context.makeImage() else { return }
+        livePreviewImage = NSImage(
+            cgImage: image,
+            size: NSSize(width: CGFloat(width), height: CGFloat(height))
+        )
+    }
+
     private func showError(_ message: String) {
         let alert = NSAlert()
         alert.messageText = "滚动截图"
@@ -463,71 +538,197 @@ final class ScrollCaptureController {
         mode = .automatic
         isPaused = false
         isFinishing = false
+        isAwaitingStart = false
+        livePreviewImage = nil
         if !keepStatus { statusMessage = "请选择要滚动的区域" }
     }
+
+    #if DEBUG
+    func prepareAuditState(image: NSImage?) {
+        isActive = true
+        isAwaitingStart = false
+        isPaused = false
+        isFinishing = false
+        mode = .automatic
+        capturedFrameCount = 9
+        stitchedHeight = 6_480
+        statusMessage = "自动向下滚动中；可随时暂停或完成"
+        livePreviewImage = image
+    }
+    #endif
 }
 
 @MainActor
 final class ScrollCaptureStatusBarController {
     static let shared = ScrollCaptureStatusBarController()
-    private var panel: NSPanel?
+    private var panels: [NSPanel] = []
     private var localKeyMonitor: Any?
     private var globalKeyMonitor: Any?
 
     private init() {}
 
-    func show(on screen: NSScreen? = nil) {
+    func show(on screen: NSScreen? = nil, targetRect pointsRect: CGRect? = nil) {
         dismiss()
-        let view = ScrollCaptureStatusBarView(controller: .shared)
+        guard let targetScreen = resolvedScreen(screen, pointsRect: pointsRect) else { return }
+        let screenFrame = targetScreen.frame
+        let fallback = CGRect(
+            x: screenFrame.midX - min(screenFrame.width * 0.32, 520),
+            y: screenFrame.midY - min(screenFrame.height * 0.32, 340),
+            width: min(screenFrame.width * 0.64, 1_040),
+            height: min(screenFrame.height * 0.64, 680)
+        )
+        let clippedTarget = pointsRect.map {
+            Self.appKitRect(from: $0).intersection(screenFrame)
+        }
+        let targetRect: CGRect
+        if let clippedTarget,
+           !clippedTarget.isNull,
+           clippedTarget.width > 1,
+           clippedTarget.height > 1 {
+            targetRect = clippedTarget
+        } else {
+            targetRect = fallback
+        }
+
+        showDimmingPanels(around: targetRect, in: screenFrame)
+        showTargetOutline(targetRect)
+        showLivePreview(anchoredTo: targetRect, in: screenFrame)
+        showInstruction(anchoredTo: targetRect, in: screenFrame)
+        showControls(anchoredTo: targetRect, in: screenFrame)
+        installEscapeMonitors()
+    }
+
+    func dismiss() {
+        removeEscapeMonitors()
+        for panel in panels {
+            panel.orderOut(nil)
+        }
+        panels.removeAll()
+    }
+
+    private func resolvedScreen(_ preferred: NSScreen?, pointsRect: CGRect?) -> NSScreen? {
+        if let pointsRect {
+            let rect = Self.appKitRect(from: pointsRect)
+            if let matching = NSScreen.screens.first(where: { !$0.frame.intersection(rect).isNull }) {
+                return matching
+            }
+        }
+        return preferred ?? NSScreen.main ?? NSScreen.screens.first
+    }
+
+    /// RegionSelection 使用主屏左上原点的 CG 坐标；悬浮窗使用 AppKit 左下原点。
+    private static func appKitRect(from pointsRect: CGRect) -> CGRect {
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? pointsRect.maxY
+        return CGRect(
+            x: pointsRect.minX,
+            y: primaryHeight - pointsRect.maxY,
+            width: pointsRect.width,
+            height: pointsRect.height
+        )
+    }
+
+    private func showDimmingPanels(around target: CGRect, in screen: CGRect) {
+        let rects = [
+            CGRect(x: screen.minX, y: target.maxY, width: screen.width, height: screen.maxY - target.maxY),
+            CGRect(x: screen.minX, y: screen.minY, width: screen.width, height: target.minY - screen.minY),
+            CGRect(x: screen.minX, y: target.minY, width: target.minX - screen.minX, height: target.height),
+            CGRect(x: target.maxX, y: target.minY, width: screen.maxX - target.maxX, height: target.height),
+        ]
+        for rect in rects where rect.width > 0.5 && rect.height > 0.5 {
+            let view = NSView(frame: CGRect(origin: .zero, size: rect.size))
+            view.wantsLayer = true
+            view.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.46).cgColor
+            _ = makePanel(frame: rect, contentView: view, ignoresMouseEvents: true)
+        }
+    }
+
+    private func showTargetOutline(_ target: CGRect) {
+        let root = ScrollCaptureTargetOutlineView(size: target.size).runeTypography()
+        let host = NSHostingView(rootView: root)
+        host.frame = CGRect(origin: .zero, size: target.size)
+        _ = makePanel(frame: target, contentView: host, ignoresMouseEvents: true)
+    }
+
+    private func showLivePreview(anchoredTo target: CGRect, in screen: CGRect) {
+        let width: CGFloat = min(300, max(220, screen.width * 0.18))
+        let height: CGFloat = min(860, screen.height - 80)
+        let gap: CGFloat = 14
+        let x: CGFloat
+        if target.minX - screen.minX >= width + gap {
+            x = target.minX - width - gap
+        } else if screen.maxX - target.maxX >= width + gap {
+            x = target.maxX + gap
+        } else {
+            x = screen.minX + 16
+        }
+        let y = min(
+            max(target.minY, screen.minY + 16),
+            screen.maxY - height - 16
+        )
+        let frame = CGRect(x: x, y: y, width: width, height: height)
+        let root = ScrollCaptureLivePreviewView(
+            controller: .shared,
+            maxSize: frame.size
+        )
+        .runeTypography()
+        let host = NSHostingView(rootView: root)
+        host.frame = CGRect(origin: .zero, size: frame.size)
+        _ = makePanel(frame: frame, contentView: host, ignoresMouseEvents: true)
+    }
+
+    private func showInstruction(anchoredTo target: CGRect, in screen: CGRect) {
+        let size = NSSize(width: min(560, max(300, target.width - 32)), height: 44)
+        let frame = CGRect(
+            x: min(max(target.midX - size.width / 2, screen.minX + 12), screen.maxX - size.width - 12),
+            y: min(max(target.minY + 64, screen.minY + 12), screen.maxY - size.height - 12),
+            width: size.width,
+            height: size.height
+        )
+        let root = ScrollCaptureInstructionView(controller: .shared).runeTypography()
+        let host = NSHostingView(rootView: root)
+        host.frame = CGRect(origin: .zero, size: size)
+        _ = makePanel(frame: frame, contentView: host, ignoresMouseEvents: true)
+    }
+
+    private func showControls(anchoredTo target: CGRect, in screen: CGRect) {
+        let size = NSSize(width: 470, height: 54)
+        let x = min(max(target.maxX - size.width, screen.minX + 12), screen.maxX - size.width - 12)
+        let preferredY = target.minY - size.height - 12
+        let y = preferredY >= screen.minY + 8 ? preferredY : target.minY + 12
+        let frame = CGRect(x: x, y: y, width: size.width, height: size.height)
+        let root = ScrollCaptureControlBarView(controller: .shared)
             .environment(\.colorScheme, .dark)
-        let hosting = NSHostingView(rootView: view.runeTypography())
-        // 状态变化时宽度保持不跳动，避免用户滚动过程中按钮来回移动。
-        let size = NSSize(width: 620, height: 64)
+            .runeTypography()
+        let host = NSHostingView(rootView: root)
+        host.frame = CGRect(origin: .zero, size: size)
+        _ = makePanel(frame: frame, contentView: host, ignoresMouseEvents: false, shadow: true)
+    }
+
+    @discardableResult
+    private func makePanel(
+        frame: CGRect,
+        contentView: NSView,
+        ignoresMouseEvents: Bool,
+        shadow: Bool = false
+    ) -> NSPanel {
         let panel = NSPanel(
-            contentRect: NSRect(origin: .zero, size: size),
+            contentRect: frame,
             styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true
-        panel.level = .floating
+        panel.hasShadow = shadow
+        panel.level = .screenSaver
         panel.hidesOnDeactivate = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.contentView = hosting
-        if let frame = (screen ?? NSScreen.main)?.visibleFrame {
-            panel.setFrameOrigin(NSPoint(x: frame.midX - size.width / 2, y: frame.maxY - size.height - 12))
-        }
+        panel.ignoresMouseEvents = ignoresMouseEvents
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        panel.sharingType = .none
+        panel.contentView = contentView
         panel.orderFrontRegardless()
-        self.panel = panel
-        installEscapeMonitors()
-    }
-
-    func confirmAndCancel() {
-        // 警告框里的 Esc 表示继续，不能同时被全局监听器解释为生成长图。
-        removeEscapeMonitors()
-        let count = ScrollCaptureController.shared.capturedFrameCount
-        let alert = NSAlert()
-        alert.messageText = "放弃这次滚动截图？"
-        alert.informativeText = count > 1
-            ? "已经拼接的 \(count) 段内容不会保存。"
-            : "当前画面不会保存。"
-        alert.addButton(withTitle: "放弃")
-        alert.addButton(withTitle: "继续滚动")
-        alert.alertStyle = .warning
-        if alert.runModal() == .alertFirstButtonReturn {
-            ScrollCaptureController.shared.cancel()
-        } else {
-            installEscapeMonitors()
-            ScrollCaptureController.shared.resumeAfterDialog()
-        }
-    }
-
-    func dismiss() {
-        removeEscapeMonitors()
-        panel?.orderOut(nil)
-        panel = nil
+        panels.append(panel)
+        return panel
     }
 
     private func installEscapeMonitors() {
@@ -535,14 +736,14 @@ final class ScrollCaptureStatusBarController {
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             guard event.keyCode == 53 else { return event }
             Task { @MainActor in
-                await ScrollCaptureController.shared.stop()
+                await ScrollCaptureController.shared.handleEscape()
             }
             return nil
         }
         globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
             guard event.keyCode == 53 else { return }
             Task { @MainActor in
-                await ScrollCaptureController.shared.stop()
+                await ScrollCaptureController.shared.handleEscape()
             }
         }
     }
@@ -555,103 +756,81 @@ final class ScrollCaptureStatusBarController {
     }
 }
 
-private struct ScrollCaptureStatusBarView: View {
-    @State var controller: ScrollCaptureController
+private struct ScrollCaptureTargetOutlineView: View {
+    let size: CGSize
 
     var body: some View {
-        HStack(spacing: 12) {
-            RuneOpticalIconPlate(systemImage: "rectangle.stack", size: 30)
-                .help("滚动截图进行中")
+        ZStack(alignment: .topLeading) {
+            Rectangle()
+                .strokeBorder(RuneTheme.cyan, lineWidth: 1.5)
 
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 7) {
-                    Text("滚动长图")
-                        .font(RuneFont.swiftUI(size: 12, weight: .semibold))
-
-                    Label(controller.mode.label, systemImage: controller.mode.systemImage)
-                        .font(RuneFont.swiftUI(size: 9.5, weight: .medium))
-                        .foregroundStyle(
-                            controller.mode == .automatic
-                                ? RuneTheme.cyan
-                                : RuneTheme.textSecondary
-                        )
-                }
-                Text(controller.statusMessage)
-                    .font(RuneFont.swiftUI(size: 10.5))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("\(controller.capturedFrameCount) 段")
-                    .font(RuneFont.mono(size: 11.5, weight: .semibold))
-                Text(heightText)
-                    .font(RuneFont.mono(size: 8.5, weight: .medium))
-                    .foregroundStyle(RuneTheme.textMuted)
-            }
-            .frame(minWidth: 70, alignment: .trailing)
-
-            RuneMenu(
-                surface: .chrome,
-                entries: {
-                    [
-                        .item(
-                            RuneMenuItem(
-                                controller.mode == .automatic
-                                    ? "切换为手动滚动"
-                                    : "切换为自动滚动",
-                                systemImage: controller.mode == .automatic
-                                    ? "hand.draw"
-                                    : "arrow.down.to.line.compact"
-                            ) {
-                                controller.toggleMode()
-                            }
-                        ),
-                        .divider,
-                        .item(
-                            RuneMenuItem("放弃这次长图…", systemImage: "trash", isDestructive: true) {
-                                ScrollCaptureStatusBarController.shared.confirmAndCancel()
-                            }
-                        ),
-                    ]
-                }
-            ) {
-                Image(systemName: "ellipsis.circle")
-                    .font(RuneFont.swiftUI(size: 15))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 28, height: 28)
-            }
-            .help("更多滚动截图操作")
-
-            Button {
-                controller.togglePause()
-            } label: {
-                Image(systemName: controller.isPaused ? "play.fill" : "pause.fill")
-                    .font(RuneFont.swiftUI(size: 11, weight: .semibold))
-                    .foregroundStyle(RuneTheme.textPrimary)
-                    .frame(width: 30, height: 30)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(controller.capturedFrameCount == 0 || controller.isFinishing)
-            .help(controller.isPaused ? "继续滚动截图" : "暂停滚动截图")
-            .accessibilityLabel(controller.isPaused ? "继续滚动截图" : "暂停滚动截图")
-
-            Button {
-                Task { await controller.stop() }
-            } label: {
-                RuneTheme.primaryButtonLabel("完成")
-            }
-            .buttonStyle(RuneTheme.RunePressStyle())
-            .disabled(controller.capturedFrameCount == 0 || controller.isFinishing)
-            .help("结束滚动，把已抓的画面拼成一张长图")
+            Text("\(Int(size.width)) × \(Int(size.height))")
+                .font(RuneFont.mono(size: 10.5, weight: .semibold))
+                .foregroundStyle(Color.black.opacity(0.82))
+                .padding(.horizontal, 8)
+                .frame(height: 24)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.white.opacity(0.94))
+                )
+                .padding(8)
         }
-        .padding(.horizontal, 14)
-        .frame(height: 60)
-        .runeGlassSurface(cornerRadius: RuneTheme.barCorner, elevation: .floating)
-        .accessibilityElement(children: .contain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("滚动截图选区，宽 \(Int(size.width))，高 \(Int(size.height))")
+    }
+}
+
+private struct ScrollCaptureLivePreviewView: View {
+    @State var controller: ScrollCaptureController
+    let maxSize: CGSize
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            Spacer(minLength: 0)
+
+            if let image = controller.livePreviewImage {
+                let previewSize = fittedSize(for: image)
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .frame(width: previewSize.width, height: previewSize.height)
+                    .background(Color.white)
+                    .overlay {
+                        Rectangle()
+                            .strokeBorder(Color.white.opacity(0.78), lineWidth: 1)
+                    }
+                    .shadow(color: Color.black.opacity(0.24), radius: 6, y: 3)
+            } else {
+                VStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("正在准备首帧")
+                        .font(RuneFont.swiftUI(size: 10.5, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(width: 180, height: 100)
+                .runeGlassSurface(cornerRadius: 12, elevation: .floating)
+            }
+
+            HStack(spacing: 8) {
+                Image(systemName: "rectangle.stack")
+                Text("实时拼接")
+                Spacer(minLength: 8)
+                Text("\(controller.capturedFrameCount) 段")
+                Text(heightText)
+            }
+            .font(RuneFont.mono(size: 9.5, weight: .semibold))
+            .foregroundStyle(Color.white.opacity(0.9))
+            .padding(.horizontal, 10)
+            .frame(height: 26)
+            .background(
+                Capsule().fill(Color.black.opacity(0.76))
+            )
+        }
+        .frame(width: maxSize.width, height: maxSize.height, alignment: .bottomTrailing)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("滚动截图实时预览，已拼接 \(controller.capturedFrameCount) 段，\(heightText)")
     }
 
     private var heightText: String {
@@ -660,5 +839,111 @@ private struct ScrollCaptureStatusBarView: View {
             return String(format: "%.1f 万 px", Double(controller.stitchedHeight) / 10_000)
         }
         return "\(controller.stitchedHeight) px"
+    }
+
+    private func fittedSize(for image: NSImage) -> CGSize {
+        let source = image.size
+        guard source.width > 0, source.height > 0 else { return .zero }
+        let availableHeight = max(maxSize.height - 34, 1)
+        let scale = min(maxSize.width / source.width, availableHeight / source.height, 1)
+        return CGSize(width: source.width * scale, height: source.height * scale)
+    }
+}
+
+private struct ScrollCaptureInstructionView: View {
+    @State var controller: ScrollCaptureController
+
+    var body: some View {
+        Text(controller.statusMessage)
+            .font(RuneFont.swiftUI(size: 12, weight: .semibold))
+            .foregroundStyle(Color.white)
+            .lineLimit(1)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(Color.black.opacity(0.82))
+            )
+            .accessibilityLabel(controller.statusMessage)
+    }
+}
+
+private struct ScrollCaptureControlBarView: View {
+    @State var controller: ScrollCaptureController
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button {
+                controller.toggleMode()
+            } label: {
+                Label(controller.mode == .automatic ? "自动滚动" : "手动滚动", systemImage: controller.mode.systemImage)
+                    .font(RuneFont.swiftUI(size: 11, weight: .semibold))
+                    .foregroundStyle(controller.mode == .automatic ? RuneTheme.cyan : RuneTheme.textSecondary)
+                    .padding(.horizontal, 10)
+                    .frame(height: 32)
+                    .background(
+                        Capsule().fill(Color.white.opacity(0.07))
+                    )
+            }
+            .buttonStyle(.plain)
+            .help(controller.mode == .automatic ? "切换为手动滚动" : "切换为自动滚动")
+
+            Spacer(minLength: 8)
+
+            if !controller.isAwaitingStart {
+                Button {
+                    controller.togglePause()
+                } label: {
+                    Image(systemName: controller.isPaused ? "play.fill" : "pause.fill")
+                        .font(RuneFont.swiftUI(size: 11, weight: .semibold))
+                        .frame(width: 32, height: 32)
+                }
+                .buttonStyle(.plain)
+                .disabled(controller.capturedFrameCount == 0 || controller.isFinishing)
+                .help(controller.isPaused ? "继续滚动截图" : "暂停滚动截图")
+                .accessibilityLabel(controller.isPaused ? "继续滚动截图" : "暂停滚动截图")
+            }
+
+            Button {
+                controller.cancel()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(RuneFont.swiftUI(size: 12, weight: .semibold))
+                    .foregroundStyle(RuneTheme.signal)
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            .help("取消滚动截图")
+            .accessibilityLabel("取消滚动截图")
+
+            Button {
+                if controller.isAwaitingStart {
+                    controller.beginCapture()
+                } else {
+                    Task { await controller.stop() }
+                }
+            } label: {
+                if controller.isAwaitingStart {
+                    RuneTheme.primaryButtonLabel("开始滚动")
+                } else {
+                    Image(systemName: "checkmark")
+                        .font(RuneFont.swiftUI(size: 12, weight: .bold))
+                        .foregroundStyle(Color.black.opacity(0.82))
+                        .frame(width: 34, height: 32)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(RuneTheme.cyan)
+                        )
+                }
+            }
+            .buttonStyle(RuneTheme.RunePressStyle())
+            .disabled(controller.capturedFrameCount == 0 || controller.isFinishing)
+            .help(controller.isAwaitingStart ? "开始捕获滚动内容" : "完成并生成长图")
+            .accessibilityLabel(controller.isAwaitingStart ? "开始滚动截图" : "完成滚动截图")
+        }
+        .padding(.horizontal, 10)
+        .frame(width: 470, height: 52)
+        .runeGlassSurface(cornerRadius: 12, elevation: .floating)
+        .accessibilityElement(children: .contain)
     }
 }

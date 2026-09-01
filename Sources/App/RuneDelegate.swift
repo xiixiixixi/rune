@@ -516,8 +516,60 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
             }
         } else if ProcessInfo.processInfo.arguments.contains("--audit-scroll") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                ScrollCaptureStatusBarController.shared.show(on: NSScreen.main)
-                DebugAuditSnapshot.captureAfter("25-scroll-status-redesign.png")
+                guard let screen = NSScreen.main else { return }
+                let sampleImage = Bundle.main.url(
+                    forResource: "mac-asset-3",
+                    withExtension: "jpg",
+                    subdirectory: "Backgrounds/mac"
+                ).flatMap(NSImage.init(contentsOf:))
+                let stitchedPreview = sampleImage.map { image in
+                    let repetitions = 4
+                    let preview = NSImage(
+                        size: NSSize(
+                            width: image.size.width,
+                            height: image.size.height * CGFloat(repetitions)
+                        )
+                    )
+                    preview.lockFocus()
+                    for index in 0..<repetitions {
+                        image.draw(
+                            in: CGRect(
+                                x: 0,
+                                y: CGFloat(index) * image.size.height,
+                                width: image.size.width,
+                                height: image.size.height
+                            )
+                        )
+                    }
+                    preview.unlockFocus()
+                    return preview
+                }
+                ScrollCaptureController.shared.prepareAuditState(image: stitchedPreview)
+
+                let target = CGRect(
+                    x: screen.frame.midX - min(screen.frame.width * 0.20, 390),
+                    y: screen.frame.height - screen.frame.midY - min(screen.frame.height * 0.35, 330),
+                    width: min(screen.frame.width * 0.40, 780),
+                    height: min(screen.frame.height * 0.70, 660)
+                )
+                ScrollCaptureStatusBarController.shared.show(on: screen, targetRect: target)
+                DebugAuditSnapshot.captureWindowsCompositeAfter(
+                    "25-scroll-feishu-flow.png",
+                    on: screen,
+                    background: sampleImage,
+                    delay: 1.1
+                )
+                DebugAuditSnapshot.captureClosestToSizeAfter(
+                    "25-scroll-controls.png",
+                    size: CGSize(width: 470, height: 54),
+                    delay: 0.8
+                )
+                DebugAuditSnapshot.captureClosestToSizeAfter(
+                    "25-scroll-preview.png",
+                    size: CGSize(width: 300, height: 860),
+                    delay: 0.9
+                )
+                DebugAuditSnapshot.captureWindowLayoutAfter("25-scroll-layout.txt", delay: 1.0)
             }
         } else if ProcessInfo.processInfo.arguments.contains("--audit-toast") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {

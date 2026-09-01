@@ -41,6 +41,79 @@ enum DebugAuditSnapshot {
         }
     }
 
+    static func captureClosestToSizeAfter(
+        _ filename: String,
+        size: CGSize,
+        delay: TimeInterval = 0.9
+    ) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            guard let window = visibleCandidates().min(by: { lhs, rhs in
+                let lhsDistance = abs(lhs.frame.width - size.width) + abs(lhs.frame.height - size.height)
+                let rhsDistance = abs(rhs.frame.width - size.width) + abs(rhs.frame.height - size.height)
+                return lhsDistance < rhsDistance
+            }) else { return }
+            capture(window, filename: filename)
+        }
+    }
+
+    /// 把 Rune 同时显示的多个调试悬浮窗按真实屏幕坐标合成，验证跨窗口的选区、预览和控制布局。
+    static func captureWindowsCompositeAfter(
+        _ filename: String,
+        on screen: NSScreen?,
+        background: NSImage? = nil,
+        delay: TimeInterval = 0.9
+    ) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            guard let screen else { return }
+            let screenBounds = CGRect(origin: .zero, size: screen.frame.size)
+            let backingScale = max(screen.backingScaleFactor, 1)
+            guard let bitmap = NSBitmapImageRep(
+                bitmapDataPlanes: nil,
+                pixelsWide: max(Int(screenBounds.width * backingScale), 1),
+                pixelsHigh: max(Int(screenBounds.height * backingScale), 1),
+                bitsPerSample: 8,
+                samplesPerPixel: 4,
+                hasAlpha: true,
+                isPlanar: false,
+                colorSpaceName: .deviceRGB,
+                bytesPerRow: 0,
+                bitsPerPixel: 0
+            ), let context = NSGraphicsContext(bitmapImageRep: bitmap) else { return }
+
+            bitmap.size = screenBounds.size
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = context
+            NSColor(calibratedWhite: 0.08, alpha: 1).setFill()
+            screenBounds.fill()
+            background?.draw(in: screenBounds)
+
+            let windows = visibleCandidates()
+                .filter { !$0.frame.intersection(screen.frame).isNull }
+                .sorted { lhs, rhs in
+                    if lhs.level.rawValue == rhs.level.rawValue {
+                        return lhs.windowNumber < rhs.windowNumber
+                    }
+                    return lhs.level.rawValue < rhs.level.rawValue
+                }
+            for window in windows {
+                guard let view = window.contentView,
+                      let data = captureCachedView(view),
+                      let image = NSImage(data: data) else { continue }
+                let destination = CGRect(
+                    x: window.frame.minX - screen.frame.minX,
+                    y: window.frame.minY - screen.frame.minY,
+                    width: window.frame.width,
+                    height: window.frame.height
+                )
+                image.draw(in: destination)
+            }
+            NSGraphicsContext.restoreGraphicsState()
+
+            guard let data = bitmap.representation(using: .png, properties: [:]) else { return }
+            write(data, filename: filename)
+        }
+    }
+
     private static func captureFrontmost(_ filename: String) {
         let candidates = visibleCandidates()
         guard let window = candidates.max(by: { lhs, rhs in
