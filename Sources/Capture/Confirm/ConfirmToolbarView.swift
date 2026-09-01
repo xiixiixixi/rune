@@ -9,7 +9,6 @@ struct ConfirmToolbarView: View {
     @State private var activeTool: AnnotationTool = .select
     @State private var swatch: AnnotationSwatch = .mustard
     @State private var widthRaw = 1
-    @State private var customColor = Color(red: 0.85, green: 0.64, blue: 0.25)
     @State private var canUndo = false
     @State private var ocrActive = false
     @State private var contentAnalysisState: CaptureContentAnalysisState = .analyzing
@@ -386,18 +385,6 @@ struct ConfirmToolbarView: View {
                             canvas?.updateSelectedAnnotation(swatch: color)
                         }
                     }
-
-                    ColorPicker("自定义颜色", selection: $customColor, supportsOpacity: false)
-                        .labelsHidden()
-                        .scaleEffect(0.68)
-                        .frame(width: 24, height: 32)
-                        .help("自定义标注颜色")
-                        .onChange(of: customColor) { _, newColor in
-                            let custom = AnnotationSwatch.custom(from: newColor)
-                            swatch = custom
-                            canvas?.selectedSwatch = custom
-                            canvas?.updateSelectedAnnotation(swatch: custom)
-                        }
                 }
             }
 

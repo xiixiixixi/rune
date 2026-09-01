@@ -997,7 +997,7 @@ private struct GeneralSettingsPreview: View {
         ) {
             VStack(alignment: .leading, spacing: 0) {
                 DefaultConfigPreview(config: config)
-                    .frame(height: 184)
+                    .frame(height: 198)
                     .padding(.horizontal, 2)
                     .padding(.top, 18)
 
@@ -1103,7 +1103,7 @@ private struct InlineBackgroundPicker: View {
     @Binding var selectedStyle: BackgroundStyle
 
     var body: some View {
-        VStack(spacing: 9) {
+        VStack(spacing: 10) {
             AppearanceSwatchGrid("颜色") {
                 noneButton
 
@@ -1135,14 +1135,14 @@ private struct InlineBackgroundPicker: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .fill(Color.white)
-                    .frame(width: 18, height: 18)
+                    .frame(width: 20, height: 20)
                 Path { path in
-                    path.move(to: CGPoint(x: 16, y: 2))
-                    path.addLine(to: CGPoint(x: 2, y: 16))
+                    path.move(to: CGPoint(x: 18, y: 2))
+                    path.addLine(to: CGPoint(x: 2, y: 18))
                 }
                 .stroke(RuneTheme.signal.opacity(0.75), lineWidth: 1.25)
             }
-            .frame(width: 18, height: 18)
+            .frame(width: 20, height: 20)
             .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
@@ -1166,7 +1166,7 @@ private struct InlineBackgroundPicker: View {
         } label: {
             Circle()
                 .fill(color.color)
-                .frame(width: 18, height: 18)
+                .frame(width: 20, height: 20)
                 .overlay(
                     Circle()
                         .strokeBorder(selectionStroke(isSelected: isSelected), lineWidth: selectionWidth(isSelected: isSelected))
@@ -1190,7 +1190,7 @@ private struct InlineBackgroundPicker: View {
         } label: {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .fill(preset.swiftUIGradient)
-                .frame(width: 24, height: 18)
+                .frame(width: 30, height: 20)
                 .overlay(
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .strokeBorder(selectionStroke(isSelected: isSelected), lineWidth: selectionWidth(isSelected: isSelected))
@@ -1221,7 +1221,7 @@ private struct InlineBackgroundPicker: View {
                     Rectangle().fill(.quaternary)
                 }
             }
-            .frame(width: 26, height: 20)
+            .frame(width: 30, height: 22)
             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
@@ -1258,7 +1258,7 @@ private struct InlineBackgroundPicker: View {
                     }
                 }
             }
-            .frame(width: 26, height: 20)
+            .frame(width: 30, height: 22)
             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
@@ -1296,7 +1296,7 @@ private struct AppearanceSwatchGrid<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     private let columns = Array(
-        repeating: GridItem(.flexible(), spacing: 4),
+        repeating: GridItem(.flexible(), spacing: 6),
         count: 8
     )
 
@@ -1309,12 +1309,12 @@ private struct AppearanceSwatchGrid<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(label)
                 .font(RuneFont.swiftUI(size: 9.5, weight: .medium))
                 .foregroundStyle(RuneTheme.textMuted)
 
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 4) {
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 6) {
                 content()
             }
         }
@@ -1453,94 +1453,177 @@ private struct CaptureResultPreview: View {
     let dismissDelay: Double
 
     var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: overlayPosition == .bottomRight ? .bottomTrailing : .bottomLeading) {
-                Group {
-                    if let image = BundledBackgrounds.asset(byID: SettingsPreviewSample.assetID)?.image {
-                        Image(nsImage: image)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } else {
-                        RuneTheme.paperControl
-                    }
-                }
-                .frame(width: proxy.size.width, height: proxy.size.height)
-                .clipped()
+        VStack(spacing: 0) {
+            HStack(spacing: 5) {
+                Circle().fill(Color.white.opacity(0.22)).frame(width: 6, height: 6)
+                Circle().fill(Color.white.opacity(0.14)).frame(width: 6, height: 6)
+                Circle().fill(Color.white.opacity(0.10)).frame(width: 6, height: 6)
 
-                if timer != .off {
-                    Label("按下快捷键后 \(timer.label) 截图", systemImage: "timer")
-                        .font(RuneFont.swiftUI(size: 10, weight: .semibold))
-                        .foregroundStyle(RuneTheme.chromeText)
-                        .padding(.horizontal, 10)
-                        .frame(height: 30)
-                        .background(
-                            RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
-                                .fill(RuneTheme.chromeBase.opacity(0.88))
-                        )
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                        .padding(14)
-                }
+                Spacer()
 
-                VStack(spacing: 0) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(RuneTheme.chromeBlue)
-                        Text("截图已保存")
-                            .font(RuneFont.swiftUI(size: 10, weight: .semibold))
-                            .foregroundStyle(RuneTheme.chromeText)
-                        Spacer(minLength: 0)
-                        Text("\(Int(dismissDelay)) 秒")
-                            .font(RuneFont.mono(size: 8, weight: .medium))
-                            .foregroundStyle(RuneTheme.chromeMuted)
-                    }
-                    .padding(.horizontal, 9)
-                    .frame(height: 30)
+                Text("截图完成 · 桌面预览")
+                    .font(RuneFont.mono(size: 8.5, weight: .medium))
+                    .foregroundStyle(RuneTheme.chromeMuted)
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 28)
+            .background(RuneTheme.chromeElevated)
 
+            GeometryReader { proxy in
+                let cardWidth = min(206, proxy.size.width - 28)
+
+                ZStack(alignment: overlayPosition == .bottomRight ? .bottomTrailing : .bottomLeading) {
                     Group {
                         if let image = BundledBackgrounds.asset(byID: SettingsPreviewSample.assetID)?.image {
                             Image(nsImage: image)
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
                         } else {
-                            RuneTheme.chromeBase
+                            RuneTheme.paperControl
                         }
                     }
-                    .frame(width: 154, height: 78)
+                    .frame(width: proxy.size.width, height: proxy.size.height)
                     .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
 
-                    HStack(spacing: 8) {
-                        Label("复制", systemImage: "doc.on.doc")
-                            .font(RuneFont.swiftUI(size: 9, weight: .medium))
-                            .foregroundStyle(RuneTheme.primaryOnFill)
-                            .padding(.horizontal, 10)
-                            .frame(height: 24)
+                    if timer != .off {
+                        Label("\(timer.label) 后截图", systemImage: "timer")
+                            .font(RuneFont.swiftUI(size: 9.5, weight: .semibold))
+                            .foregroundStyle(RuneTheme.chromeText)
+                            .padding(.horizontal, 9)
+                            .frame(height: 28)
                             .background(
                                 RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
-                                    .fill(RuneTheme.primaryFill)
+                                    .fill(RuneTheme.chromeBase.opacity(0.90))
                             )
-
-                        Spacer(minLength: 0)
-
-                        Image(systemName: "pin")
-                        Image(systemName: "pencil")
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                            .padding(12)
                     }
-                    .font(RuneFont.swiftUI(size: 9, weight: .semibold))
-                    .foregroundStyle(RuneTheme.chromeMuted)
-                    .padding(.horizontal, 9)
-                    .frame(height: 36)
+
+                    VStack(spacing: 0) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(RuneTheme.chromeBlue)
+                            Text("截图已保存")
+                                .font(RuneFont.swiftUI(size: 10, weight: .semibold))
+                                .foregroundStyle(RuneTheme.chromeText)
+                            Spacer(minLength: 0)
+                            Text("\(Int(dismissDelay)) 秒")
+                                .font(RuneFont.mono(size: 8, weight: .medium))
+                                .foregroundStyle(RuneTheme.chromeMuted)
+                        }
+                        .padding(.horizontal, 10)
+                        .frame(height: 32)
+
+                        Group {
+                            if let image = BundledBackgrounds.asset(byID: SettingsPreviewSample.assetID)?.image {
+                                Image(nsImage: image)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                            } else {
+                                RuneTheme.chromeBase
+                            }
+                        }
+                        .frame(width: cardWidth - 20, height: 92)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+                        HStack(spacing: 9) {
+                            Label("复制", systemImage: "doc.on.doc")
+                                .font(RuneFont.swiftUI(size: 9, weight: .medium))
+                                .foregroundStyle(RuneTheme.primaryOnFill)
+                                .padding(.horizontal, 10)
+                                .frame(height: 25)
+                                .background(
+                                    RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
+                                        .fill(RuneTheme.primaryFill)
+                                )
+
+                            Spacer(minLength: 0)
+
+                            Image(systemName: "pin")
+                            Image(systemName: "pencil")
+                        }
+                        .font(RuneFont.swiftUI(size: 9, weight: .semibold))
+                        .foregroundStyle(RuneTheme.chromeMuted)
+                        .padding(.horizontal, 10)
+                        .frame(height: 39)
+                    }
+                    .frame(width: cardWidth)
+                    .background(RuneTheme.chromeElevated, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(RuneTheme.chromeLine, lineWidth: 1)
+                    )
+                    .shadow(color: .black.opacity(0.20), radius: 10, y: 5)
+                    .padding(14)
                 }
-                .frame(width: 174)
-                .background(RuneTheme.chromeElevated, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(RuneTheme.chromeLine, lineWidth: 1)
-                )
-                .shadow(color: .black.opacity(0.20), radius: 10, y: 5)
-                .padding(16)
+                .frame(width: proxy.size.width, height: proxy.size.height)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+private struct SettingsPreviewStatusRow: View {
+    let systemImage: String
+    let title: String
+    let value: String
+    var valueColor: Color = RuneTheme.textPrimary
+    var showsDivider = true
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .font(RuneFont.swiftUI(size: 11, weight: .medium))
+                .foregroundStyle(RuneTheme.textMuted)
+                .frame(width: 18)
+
+            Text(title)
+                .font(RuneFont.swiftUI(size: 10.5, weight: .medium))
+                .foregroundStyle(RuneTheme.textSecondary)
+
+            Spacer(minLength: 10)
+
+            Text(value)
+                .font(RuneFont.mono(size: 10, weight: .medium))
+                .foregroundStyle(valueColor)
+                .lineLimit(1)
+        }
+        .frame(height: 42)
+        .overlay(alignment: .bottom) {
+            if showsDivider {
+                Rectangle()
+                    .fill(Color.white.opacity(0.10))
+                    .frame(height: 1)
+            }
+        }
+    }
+}
+
+private struct SettingsPreviewFlow: View {
+    let steps: [String]
+
+    var body: some View {
+        HStack(spacing: 7) {
+            ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                Text(step)
+                    .font(RuneFont.swiftUI(size: 9.5, weight: .medium))
+                    .foregroundStyle(index == 1 ? RuneTheme.textPrimary : RuneTheme.textMuted)
+                    .lineLimit(1)
+
+                if index < steps.count - 1 {
+                    Image(systemName: "chevron.right")
+                        .font(RuneFont.swiftUI(size: 7.5, weight: .semibold))
+                        .foregroundStyle(RuneTheme.textMuted.opacity(0.7))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 14)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color.white.opacity(0.12))
+                .frame(height: 1)
         }
     }
 }
@@ -1691,20 +1774,43 @@ struct CaptureSettingsTab: View {
                         overlayPosition: overlayPosition.wrappedValue,
                         dismissDelay: overlayDismissDelay
                     )
-                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                    .frame(height: 300)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
                     )
                     .padding(.top, 22)
 
-                    Spacer(minLength: 26)
+                    VStack(spacing: 0) {
+                        SettingsPreviewStatusRow(
+                            systemImage: "timer",
+                            title: "开始截图",
+                            value: selfTimerDelay.wrappedValue == .off
+                                ? "立即"
+                                : selfTimerDelay.wrappedValue.label
+                        )
+                        SettingsPreviewStatusRow(
+                            systemImage: "rectangle.inset.bottomright.filled",
+                            title: "悬浮位置",
+                            value: overlayPosition.wrappedValue == .bottomRight
+                                ? "右下角"
+                                : "左下角"
+                        )
+                        SettingsPreviewStatusRow(
+                            systemImage: "clock",
+                            title: "自动收起",
+                            value: "\(Int(overlayDismissDelay)) 秒",
+                            valueColor: RuneTheme.cyan,
+                            showsDivider: false
+                        )
+                    }
+                    .padding(.top, 12)
 
-                    Text("这里展示的是悬浮预览的真实位置、停留时间和操作结构。")
-                        .font(RuneFont.swiftUI(size: 10.5))
-                        .foregroundStyle(RuneTheme.textSecondary)
-                        .lineSpacing(3)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 18)
+
+                    SettingsPreviewFlow(
+                        steps: ["完成截图", "悬浮操作", "自动收起"]
+                    )
                 }
                 .frame(maxHeight: .infinity)
             }
@@ -1782,74 +1888,118 @@ private struct RecordingResultPreview: View {
     let captureAudio: Bool
 
     var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .bottom) {
-                Group {
-                    if let image = BundledBackgrounds.asset(byID: SettingsPreviewSample.assetID)?.image {
-                        Image(nsImage: image)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } else {
-                        RuneTheme.paperControl
+        VStack(spacing: 0) {
+            HStack(spacing: 7) {
+                Circle()
+                    .fill(RuneTheme.signal)
+                    .frame(width: 7, height: 7)
+                Text("正在录制")
+                    .font(RuneFont.swiftUI(size: 9.5, weight: .semibold))
+                    .foregroundStyle(RuneTheme.chromeText)
+
+                Spacer()
+
+                Text("00:08")
+                    .font(RuneFont.mono(size: 9.5, weight: .medium))
+                    .foregroundStyle(RuneTheme.chromeMuted)
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 30)
+            .background(RuneTheme.chromeElevated)
+
+            GeometryReader { proxy in
+                ZStack(alignment: .bottom) {
+                    Group {
+                        if let image = BundledBackgrounds.asset(byID: SettingsPreviewSample.assetID)?.image {
+                            Image(nsImage: image)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                        } else {
+                            RuneTheme.paperControl
+                        }
                     }
-                }
-                .frame(width: proxy.size.width, height: proxy.size.height)
-                .clipped()
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped()
 
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(RuneTheme.signal)
-                        .frame(width: 7, height: 7)
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(RuneTheme.signal)
+                            .frame(width: 7, height: 7)
 
-                    Text("录制")
-                        .font(RuneFont.swiftUI(size: 9.5, weight: .semibold))
-                        .foregroundStyle(RuneTheme.chromeText)
-                        .lineLimit(1)
+                        Text("REC")
+                            .font(RuneFont.mono(size: 9.5, weight: .semibold))
+                            .foregroundStyle(RuneTheme.chromeText)
 
-                    Text("00:08")
-                        .font(RuneFont.mono(size: 9.5, weight: .medium))
-                        .foregroundStyle(RuneTheme.chromeText)
-                        .lineLimit(1)
+                        Spacer()
 
-                    Spacer()
+                        Text("\(fps) FPS")
+                            .font(RuneFont.mono(size: 8.5, weight: .medium))
+                            .foregroundStyle(RuneTheme.chromeMuted)
+                            .lineLimit(1)
 
-                    Text("\(fps) FPS")
-                        .font(RuneFont.mono(size: 8.5, weight: .medium))
-                        .foregroundStyle(RuneTheme.chromeMuted)
-                        .lineLimit(1)
+                        Image(systemName: captureAudio ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                            .accessibilityLabel(captureAudio ? "录制系统声音" : "不录制系统声音")
 
-                    if captureAudio {
-                        Image(systemName: "speaker.wave.2.fill")
-                            .accessibilityLabel("录制系统声音")
-                    } else {
-                        Image(systemName: "speaker.slash.fill")
-                            .accessibilityLabel("不录制系统声音")
+                        Image(systemName: showCursor ? "cursorarrow" : "cursorarrow.slash")
+                            .accessibilityLabel(showCursor ? "录制鼠标指针" : "不录制鼠标指针")
                     }
+                    .font(RuneFont.swiftUI(size: 10, weight: .medium))
+                    .foregroundStyle(RuneTheme.chromeText)
+                    .padding(.horizontal, 10)
+                    .frame(height: 38)
+                    .background(
+                        RuneTheme.chromeBase.opacity(0.92),
+                        in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    )
+                    .padding(12)
 
                     if showCursor {
                         Image(systemName: "cursorarrow")
-                            .accessibilityLabel("录制鼠标指针")
+                            .font(RuneFont.swiftUI(size: 25, weight: .medium))
+                            .foregroundStyle(.white)
+                            .shadow(color: .black.opacity(0.45), radius: 2, y: 1)
+                            .offset(x: 74, y: -82)
+                            .accessibilityHidden(true)
                     }
                 }
-                .font(RuneFont.swiftUI(size: 10, weight: .medium))
-                .foregroundStyle(RuneTheme.chromeText)
-                .padding(.horizontal, 10)
-                .frame(height: 38)
-                .background(RuneTheme.chromeBase.opacity(0.92), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                .padding(12)
-
-                if showCursor {
-                    Image(systemName: "cursorarrow")
-                        .font(RuneFont.swiftUI(size: 25, weight: .medium))
-                        .foregroundStyle(.white)
-                        .shadow(color: .black.opacity(0.45), radius: 2, y: 1)
-                        .offset(x: 74, y: -72)
-                        .accessibilityHidden(true)
-                }
+                .frame(width: proxy.size.width, height: proxy.size.height)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+private struct RecordingPreviewTimeline: View {
+    var body: some View {
+        VStack(spacing: 7) {
+            HStack {
+                Text("00:00")
+                Spacer()
+                Text("00:08")
+            }
+            .font(RuneFont.mono(size: 8.5, weight: .medium))
+            .foregroundStyle(RuneTheme.textMuted)
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.12))
+                        .frame(height: 3)
+
+                    Capsule()
+                        .fill(RuneTheme.cyan.opacity(0.82))
+                        .frame(width: proxy.size.width * 0.56, height: 3)
+
+                    Circle()
+                        .fill(RuneTheme.textPrimary)
+                        .frame(width: 7, height: 7)
+                        .offset(x: max(0, proxy.size.width * 0.56 - 3.5))
+                }
+                .frame(maxHeight: .infinity, alignment: .center)
+            }
+            .frame(height: 8)
+        }
+        .padding(.vertical, 12)
     }
 }
 
@@ -1925,20 +2075,40 @@ struct RecordingSettingsTab: View {
                         showCursor: showCursor,
                         captureAudio: captureAudio
                     )
-                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                    .frame(height: 278)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
                     )
                     .padding(.top, 22)
 
-                    Spacer(minLength: 26)
+                    RecordingPreviewTimeline()
 
-                    Text("录制条会直接反映帧率、系统声音与鼠标指针状态。")
-                        .font(RuneFont.swiftUI(size: 10.5))
-                        .foregroundStyle(RuneTheme.textSecondary)
-                        .lineSpacing(3)
-                        .fixedSize(horizontal: false, vertical: true)
+                    VStack(spacing: 0) {
+                        SettingsPreviewStatusRow(
+                            systemImage: "film.stack",
+                            title: "画面流畅度",
+                            value: "\(recordingFPS) FPS",
+                            valueColor: RuneTheme.cyan
+                        )
+                        SettingsPreviewStatusRow(
+                            systemImage: "cursorarrow",
+                            title: "鼠标指针",
+                            value: showCursor ? "保留" : "隐藏"
+                        )
+                        SettingsPreviewStatusRow(
+                            systemImage: captureAudio ? "speaker.wave.2" : "speaker.slash",
+                            title: "系统声音",
+                            value: captureAudio ? "录制" : "关闭",
+                            showsDivider: false
+                        )
+                    }
+
+                    Spacer(minLength: 18)
+
+                    SettingsPreviewFlow(
+                        steps: ["开始录制", "实时状态", "完成导出"]
+                    )
                 }
                 .frame(maxHeight: .infinity)
             }
