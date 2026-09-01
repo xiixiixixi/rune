@@ -54,22 +54,7 @@ struct ConfirmToolbarView: View {
             FreezeSeparator()
 
             captureContentMenu
-
-            FreezeToolButton(
-                title: "长图",
-                help: "沿用当前选区开始滚动截图",
-                icon: "arrow.down.to.line.compact"
-            ) {
-                controller.requestScrollCapture()
-            }
-
-            FreezeToolButton(
-                title: "连拍",
-                help: "沿用当前选区，连续、定数或延时拍摄",
-                icon: "square.stack.3d.up.fill"
-            ) {
-                controller.requestBurstCapture()
-            }
+            continuedCaptureMenu
 
             FreezeSeparator()
 
@@ -149,6 +134,31 @@ struct ConfirmToolbarView: View {
         .help("理解截图内容：复制文字、打开链接或一键打码")
         .accessibilityLabel("截图内容")
         .accessibilityHint("查看截图中识别到的文字、链接、二维码和敏感信息")
+    }
+
+    /// 飞书把截图、滚动截图、录屏和 OCR 收在一个捕获入口里；确认台同样只保留
+    /// 一个“继续捕获”入口，避免长图和连拍挤占主标注与完成动作的视觉层级。
+    private var continuedCaptureMenu: some View {
+        Menu {
+            Button("滚动长图", systemImage: "arrow.down.to.line.compact") {
+                controller.requestScrollCapture()
+            }
+            Button("连续截图", systemImage: "square.stack.3d.up") {
+                controller.requestBurstCapture()
+            }
+        } label: {
+            FreezeContentLabel(
+                title: "更多",
+                icon: "ellipsis.circle",
+                isActive: false,
+                hasResult: false
+            )
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("继续使用当前选区：滚动长图或连续截图")
+        .accessibilityLabel("更多捕获方式")
+        .accessibilityHint("沿用当前选区开始滚动长图或连续截图")
     }
 
     @ViewBuilder

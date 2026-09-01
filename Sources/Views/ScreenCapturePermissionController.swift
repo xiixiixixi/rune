@@ -45,6 +45,7 @@ final class ScreenCapturePermissionController: NSObject, NSWindowDelegate {
     private var openedSystemSettings = false
     private var suppressGuideThisLaunch = false
     private var auditForcesDenied = false
+    private let nativePromptAttemptedKey = "rune_screen_capture_native_prompt_attempted"
 
     private override init() {}
 
@@ -68,13 +69,22 @@ final class ScreenCapturePermissionController: NSObject, NSWindowDelegate {
         // 用户已经关掉过本轮引导后，本次启动不再打扰；重启后仍会重新检测。
         if suppressGuideThisLaunch { return false }
 
-        // 先走系统原生授权提示：这样 Rune 会出现在系统设置的权限列表中。
-        if !requestedSystemPromptThisLaunch {
+        // 系统原生授权框只在用户第一次主动截图时请求一次。这个状态跨启动保存：
+        // 被拒绝后反复调用 CGRequestScreenCaptureAccess 会让 Rune 每次启动/截图都
+        // 继续弹同一个系统框。后续主动截图改为展示 Rune 自己的单一引导，由用户
+        // 决定何时打开系统设置。
+        let hasAttemptedNativePrompt = UserDefaults.standard.bool(
+            forKey: nativePromptAttemptedKey
+        )
+        if !requestedSystemPromptThisLaunch, !hasAttemptedNativePrompt {
             requestedSystemPromptThisLaunch = true
+            UserDefaults.standard.set(true, forKey: nativePromptAttemptedKey)
             systemRequestReportedGranted = CGRequestScreenCaptureAccess()
             if systemRequestReportedGranted, CGPreflightScreenCaptureAccess() {
                 return true
             }
+            // 原生提示刚结束时不再紧接着叠第二个 Rune 引导窗。
+            return false
         }
 
         return await withCheckedContinuation { continuation in

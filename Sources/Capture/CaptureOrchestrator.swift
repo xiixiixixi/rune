@@ -192,6 +192,9 @@ final class CaptureOrchestrator {
     /// 后台预热截图引擎（不阻塞当前流程）。
     /// 屏幕清单查询 0.5–1.5s 是截图卡顿的元凶；在 overlay 交互期间提前做完。
     private func prewarmEngineInBackground() {
+        // 未授权时查询 SCShareableContent 会触发 macOS 原生录屏授权框。预热只能
+        // 发生在已经授权之后，绝不能因为启动 Rune 或 25 秒保温轮询打扰用户。
+        guard CGPreflightScreenCaptureAccess() else { return }
         Task.detached(priority: .userInitiated) { [sckEngine] in
             try? await sckEngine.prewarm()
         }
@@ -203,12 +206,14 @@ final class CaptureOrchestrator {
     private var keepAliveTask: Task<Void, Never>?
 
     func prewarm() {
+        guard CGPreflightScreenCaptureAccess() else { return }
         prewarmEngineInBackground()
         guard keepAliveTask == nil else { return }
         keepAliveTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(25))
                 guard !Task.isCancelled else { break }
+                guard CGPreflightScreenCaptureAccess() else { continue }
                 self?.prewarmEngineInBackground()
             }
         }

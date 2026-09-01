@@ -35,8 +35,9 @@ final class ShortcutService {
 
         // M1 §5 默认键位：区域 ⌘⇧E、全屏 ⌘⇧S、窗口 ⌘⇧W（不再覆盖系统截图快捷键 ⌘⇧3/4/5）
         static let defaultRegion      = Shortcut(keyCode: UInt32(kVK_ANSI_E), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
-        // 单一主入口（飞书/钉钉习惯）：⌘⇧A 截图——功能在截完之后展示
-        static let defaultMain        = Shortcut(keyCode: UInt32(kVK_ANSI_A), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
+        // 单一主入口使用 ⌘⇧E，避开飞书等常驻应用普遍占用的 ⌘⇧A。
+        // 若用户曾主动自定义过快捷键，loadShortcut 会继续尊重其保存值。
+        static let defaultMain        = Shortcut(keyCode: UInt32(kVK_ANSI_E), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
         static let defaultFullscreen  = Shortcut(keyCode: UInt32(kVK_ANSI_S), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
         static let defaultWindow      = Shortcut(keyCode: UInt32(kVK_ANSI_W), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
         static let defaultOCR         = Shortcut(keyCode: UInt32(kVK_ANSI_O), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
