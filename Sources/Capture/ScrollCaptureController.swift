@@ -373,11 +373,11 @@ final class ScrollCaptureController {
             wheel3: 0
         ) else { return }
         event.location = center
-        if let targetProcessID {
-            event.postToPid(targetProcessID)
-        } else {
-            event.post(tap: .cghidEventTap)
-        }
+        // 滚轮事件不能用 postToPid：Chromium / Electron 的滚动区域不会处理
+        // 这种进程定向事件，界面会显示“自动滚动中”但页面位置始终不变。
+        // 目标应用已在开始和恢复时激活，光标也已锁到选区中心，因此从 HID
+        // 事件流投递，和真实触控板/鼠标滚动的命中路径一致。
+        event.post(tap: .cghidEventTap)
     }
 
     private func switchToManual(reason: String) {
