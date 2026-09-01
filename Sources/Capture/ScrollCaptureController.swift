@@ -3,8 +3,27 @@ import CaptureKit
 import CaptureKitSCK
 import SwiftUI
 
-/// 滚动截图：用户框选一个滚动区域后，Rune定时抓取该区域；用户向下滚动页面，
-/// 程序自动找出相邻画面的重叠部分，只把新出现的底部内容接到长图末尾。
+enum ScrollCaptureMode: String {
+    case automatic
+    case manual
+
+    var label: String {
+        switch self {
+        case .automatic: return "自动"
+        case .manual: return "手动"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .automatic: return "arrow.down.to.line.compact"
+        case .manual: return "hand.draw"
+        }
+    }
+}
+
+/// 滚动截图：框选滚动内容后优先自动向下滚动，无法注入滚动事件时自动降级为
+/// 手动模式。两种模式都用相邻帧重叠检测，只追加真正新出现的底部内容。
 @MainActor
 @Observable
 final class ScrollCaptureController {
@@ -15,23 +34,39 @@ final class ScrollCaptureController {
     private(set) var capturedFrameCount = 0
     private(set) var stitchedHeight = 0
     private(set) var statusMessage = "请选择要滚动的区域"
+    private(set) var mode: ScrollCaptureMode = .automatic
+    private(set) var isPaused = false
+    private(set) var isFinishing = false
 
     private let engine = SCKStillCaptureBackend()
-    /// 半自动收尾：用户手动滚，静止（到底）约 2.8 秒自动生成长图。
-    /// 注：原"程序代滚"方案经实测不可行——合成滚轮事件在本机对所有应用均无效
-    /// （原生窗口 0% 响应，三组对照验证），保留用户滚+静止自动收。
-    private var autoScroll = false
-    private var staleRounds = 0
     private var captureTask: Task<Void, Never>?
     private var targetRect: CGRect?
+    private var targetProcessID: pid_t?
     private var previousImage: CGImage?
     private var segments: [CGImage] = []
     private var scaleFactor: CGFloat = 1
     private var displayID: CGDirectDisplayID?
+    private var unchangedRounds = 0
+    private var mismatchRounds = 0
+    private var hasObservedGrowth = false
+    private var originalCursorLocation: CGPoint?
+    private var cursorHiddenOnDisplay: CGDirectDisplayID?
+
+    private enum FrameCaptureResult {
+        case appended
+        case unchanged
+        case mismatch
+        case limitReached
+        case failed
+    }
 
     private init() {}
 
-    func start(on screen: NSScreen? = nil, presetRegion: CGRect? = nil) async {
+    func start(
+        on screen: NSScreen? = nil,
+        presetRegion: CGRect? = nil,
+        source: CaptureSource? = nil
+    ) async {
         guard !isActive, !isPreparing else { return }
         isPreparing = true
         defer { isPreparing = false }
@@ -42,41 +77,77 @@ final class ScrollCaptureController {
 
         // 预设选区（从确认画面「滚动长图」转入）时跳过框选
         var pointsRect = presetRegion
+        var captureSource = source
         if pointsRect == nil {
             statusMessage = "请框选需要滚动的内容"
             guard let selection = await RegionSelectionOverlay().selectRegion() else { return }
             pointsRect = selection.pointsRect
+            captureSource = selection.source
         }
         guard let pointsRect else { return }
 
+        targetRect = pointsRect
+        targetProcessID = captureSource?.processID
+        mode = UIElementDetector.isTrusted && targetProcessID != nil ? .automatic : .manual
+        isActive = true
+        isPaused = false
+        isFinishing = false
+        capturedFrameCount = 0
+        stitchedHeight = 0
+        statusMessage = mode == .automatic
+            ? "区域已锁定，正在准备自动滚动"
+            : "区域已锁定，请在选区内向下滚动"
+
+        ScrollCaptureStatusBarController.shared.show(on: screen)
+        activateTargetApplication()
+
+        // 等待目标应用重新成为前台，也确保选区/确认蒙层已从 WindowServer 退场。
+        try? await Task.sleep(for: .milliseconds(180))
+        guard isActive else { return }
+
         do {
             let first = try await engine.capture(.region(pointsRect))
-            targetRect = pointsRect
+            // 首帧抓取期间用户仍可按 Esc；若已取消，不得把迟到的帧重新写回状态。
+            guard isActive else { return }
             previousImage = first.image
             segments = [first.image]
             scaleFactor = first.scaleFactor
             displayID = first.displayID
             capturedFrameCount = 1
             stitchedHeight = first.image.height
-            isActive = true
-            statusMessage = "请缓慢向下滚动，完成后点“生成长图”"
-            ScrollCaptureStatusBarController.shared.show(on: screen)
+            if mode == .automatic {
+                prepareAutomaticCursor()
+                statusMessage = "自动向下滚动中；Esc 可提前完成"
+            } else {
+                statusMessage = manualCaptureInstruction
+            }
             beginPolling()
         } catch {
+            isActive = false
+            ScrollCaptureStatusBarController.shared.dismiss()
+            restoreAutomaticCursor()
+            reset()
             statusMessage = "滚动截图启动失败"
             showError("无法开始滚动截图：\(error.localizedDescription)")
         }
     }
 
     func stop() async {
-        guard isActive else { return }
-        autoScroll = false
+        guard isActive, !isFinishing else { return }
+        guard !segments.isEmpty else {
+            cancel()
+            return
+        }
+        isFinishing = true
         isActive = false
         captureTask?.cancel()
         captureTask = nil
+        restoreAutomaticCursor()
+        statusMessage = "正在生成长图…"
         ScrollCaptureStatusBarController.shared.dismiss()
 
         guard let image = renderSegments() else {
+            isFinishing = false
             reset()
             showError("长图生成失败，请重试。")
             return
@@ -92,38 +163,119 @@ final class ScrollCaptureController {
     }
 
     func cancel() {
-        autoScroll = false
         captureTask?.cancel()
         captureTask = nil
         isActive = false
+        isFinishing = false
+        restoreAutomaticCursor()
         ScrollCaptureStatusBarController.shared.dismiss()
         reset()
     }
 
+    func togglePause() {
+        guard isActive, !isFinishing else { return }
+        isPaused.toggle()
+        statusMessage = isPaused
+            ? "已暂停；画面不会继续滚动或拼接"
+            : (mode == .automatic
+                ? "自动向下滚动中；Esc 可提前完成"
+                : manualCaptureInstruction)
+    }
+
+    func toggleMode() {
+        guard isActive, !isFinishing else { return }
+        if mode == .automatic {
+            switchToManual(reason: "已切换为手动滚动；停顿不会自动结束")
+            return
+        }
+
+        guard UIElementDetector.isTrusted, targetProcessID != nil else {
+            UIElementDetector.requestAccess()
+            statusMessage = "自动滚动需要辅助功能权限；当前继续手动捕获"
+            return
+        }
+
+        mode = .automatic
+        isPaused = false
+        unchangedRounds = 0
+        mismatchRounds = 0
+        hasObservedGrowth = false
+        prepareAutomaticCursor()
+        activateTargetApplication()
+        statusMessage = "自动向下滚动中；Esc 可提前完成"
+    }
+
+    func resumeAfterDialog() {
+        guard isActive else { return }
+        activateTargetApplication()
+    }
+
     private func beginPolling() {
-        staleRounds = 0
-        statusMessage = "请向下滚动，到底后自动生成长图"
+        unchangedRounds = 0
+        mismatchRounds = 0
+        hasObservedGrowth = false
         captureTask?.cancel()
         captureTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(350))
                 guard !Task.isCancelled, let self, self.isActive else { break }
-                let grew = await self.captureNextFrame()
-                // 连续 8 轮（≈2.8s）没有新内容 → 判定到底/用户停手，自动生成长图
-                if grew { self.staleRounds = 0 } else {
-                    self.staleRounds += 1
-                    if self.staleRounds >= 8 {
+
+                if self.isPaused {
+                    try? await Task.sleep(for: .milliseconds(180))
+                    continue
+                }
+
+                if self.mode == .automatic {
+                    self.postAutomaticScroll()
+                    try? await Task.sleep(for: .milliseconds(420))
+                } else {
+                    try? await Task.sleep(for: .milliseconds(260))
+                }
+                guard !Task.isCancelled, self.isActive else { break }
+
+                switch await self.captureNextFrame() {
+                case .appended:
+                    self.hasObservedGrowth = true
+                    self.unchangedRounds = 0
+                    self.mismatchRounds = 0
+
+                case .unchanged:
+                    guard self.mode == .automatic else { continue }
+                    self.unchangedRounds += 1
+                    if self.hasObservedGrowth, self.unchangedRounds >= 5 {
                         await self.stop()
-                        break
+                        return
+                    }
+                    if !self.hasObservedGrowth, self.unchangedRounds >= 5 {
+                        self.switchToManual(
+                            reason: "目标应用没有响应自动滚动，已切到手动模式"
+                        )
+                    }
+
+                case .mismatch:
+                    self.mismatchRounds += 1
+                    if self.mode == .automatic, self.mismatchRounds >= 3 {
+                        self.switchToManual(
+                            reason: "页面变化太快，已切到手动；请慢一点滚动"
+                        )
+                    } else if self.mode == .manual {
+                        self.statusMessage = "没有找到重叠区域；请稍微回滚后慢一点"
+                    }
+
+                case .limitReached:
+                    await self.stop()
+                    return
+
+                case .failed:
+                    if self.mode == .manual {
+                        self.statusMessage = "暂时没有抓到画面；可继续滚动或点完成"
                     }
                 }
             }
         }
     }
 
-    @discardableResult
-    private func captureNextFrame() async -> Bool {
-        guard let targetRect, let previousImage else { return false }
+    private func captureNextFrame() async -> FrameCaptureResult {
+        guard let targetRect, let previousImage else { return .failed }
         do {
             let next = try await engine.capture(.region(targetRect))
             guard next.image.width == previousImage.width,
@@ -133,7 +285,7 @@ final class ScrollCaptureController {
                   previousGray.width == currentGray.width,
                   previousGray.height == currentGray.height else {
                 statusMessage = "画面尺寸发生变化，请保持窗口大小不变"
-                return false
+                return .mismatch
             }
 
             guard let sampledRows = ScrollOverlapDetector.appendedRowCount(
@@ -142,17 +294,16 @@ final class ScrollCaptureController {
                 width: previousGray.width,
                 height: previousGray.height
             ) else {
-                statusMessage = "没有找到重叠内容，请滚动慢一点"
-                return false
+                return .mismatch
             }
-            guard sampledRows > 0 else { return false }   // 静止：无新内容
+            guard sampledRows > 0 else { return .unchanged }
 
             let appendedRows = max(1, Int(
                 (CGFloat(sampledRows) / CGFloat(previousGray.height) * CGFloat(next.image.height)).rounded()
             ))
-            guard stitchedHeight + appendedRows <= 60_000 else {
-                statusMessage = "长图已达到 60000 像素，请生成当前长图"
-                return false
+            guard stitchedHeight + appendedRows <= 100_000 else {
+                statusMessage = "长图已达到 100000 像素，正在生成当前内容"
+                return .limitReached
             }
             let cropRect = CGRect(
                 x: 0,
@@ -160,17 +311,82 @@ final class ScrollCaptureController {
                 width: next.image.width,
                 height: appendedRows
             )
-            guard let newBottom = next.image.cropping(to: cropRect) else { return false }
+            guard let newBottom = next.image.cropping(to: cropRect) else { return .failed }
             segments.append(newBottom)
             self.previousImage = next.image
             capturedFrameCount += 1
             stitchedHeight += appendedRows
-            statusMessage = "已拼接 \(capturedFrameCount) 屏，高度 \(stitchedHeight) 像素（到底自动完成）"
-            return true
+            statusMessage = mode == .automatic
+                ? "自动滚动中：已拼接 \(capturedFrameCount) 段"
+                : "手动滚动中：已拼接 \(capturedFrameCount) 段"
+            return .appended
         } catch {
-            statusMessage = "抓取画面失败，请稍后重试"
-            return false
+            return .failed
         }
+    }
+
+    private var targetRectCenter: CGPoint? {
+        targetRect.map { CGPoint(x: $0.midX, y: $0.midY) }
+    }
+
+    private var manualCaptureInstruction: String {
+        UIElementDetector.isTrusted
+            ? "请在选区内向下滚动；Esc 或“完成”收尾"
+            : "请在选区内向下滚动；点“完成”收尾"
+    }
+
+    private func activateTargetApplication() {
+        guard let targetProcessID,
+              let application = NSRunningApplication(processIdentifier: targetProcessID) else { return }
+        application.activate(options: [.activateAllWindows])
+    }
+
+    private func prepareAutomaticCursor() {
+        guard originalCursorLocation == nil, let center = targetRectCenter else { return }
+        originalCursorLocation = CGEvent(source: nil)?.location
+        CGWarpMouseCursorPosition(center)
+        if let displayID, CGDisplayHideCursor(displayID) == .success {
+            cursorHiddenOnDisplay = displayID
+        }
+    }
+
+    private func restoreAutomaticCursor() {
+        if let originalCursorLocation {
+            CGWarpMouseCursorPosition(originalCursorLocation)
+        }
+        if let cursorHiddenOnDisplay {
+            CGDisplayShowCursor(cursorHiddenOnDisplay)
+        }
+        originalCursorLocation = nil
+        cursorHiddenOnDisplay = nil
+    }
+
+    private func postAutomaticScroll() {
+        guard let center = targetRectCenter else { return }
+        let source = CGEventSource(stateID: .hidSystemState)
+        guard let event = CGEvent(
+            scrollWheelEvent2Source: source,
+            units: .pixel,
+            wheelCount: 1,
+            wheel1: -140,
+            wheel2: 0,
+            wheel3: 0
+        ) else { return }
+        event.location = center
+        if let targetProcessID {
+            event.postToPid(targetProcessID)
+        } else {
+            event.post(tap: .cghidEventTap)
+        }
+    }
+
+    private func switchToManual(reason: String) {
+        mode = .manual
+        unchangedRounds = 0
+        mismatchRounds = 0
+        restoreAutomaticCursor()
+        activateTargetApplication()
+        statusMessage = reason
     }
 
     private struct GrayImage {
@@ -236,10 +452,17 @@ final class ScrollCaptureController {
 
     private func reset(keepStatus: Bool = false) {
         targetRect = nil
+        targetProcessID = nil
         previousImage = nil
         segments.removeAll()
         capturedFrameCount = 0
         stitchedHeight = 0
+        unchangedRounds = 0
+        mismatchRounds = 0
+        hasObservedGrowth = false
+        mode = .automatic
+        isPaused = false
+        isFinishing = false
         if !keepStatus { statusMessage = "请选择要滚动的区域" }
     }
 }
@@ -248,6 +471,8 @@ final class ScrollCaptureController {
 final class ScrollCaptureStatusBarController {
     static let shared = ScrollCaptureStatusBarController()
     private var panel: NSPanel?
+    private var localKeyMonitor: Any?
+    private var globalKeyMonitor: Any?
 
     private init() {}
 
@@ -257,7 +482,7 @@ final class ScrollCaptureStatusBarController {
             .environment(\.colorScheme, .dark)
         let hosting = NSHostingView(rootView: view.runeTypography())
         // 状态变化时宽度保持不跳动，避免用户滚动过程中按钮来回移动。
-        let size = NSSize(width: 540, height: 60)
+        let size = NSSize(width: 620, height: 64)
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
@@ -276,25 +501,57 @@ final class ScrollCaptureStatusBarController {
         }
         panel.orderFrontRegardless()
         self.panel = panel
+        installEscapeMonitors()
     }
 
     func confirmAndCancel() {
+        // 警告框里的 Esc 表示继续，不能同时被全局监听器解释为生成长图。
+        removeEscapeMonitors()
         let count = ScrollCaptureController.shared.capturedFrameCount
         let alert = NSAlert()
         alert.messageText = "放弃这次滚动截图？"
         alert.informativeText = count > 1
-            ? "已经拼接的 \(count) 屏内容不会保存。"
+            ? "已经拼接的 \(count) 段内容不会保存。"
             : "当前画面不会保存。"
         alert.addButton(withTitle: "放弃")
         alert.addButton(withTitle: "继续滚动")
         alert.alertStyle = .warning
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        ScrollCaptureController.shared.cancel()
+        if alert.runModal() == .alertFirstButtonReturn {
+            ScrollCaptureController.shared.cancel()
+        } else {
+            installEscapeMonitors()
+            ScrollCaptureController.shared.resumeAfterDialog()
+        }
     }
 
     func dismiss() {
+        removeEscapeMonitors()
         panel?.orderOut(nil)
         panel = nil
+    }
+
+    private func installEscapeMonitors() {
+        removeEscapeMonitors()
+        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.keyCode == 53 else { return event }
+            Task { @MainActor in
+                await ScrollCaptureController.shared.stop()
+            }
+            return nil
+        }
+        globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
+            guard event.keyCode == 53 else { return }
+            Task { @MainActor in
+                await ScrollCaptureController.shared.stop()
+            }
+        }
+    }
+
+    private func removeEscapeMonitors() {
+        if let localKeyMonitor { NSEvent.removeMonitor(localKeyMonitor) }
+        if let globalKeyMonitor { NSEvent.removeMonitor(globalKeyMonitor) }
+        localKeyMonitor = nil
+        globalKeyMonitor = nil
     }
 }
 
@@ -307,8 +564,18 @@ private struct ScrollCaptureStatusBarView: View {
                 .help("滚动截图进行中")
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("正在拼接长图")
-                    .font(RuneFont.swiftUI(size: 12, weight: .semibold))
+                HStack(spacing: 7) {
+                    Text("滚动长图")
+                        .font(RuneFont.swiftUI(size: 12, weight: .semibold))
+
+                    Label(controller.mode.label, systemImage: controller.mode.systemImage)
+                        .font(RuneFont.swiftUI(size: 9.5, weight: .medium))
+                        .foregroundStyle(
+                            controller.mode == .automatic
+                                ? RuneTheme.cyan
+                                : RuneTheme.textSecondary
+                        )
+                }
                 Text(controller.statusMessage)
                     .font(RuneFont.swiftUI(size: 10.5))
                     .foregroundStyle(.secondary)
@@ -317,15 +584,32 @@ private struct ScrollCaptureStatusBarView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text("\(controller.capturedFrameCount) 屏")
-                .font(RuneFont.swiftUI(size: 13, weight: .semibold, design: .monospaced))
-                .monospacedDigit()
-                .frame(minWidth: 42, alignment: .trailing)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(controller.capturedFrameCount) 段")
+                    .font(RuneFont.mono(size: 11.5, weight: .semibold))
+                Text(heightText)
+                    .font(RuneFont.mono(size: 8.5, weight: .medium))
+                    .foregroundStyle(RuneTheme.textMuted)
+            }
+            .frame(minWidth: 70, alignment: .trailing)
 
             RuneMenu(
                 surface: .chrome,
                 entries: {
                     [
+                        .item(
+                            RuneMenuItem(
+                                controller.mode == .automatic
+                                    ? "切换为手动滚动"
+                                    : "切换为自动滚动",
+                                systemImage: controller.mode == .automatic
+                                    ? "hand.draw"
+                                    : "arrow.down.to.line.compact"
+                            ) {
+                                controller.toggleMode()
+                            }
+                        ),
+                        .divider,
                         .item(
                             RuneMenuItem("放弃这次长图…", systemImage: "trash", isDestructive: true) {
                                 ScrollCaptureStatusBarController.shared.confirmAndCancel()
@@ -341,7 +625,19 @@ private struct ScrollCaptureStatusBarView: View {
             }
             .help("更多滚动截图操作")
 
-            Spacer()
+            Button {
+                controller.togglePause()
+            } label: {
+                Image(systemName: controller.isPaused ? "play.fill" : "pause.fill")
+                    .font(RuneFont.swiftUI(size: 11, weight: .semibold))
+                    .foregroundStyle(RuneTheme.textPrimary)
+                    .frame(width: 30, height: 30)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(controller.capturedFrameCount == 0 || controller.isFinishing)
+            .help(controller.isPaused ? "继续滚动截图" : "暂停滚动截图")
+            .accessibilityLabel(controller.isPaused ? "继续滚动截图" : "暂停滚动截图")
 
             Button {
                 Task { await controller.stop() }
@@ -349,11 +645,20 @@ private struct ScrollCaptureStatusBarView: View {
                 RuneTheme.primaryButtonLabel("完成")
             }
             .buttonStyle(RuneTheme.RunePressStyle())
+            .disabled(controller.capturedFrameCount == 0 || controller.isFinishing)
             .help("结束滚动，把已抓的画面拼成一张长图")
         }
         .padding(.horizontal, 14)
         .frame(height: 60)
         .runeGlassSurface(cornerRadius: RuneTheme.barCorner, elevation: .floating)
         .accessibilityElement(children: .contain)
+    }
+
+    private var heightText: String {
+        guard controller.stitchedHeight > 0 else { return "准备中" }
+        if controller.stitchedHeight >= 10_000 {
+            return String(format: "%.1f 万 px", Double(controller.stitchedHeight) / 10_000)
+        }
+        return "\(controller.stitchedHeight) px"
     }
 }

@@ -312,12 +312,11 @@ final class RegionSelectionOverlay {
             frozenDisplayFrame: frozenFramesByDisplay[displayID]
         )
 
-        fireShutterPulse(in: rect, on: screen)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-            self.closeOverlays()
-        }
-        continuation?.resume(returning: selection)
-        continuation = nil
+        completeSelection(
+            selection,
+            shutterRect: rect,
+            on: screen
+        )
     }
 
     /// 单击命中窗口：整窗捕获（走 SCK desktopIndependentWindow，不带阴影）。
@@ -342,9 +341,40 @@ final class RegionSelectionOverlay {
             frozenDisplayFrame: frozenFramesByDisplay[displayID]
         )
 
-        closeOverlays()
-        continuation?.resume(returning: selection)
+        completeSelection(selection, shutterRect: nil, on: screen)
+    }
+
+    /// 先让选区蒙层真正退出窗口服务器，再恢复截图流程。
+    ///
+    /// 旧逻辑为了保留快门脉冲，延迟 80ms 才 `orderOut`，却立刻恢复
+    /// continuation；定格帧尚未回填时，后续实拍会偶发把灰色遮罩一起抓进去。
+    /// 这里把“关闭并等待两帧合成”变成恢复捕获的硬前置条件。
+    private func completeSelection(
+        _ selection: RegionSelection,
+        shutterRect: CGRect?,
+        on screen: NSScreen
+    ) {
+        guard let pendingContinuation = continuation else { return }
         continuation = nil
+
+        if let shutterRect {
+            fireShutterPulse(in: shutterRect, on: screen)
+        }
+
+        Task { @MainActor [weak self] in
+            if shutterRect != nil,
+               !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                try? await Task.sleep(for: .milliseconds(80))
+            }
+
+            self?.closeOverlays()
+            CATransaction.flush()
+
+            // `orderOut` 会立刻改变 AppKit 状态，但 ScreenCaptureKit 看到的是
+            // WindowServer 合成结果；预留约三帧，彻底避开退场竞态。
+            try? await Task.sleep(for: .milliseconds(50))
+            pendingContinuation.resume(returning: selection)
+        }
     }
 
     private func cancelSelection() {

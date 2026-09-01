@@ -41,10 +41,58 @@ import Testing
         #expect(result == nil)
     }
 
+    @Test func fixedHeaderAndFooterDoNotBreakOverlap() {
+        let offset = 31
+        var previous = image(startRow: 0)
+        var current = image(startRow: offset)
+        applyFixedChrome(to: &previous)
+        applyFixedChrome(to: &current)
+
+        let result = ScrollOverlapDetector.appendedRowCount(
+            previous: previous,
+            current: current,
+            width: width,
+            height: height
+        )
+        #expect(result == offset)
+    }
+
+    @Test func animatedMiddleBandDoesNotBreakOverlap() {
+        let offset = 24
+        let previous = image(startRow: 0)
+        var current = image(startRow: offset)
+        for y in 52..<66 {
+            for x in 0..<width {
+                current[y * width + x] = UInt8(truncatingIfNeeded: y * 91 + x * 47)
+            }
+        }
+
+        let result = ScrollOverlapDetector.appendedRowCount(
+            previous: previous,
+            current: current,
+            width: width,
+            height: height
+        )
+        #expect(result == offset)
+    }
+
     private func image(startRow: Int) -> [UInt8] {
         (0..<height).flatMap { y in
             (0..<width).map { x in
                 UInt8(truncatingIfNeeded: (startRow + y) * 37 + x * 13 + ((startRow + y) * x) % 29)
+            }
+        }
+    }
+
+    private func applyFixedChrome(to pixels: inout [UInt8]) {
+        for y in 0..<14 {
+            for x in 0..<width {
+                pixels[y * width + x] = UInt8(truncatingIfNeeded: x * 17 + y * 3)
+            }
+        }
+        for y in (height - 10)..<height {
+            for x in 0..<width {
+                pixels[y * width + x] = UInt8(truncatingIfNeeded: 220 - x * 5 + y)
             }
         }
     }

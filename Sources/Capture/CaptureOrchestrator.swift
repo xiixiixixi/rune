@@ -251,11 +251,17 @@ final class CaptureOrchestrator {
             image: frame.image,
             on: screen ?? captureScreen,
             region: region,
-            backgroundImage: backgroundImage
+            backgroundImage: backgroundImage,
+            source: source
         )
         if let scrollRegion = CaptureConfirmController.shared.pendingScrollRegion {
+            let scrollSource = CaptureConfirmController.shared.pendingScrollSource
             CaptureConfirmController.shared.clearPendingScroll()
-            await ScrollCaptureController.shared.start(on: screen, presetRegion: scrollRegion)
+            await ScrollCaptureController.shared.start(
+                on: screen,
+                presetRegion: scrollRegion,
+                source: scrollSource
+            )
             return
         }
         if let burstRegion = CaptureConfirmController.shared.pendingBurstRegion {

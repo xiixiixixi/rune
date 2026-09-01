@@ -17,6 +17,7 @@ final class CaptureConfirmController: NSObject {
     private var targetScreen: NSScreen?
     /// 原始选区（CG 全局点坐标）——「滚动长图」用它重启滚动截图
     private var capturedRegion: CGRect?
+    private var capturedSource: CaptureSource?
     /// 选区原图与整屏定格帧：工具栏面板按背后画面亮度切外观时取样用
     private var captureImage: CGImage?
     private var freezeImage: CGImage?
@@ -39,13 +40,15 @@ final class CaptureConfirmController: NSObject {
         image: CGImage,
         on screen: NSScreen?,
         region: CGRect? = nil,
-        backgroundImage: CGImage? = nil
+        backgroundImage: CGImage? = nil,
+        source: CaptureSource? = nil
     ) async -> [AnnotationItem]? {
         // 防重入：已有确认会话时直接取消新的
         guard continuation == nil else { return nil }
 
         let targetScreen = screen ?? NSScreen.main ?? NSScreen.screens.first!
         capturedRegion = region
+        capturedSource = source
         #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
         if !arguments.contains("--audit-confirm") || arguments.contains("--audit-confirm-text") {
@@ -257,8 +260,10 @@ final class CaptureConfirmController: NSObject {
     /// 「滚动长图」：结束当前确认（不保存），让编排器以当前选区重启滚动截图。
     /// 通过返回 nil 取消确认流，滚动意图记在 pendingScrollRegion，由编排器轮询。
     private(set) var pendingScrollRegion: CGRect?
+    private(set) var pendingScrollSource: CaptureSource?
     func requestScrollCapture() {
         pendingScrollRegion = capturedRegion
+        pendingScrollSource = capturedSource
         finish(result: nil)
     }
 
@@ -276,6 +281,7 @@ final class CaptureConfirmController: NSObject {
     /// 编排器消费转滚动意图后清空。
     func clearPendingScroll() {
         pendingScrollRegion = nil
+        pendingScrollSource = nil
     }
 
     private func finish(result: [AnnotationItem]?) {
@@ -331,6 +337,7 @@ final class CaptureConfirmController: NSObject {
         canvas = nil
         captureImage = nil
         freezeImage = nil
+        capturedSource = nil
         targetScreen = nil
     }
 }
