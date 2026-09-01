@@ -46,6 +46,13 @@ final class CaptureConfirmController: NSObject {
         // 防重入：已有确认会话时直接取消新的
         guard continuation == nil else { return nil }
 
+        // 每次确认会话从干净的转场状态开始，避免上一次异常中断留下陈旧意图。
+        pendingScrollRequested = false
+        pendingScrollRegion = nil
+        pendingScrollSource = nil
+        pendingBurstRequested = false
+        pendingBurstRegion = nil
+
         let targetScreen = screen ?? NSScreen.main ?? NSScreen.screens.first!
         capturedRegion = region
         capturedSource = source
@@ -258,28 +265,35 @@ final class CaptureConfirmController: NSObject {
     }
 
     /// 「滚动长图」：结束当前确认（不保存），让编排器以当前选区重启滚动截图。
-    /// 通过返回 nil 取消确认流，滚动意图记在 pendingScrollRegion，由编排器轮询。
+    /// requested 与 region 分开记录：即使某些入口没有原始选区，也必须继续打开
+    /// 长图框选，不能因为 region=nil 就把一次真实点击吞掉。
+    private(set) var pendingScrollRequested = false
     private(set) var pendingScrollRegion: CGRect?
     private(set) var pendingScrollSource: CaptureSource?
     func requestScrollCapture() {
+        pendingScrollRequested = true
         pendingScrollRegion = capturedRegion
         pendingScrollSource = capturedSource
         finish(result: nil)
     }
 
     /// 「连拍」：结束当前确认（不保存），编排器以当前选区开始连续拍摄。
+    private(set) var pendingBurstRequested = false
     private(set) var pendingBurstRegion: CGRect?
     func requestBurstCapture() {
+        pendingBurstRequested = true
         pendingBurstRegion = capturedRegion
         finish(result: nil)
     }
 
     func clearPendingBurst() {
+        pendingBurstRequested = false
         pendingBurstRegion = nil
     }
 
     /// 编排器消费转滚动意图后清空。
     func clearPendingScroll() {
+        pendingScrollRequested = false
         pendingScrollRegion = nil
         pendingScrollSource = nil
     }

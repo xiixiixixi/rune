@@ -261,7 +261,8 @@ final class CaptureOrchestrator {
             backgroundImage: backgroundImage,
             source: source
         )
-        if let scrollRegion = CaptureConfirmController.shared.pendingScrollRegion {
+        if CaptureConfirmController.shared.pendingScrollRequested {
+            let scrollRegion = CaptureConfirmController.shared.pendingScrollRegion
             let scrollSource = CaptureConfirmController.shared.pendingScrollSource
             CaptureConfirmController.shared.clearPendingScroll()
             await ScrollCaptureController.shared.start(
@@ -271,13 +272,21 @@ final class CaptureOrchestrator {
             )
             return
         }
-        if let burstRegion = CaptureConfirmController.shared.pendingBurstRegion {
+        if CaptureConfirmController.shared.pendingBurstRequested {
+            let burstRegion = CaptureConfirmController.shared.pendingBurstRegion
             CaptureConfirmController.shared.clearPendingBurst()
-            BurstCaptureController.shared.configureAndBegin(
-                presetMode: .burst,
-                on: screen,
-                region: burstRegion
-            )
+            if let burstRegion {
+                BurstCaptureController.shared.configureAndBegin(
+                    presetMode: .burst,
+                    on: screen,
+                    region: burstRegion
+                )
+            } else {
+                await BurstCaptureController.shared.prepareAndBegin(
+                    presetMode: .burst,
+                    on: screen
+                )
+            }
             return
         }
         guard let annotations else { return }   // 取消：零残留

@@ -446,6 +446,22 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                         region: globalRegion,
                         backgroundImage: cgImage
                     )
+                    if ProcessInfo.processInfo.arguments.contains("--audit-confirm-transition") {
+                        let transition: String
+                        if CaptureConfirmController.shared.pendingScrollRequested {
+                            transition = "scroll"
+                        } else if CaptureConfirmController.shared.pendingBurstRequested {
+                            transition = "burst"
+                        } else {
+                            transition = "none"
+                        }
+                        try? transition.write(
+                            to: URL(fileURLWithPath: "/tmp/rune-confirm-transition.txt"),
+                            atomically: true,
+                            encoding: .utf8
+                        )
+                        NSApp.terminate(nil)
+                    }
                 }
                 DebugAuditSnapshot.captureAfter(
                     contentImageArgument != nil
