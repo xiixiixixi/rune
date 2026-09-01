@@ -11,17 +11,14 @@ enum ToolbarBackdropAppearance {
     /// 大致是黑字/白字对比度曲线的交叉点。
     private static let darkThreshold: CGFloat = 0.5
 
-    /// 选区外的压暗参数，与 ConfirmCanvasView.dimLayer 保持一致：
-    /// 62% 透明度的深色（rgb 0.015/0.022/0.040 ≈ 亮度 0.022）。
-    private static let dimAlpha: CGFloat = 0.62
-    private static let dimLuminance: CGFloat = 0.022
+    private static let fallbackLuminance: CGFloat = 0.03
 
     /// 工具栏背后合成画面的平均相对亮度（0=黑，1=白）。
     /// - Parameters:
     ///   - toolbarRect: 工具栏在画布视图坐标里的位置
     ///   - selectionRect: 选区在画布视图里的位置（ConfirmCanvasView.imageDrawRect）
-    ///   - captureImage: 选区原图（选区内看到的是它，未压暗）
-    ///   - freezeImage: 截图瞬间的整屏定格（选区外看到的是它压暗后的样子；可为 nil）
+    ///   - captureImage: 选区原图
+    ///   - freezeImage: 蒙层退出后重新抓取的干净整屏画面（可为 nil）
     ///   - canvasBounds: 画布 bounds（定格帧铺满的范围）
     static func compositeLuminance(
         toolbarRect: CGRect,
@@ -45,19 +42,19 @@ enum ToolbarBackdropAppearance {
             }
         }
 
-        // 选区外部：定格帧压暗后的样子。工具栏整条在定格帧上取样，
-        // 近似其中落在选区外的部分（定格帧与原图是同一瞬间的画面）。
+        // 选区外部：直接采样干净整屏画面。确认页不再覆盖全屏灰色暗幕，
+        // 工具栏外观必须跟随用户真实看到的亮度。
         let outside = 1 - covered
         guard outside > 0.001 else { return luminance }
         let freezeLuminance: CGFloat
         if let freezeImage {
             freezeLuminance = meanLuminance(of: freezeImage, in: normalized(toolbarRect, in: canvasBounds))
-                ?? dimLuminance
+                ?? fallbackLuminance
         } else {
-            // 没有定格帧时画布本身就是深色回退底
-            freezeLuminance = dimLuminance
+            // 没有整屏帧时画布本身仍是深色回退底。
+            freezeLuminance = fallbackLuminance
         }
-        luminance += outside * (freezeLuminance * (1 - dimAlpha) + dimLuminance * dimAlpha)
+        luminance += outside * freezeLuminance
         return luminance
     }
 

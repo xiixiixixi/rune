@@ -13,9 +13,6 @@ struct RegionSelection {
     let windowID: CGWindowID?
     /// 截图来源应用。窗口点击为精确来源；区域框选取中心点最上层窗口。
     let source: CaptureSource?
-    /// 选区阶段已经抓到的整屏定格帧。确认界面用它压暗选区外画面，
-    /// 保留“快门按下时这一刻被冻结”的空间关系。
-    let frozenDisplayFrame: CGImage?
 }
 
 /// 区域+窗口合并模式的候选窗口（Sendable：SCWindow 不能直接传出）。
@@ -308,8 +305,7 @@ final class RegionSelectionOverlay {
             scaleFactor: screen.backingScaleFactor,
             displayID: displayID,
             windowID: nil,
-            source: source ?? frontmostSource,
-            frozenDisplayFrame: frozenFramesByDisplay[displayID]
+            source: source ?? frontmostSource
         )
 
         completeSelection(
@@ -337,8 +333,7 @@ final class RegionSelectionOverlay {
             scaleFactor: screen.backingScaleFactor,
             displayID: displayID,
             windowID: candidate.id,
-            source: candidate.source,
-            frozenDisplayFrame: frozenFramesByDisplay[displayID]
+            source: candidate.source
         )
 
         completeSelection(selection, shutterRect: nil, on: screen)
@@ -348,7 +343,7 @@ final class RegionSelectionOverlay {
     ///
     /// 旧逻辑为了保留快门脉冲，延迟 80ms 才 `orderOut`，却立刻恢复
     /// continuation；定格帧尚未回填时，后续实拍会偶发把灰色遮罩一起抓进去。
-    /// 这里把“关闭并等待两帧合成”变成恢复捕获的硬前置条件。
+    /// 这里把“WindowServer 已确认退场”变成恢复捕获的硬前置条件。
     private func completeSelection(
         _ selection: RegionSelection,
         shutterRect: CGRect?,
@@ -367,12 +362,12 @@ final class RegionSelectionOverlay {
                 try? await Task.sleep(for: .milliseconds(80))
             }
 
-            self?.closeOverlays()
+            let retiredWindowIDs = self?.closeOverlays() ?? []
             CATransaction.flush()
 
-            // `orderOut` 会立刻改变 AppKit 状态，但 ScreenCaptureKit 看到的是
-            // WindowServer 合成结果；预留约三帧，彻底避开退场竞态。
-            try? await Task.sleep(for: .milliseconds(50))
+            // 不再猜固定延时：直接确认所有选区窗已经从 WindowServer 的屏幕
+            // 窗口列表消失，再额外让出一帧给合成器，后续实拍获得硬保证。
+            await Self.waitForWindowServerToRetire(retiredWindowIDs)
             pendingContinuation.resume(returning: selection)
         }
     }
@@ -384,11 +379,34 @@ final class RegionSelectionOverlay {
         continuation = nil
     }
 
-    private func closeOverlays() {
+    @discardableResult
+    private func closeOverlays() -> Set<CGWindowID> {
+        let windowIDs = Set(overlayWindows.map { CGWindowID($0.windowNumber) })
         for window in overlayWindows {
             window.orderOut(nil)
         }
         overlayWindows.removeAll()
+        return windowIDs
+    }
+
+    private static func waitForWindowServerToRetire(_ windowIDs: Set<CGWindowID>) async {
+        guard !windowIDs.isEmpty else { return }
+        for _ in 0..<12 {
+            let visibleWindows = CGWindowListCopyWindowInfo(
+                [.optionOnScreenOnly, .excludeDesktopElements],
+                kCGNullWindowID
+            ) as? [[CFString: Any]] ?? []
+            let visibleIDs = Set(visibleWindows.compactMap { info in
+                (info[kCGWindowNumber] as? NSNumber).map {
+                    CGWindowID($0.uint32Value)
+                }
+            })
+            if windowIDs.isDisjoint(with: visibleIDs) {
+                try? await Task.sleep(for: .milliseconds(16))
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(16))
+        }
     }
 }
 

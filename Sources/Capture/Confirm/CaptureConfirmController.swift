@@ -199,8 +199,8 @@ final class CaptureConfirmController: NSObject {
     }
 
     /// 悬浮条底是 Liquid Glass：亮度跟随背后画面，文字颜色跟随窗口外观。
-    /// 采样工具栏背后的合成亮度（选区亮、选区外压暗），切 aqua/darkAqua 让
-    /// 底色和文字同步——否则深色截图底上玻璃变黑、黑字不可见。
+    /// 采样工具栏背后的真实画面亮度，切 aqua/darkAqua 让底色和文字同步——
+    /// 否则深色截图底上玻璃变黑、黑字不可见。
     private func updateToolbarAppearance(for frame: NSRect) {
         guard let panel = toolbarPanel,
               let screen = targetScreen,

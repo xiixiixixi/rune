@@ -111,33 +111,34 @@ final class CaptureOrchestrator {
         let selection = await RegionSelectionOverlay().selectRegion()
         guard let selection else { return }  // 用户取消（Esc 等）
 
-        // 用户如果极快完成框选，选区界面的后台定格帧可能还没来得及回填。
-        // 这里补抓一次整屏，保证确认界面始终有“同一时刻”的暗场背景，而不是退回纯黑。
-        let frozenBackground: CGImage? = if let cached = selection.frozenDisplayFrame {
-            cached
-        } else {
-            try? await sckEngine.capture(.display(selection.displayID)).image
+        // 2. 蒙层退出后重新抓一张干净整屏帧。选区阶段的定格帧只负责交互展示，
+        // 永远不能再进入保存链路——否则 SCK 偶发未排除自身窗口时，灰色遮罩会被
+        // 原样裁进成片；单纯延长 orderOut 等待并不能根治。
+        let cleanDisplayFrame: CapturedFrame
+        do {
+            cleanDisplayFrame = try await sckEngine.capture(.display(selection.displayID))
+        } catch {
+            print("区域截图失败：\(error.localizedDescription)")
+            showCaptureError("截图失败", detail: "选区没有保存，请重新截一次")
+            return
         }
 
-        // 2. 成图：优先从"按下快门瞬间"的定格帧裁剪——菜单、弹窗、悬停提示
-        //    这类瞬态界面在拖框期间可能已经收起，实拍会错过，定格帧不会。
-        //    定格帧缺失（抓帧失败）才退回松手时实拍。
+        guard let cleanRegionFrame = Self.cropDisplayFrame(
+            cleanDisplayFrame,
+            selection: selection
+        ) else {
+            showCaptureError("截图失败", detail: "选区范围无效，请重新截一次")
+            return
+        }
+
+        // 点击窗口时优先使用独立窗口帧；若窗口在退场瞬间关闭，仍用刚抓到的
+        // 干净整屏裁片兜底。普通拖框只使用同一张干净帧，背景和成片不会错帧。
         let frame: CapturedFrame
-        if let frozen = selection.frozenDisplayFrame,
-           let cropped = Self.cropFrozenFrame(frozen, selection: selection) {
-            frame = cropped
+        if let windowID = selection.windowID,
+           let windowFrame = try? await sckEngine.capture(.window(windowID)) {
+            frame = windowFrame
         } else {
-            do {
-                if let windowID = selection.windowID {
-                    frame = try await sckEngine.capture(.window(windowID))
-                } else {
-                    frame = try await sckEngine.capture(.region(selection.pointsRect))
-                }
-            } catch {
-                print("区域截图失败：\(error.localizedDescription)")
-                showCaptureError("截图失败", detail: "选区没有保存，请重新截一次")
-                return
-            }
+            frame = cleanRegionFrame
         }
 
         ScreenCapture.shared.playShutterSound()
@@ -146,21 +147,22 @@ final class CaptureOrchestrator {
             frame,
             on: Self.screen(forDisplayID: selection.displayID),
             region: selection.pointsRect,
-            backgroundImage: frozenBackground,
+            backgroundImage: cleanDisplayFrame.image,
             source: selection.source
         )
     }
 
     /// M1 第⑤步（续）：窗口截图经应用自己的 WindowPickerOverlay 拿窗口 ID，
     /// 再走 SCK 引擎截取该窗口。不再用 screencapture -w 系统命令。
-    /// 从定格帧按选区裁剪成图。pointsRect 是 CG 全局点坐标（主屏左上原点），
-    /// 定格帧只覆盖 selection.displayID 这块屏，先换算到屏内局部点、再乘
+    /// 从蒙层退出后的干净整屏帧按选区裁剪成图。pointsRect 是 CG 全局点坐标
+    /// （主屏左上原点），整屏帧只覆盖 selection.displayID，先换算到屏内局部点、再乘
     /// 图像实际像素比（图像宽 ÷ 显示器点宽，Retina 下为 2）。
     /// 单击选窗口时 pointsRect 即该窗口全局矩形，同一条路径直接可用。
-    private static func cropFrozenFrame(
-        _ image: CGImage,
+    private static func cropDisplayFrame(
+        _ displayFrame: CapturedFrame,
         selection: RegionSelection
     ) -> CapturedFrame? {
+        let image = displayFrame.image
         let displayBounds = CGDisplayBounds(selection.displayID)
         let scale = CGFloat(image.width) / max(displayBounds.width, 1)
         let local = CGRect(

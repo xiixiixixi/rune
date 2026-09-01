@@ -16,9 +16,7 @@ final class ConfirmCanvasView: NSView {
     private let capturedRegion: CGRect?
     private let screen: NSScreen
     private weak var controller: CaptureConfirmController?
-    private let dimLayer = CAShapeLayer()
     private var pulseLayers: [CAShapeLayer] = []
-    private var yumGlowLayer: CALayer?
 
     // MARK: - 标注状态（工具栏读写；确认时由控制器读走烘焙）
 
@@ -79,7 +77,6 @@ final class ConfirmCanvasView: NSView {
         super.viewDidMoveToWindow()
         window?.makeFirstResponder(self)
         if window != nil {
-            addYumGlow()
             startFreezePulse()
             beginContentAnalysis()
         } else {
@@ -89,53 +86,7 @@ final class ConfirmCanvasView: NSView {
 
     override func layout() {
         super.layout()
-        layoutFreezeLayers()
-    }
-
-    // MARK: - Yum-Yum 柔光（编辑时刻）
-
-    private func addYumGlow() {
-        yumGlowLayer?.removeFromSuperlayer()
-        guard let hostLayer = layer else { return }
-        let glow = yumYumGlowLayer(frame: bounds)
-        hostLayer.insertSublayer(glow, at: 0)
-        yumGlowLayer = glow
-    }
-
-    private func yumYumGlowLayer(frame: CGRect) -> CALayer {
-        let layer = CALayer()
-        layer.frame = frame
-        layer.opacity = 1
-        for blob in makeYumBlobs(in: frame) {
-            let gradient = CAGradientLayer()
-            gradient.type = .radial
-            gradient.colors = [blob.color.cgColor, NSColor.clear.cgColor]
-            gradient.locations = [0, 1]
-            let center = CGPoint(
-                x: blob.center.x * frame.width,
-                y: blob.center.y * frame.height
-            )
-            gradient.frame = CGRect(
-                x: center.x - blob.radius,
-                y: center.y - blob.radius,
-                width: blob.radius * 2,
-                height: blob.radius * 2
-            )
-            layer.addSublayer(gradient)
-        }
-        return layer
-    }
-
-    private func makeYumBlobs(in frame: CGRect) -> [(color: NSColor, center: CGPoint, radius: CGFloat)] {
-        let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        let glow: CGFloat = isDark ? 0.30 : 0.55
-        return [
-            (NSColor(calibratedRed: 0.97, green: 0.63, blue: 0.90, alpha: glow), CGPoint(x: 0.05, y: 1.0), frame.width * 0.40),
-            (NSColor(calibratedRed: 0.50, green: 0.50, blue: 0.95, alpha: glow), CGPoint(x: 0.98, y: 0.45), frame.width * 0.42),
-            (NSColor(calibratedRed: 0.98, green: 0.66, blue: 0.46, alpha: glow * 0.9), CGPoint(x: 0.92, y: 0.0), frame.width * 0.38),
-            (NSColor(calibratedRed: 0.50, green: 0.82, blue: 0.90, alpha: glow * 0.7), CGPoint(x: 0.02, y: 0.0), frame.width * 0.36),
-            (NSColor(calibratedRed: 0.68, green: 0.45, blue: 0.92, alpha: glow * 0.75), CGPoint(x: 0.5, y: 1.0), frame.width * 0.32),
-        ]
+        layoutPulseLayers()
     }
 
     // MARK: - 工具栏入口（撤销 / 删除选中）
@@ -177,7 +128,8 @@ final class ConfirmCanvasView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
 
-        // 1. 先画选区时抓到的整屏定格帧。没有帧时用深色回退，绝不透出继续变化的桌面。
+        // 1. 先画蒙层退出后重新抓取的干净整屏帧。没有帧时用深色回退，
+        // 不再叠加会让用户误以为成片发灰的全屏暗幕。
         if let backgroundImage {
             ctx.saveGState()
             ctx.interpolationQuality = .medium
@@ -195,7 +147,7 @@ final class ConfirmCanvasView: NSView {
         ctx.draw(image, in: drawRect)
         ctx.restoreGState()
 
-        // 3. 选区外压暗，选区内保持快门落下时的亮度；冷色暗场比纯黑更有“冻结”感。
+        // 3. 只保留细边界标识选区；选区外维持原始亮度。
         drawFrozenEdge(around: drawRect)
 
         // 3.5 选字模式：文字块高亮（必须在"无标注提前 return"之前，
@@ -393,35 +345,9 @@ final class ConfirmCanvasView: NSView {
         pulseLayers.removeAll()
         guard let hostLayer = layer else { return }
 
-        dimLayer.removeFromSuperlayer()
-
-        // 五联柔光层加入暗幕：yum-yum 色带（参考编辑时刻）。
-        let glow = yumYumGlowLayer(frame: bounds)
-        hostLayer.addSublayer(glow)
-        yumGlowLayer = glow
-
-        dimLayer.fillRule = .evenOdd
-        dimLayer.fillColor = NSColor(
-            calibratedRed: 0.015,
-            green: 0.022,
-            blue: 0.040,
-            alpha: 0.62
-        ).cgColor
-        dimLayer.opacity = 1
-        hostLayer.addSublayer(dimLayer)
-
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        if !reduceMotion {
-            let darken = CABasicAnimation(keyPath: "opacity")
-            darken.fromValue = 0.0
-            darken.toValue = 1.0
-            darken.duration = 0.20
-            darken.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            dimLayer.add(darken, forKey: "freezeDarken")
-        }
-
         guard !reduceMotion else {
-            layoutFreezeLayers()
+            layoutPulseLayers()
             return
         }
 
@@ -447,25 +373,14 @@ final class ConfirmCanvasView: NSView {
         group.timingFunction = CAMediaTimingFunction(name: .easeOut)
         group.isRemovedOnCompletion = true
         pulse.add(group, forKey: "freezePulse")
-        layoutFreezeLayers()
+        layoutPulseLayers()
     }
 
-    private func layoutFreezeLayers() {
-        let cutout = imageDrawRect.insetBy(dx: -1, dy: -1)
-        let maskPath = CGMutablePath()
-        maskPath.addRect(bounds)
-        maskPath.addRoundedRect(
-            in: cutout,
-            cornerWidth: 8,
-            cornerHeight: 8
-        )
-
+    private func layoutPulseLayers() {
         let pulseFrame = imageDrawRect.insetBy(dx: -7, dy: -7)
         guard pulseFrame.width > 4, pulseFrame.height > 4 else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        dimLayer.frame = bounds
-        dimLayer.path = maskPath
         for pulse in pulseLayers {
             pulse.frame = pulseFrame
             pulse.path = CGPath(
