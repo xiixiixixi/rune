@@ -1,8 +1,10 @@
 import AppKit
 import CaptureKit
 import CaptureKitSCK
+import ImageIO
 import OSLog
 import SwiftUI
+@preconcurrency import Vision
 
 enum ScrollCaptureMode: String {
     case automatic
@@ -60,6 +62,9 @@ final class ScrollCaptureController {
     private var cursorHiddenOnDisplay: CGDirectDisplayID?
     private var lastCaptureFailureDescription: String?
     private var lastSampledScrollRows: Int?
+    #if DEBUG
+    private var auditOutputURL: URL?
+    #endif
     /// 动态网页的图片懒加载通常会持续 1–3 秒；这段时间只原地重抓，不继续滚。
     private let maximumAutomaticMismatchRounds = 12
     private let automaticScrollStep: Int32 = 140
@@ -220,6 +225,17 @@ final class ScrollCaptureController {
             showError("长图生成失败，请重试。")
             return
         }
+        #if DEBUG
+        if let auditOutputURL {
+            let frameCount = capturedFrameCount
+            let wroteImage = writeAuditImage(image, to: auditOutputURL)
+            reset(keepStatus: true)
+            statusMessage = wroteImage
+                ? "验收长图已生成：\(frameCount) 段，\(image.height) 像素高"
+                : "验收长图导出失败"
+            return
+        }
+        #endif
         let frame = CapturedFrame(
             image: image,
             scaleFactor: scaleFactor,
@@ -391,31 +407,42 @@ final class ScrollCaptureController {
                 return .mismatch
             }
 
-            let preferredOffset: Int?
-            if let lastSampledScrollRows {
-                preferredOffset = lastSampledScrollRows
-            } else if mode == .automatic {
-                preferredOffset = max(2, Int(
-                    (CGFloat(automaticScrollStep) / CGFloat(next.image.height)
-                        * CGFloat(previousGray.height)).rounded()
-                ))
+            let appendedRows: Int
+            if let registeredRows = registeredScrollRows(
+                previous: previousImage,
+                current: next.image
+            ) {
+                guard registeredRows > 1 else { return .unchanged }
+                appendedRows = registeredRows
+                lastSampledScrollRows = nil
             } else {
-                preferredOffset = nil
+                let preferredOffset: Int?
+                if let lastSampledScrollRows {
+                    preferredOffset = lastSampledScrollRows
+                } else if mode == .automatic {
+                    preferredOffset = max(2, Int(
+                        (CGFloat(automaticScrollStep) / CGFloat(next.image.height)
+                            * CGFloat(previousGray.height)).rounded()
+                    ))
+                } else {
+                    preferredOffset = nil
+                }
+                guard let sampledRows = ScrollOverlapDetector.appendedRowCount(
+                    previous: previousGray.pixels,
+                    current: currentGray.pixels,
+                    width: previousGray.width,
+                    height: previousGray.height,
+                    preferredOffset: preferredOffset
+                ) else {
+                    return .mismatch
+                }
+                guard sampledRows > 0 else { return .unchanged }
+                appendedRows = max(1, Int(
+                    (CGFloat(sampledRows) / CGFloat(previousGray.height)
+                        * CGFloat(next.image.height)).rounded()
+                ))
+                lastSampledScrollRows = sampledRows
             }
-            guard let sampledRows = ScrollOverlapDetector.appendedRowCount(
-                previous: previousGray.pixels,
-                current: currentGray.pixels,
-                width: previousGray.width,
-                height: previousGray.height,
-                preferredOffset: preferredOffset
-            ) else {
-                return .mismatch
-            }
-            guard sampledRows > 0 else { return .unchanged }
-
-            let appendedRows = max(1, Int(
-                (CGFloat(sampledRows) / CGFloat(previousGray.height) * CGFloat(next.image.height)).rounded()
-            ))
             guard stitchedHeight + appendedRows <= 100_000 else {
                 statusMessage = "长图已达到 100000 像素，正在生成当前内容"
                 return .limitReached
@@ -430,7 +457,6 @@ final class ScrollCaptureController {
             segments.append(newBottom)
             self.previousImage = next.image
             lastCaptureFailureDescription = nil
-            lastSampledScrollRows = sampledRows
             capturedFrameCount += 1
             stitchedHeight += appendedRows
             updateLivePreview()
@@ -449,6 +475,47 @@ final class ScrollCaptureController {
             }
             return .failed
         }
+    }
+
+    /// 用系统图像配准测量真实纵向位移。中央区域会避开吸顶导航、滚动条和
+    /// 底部浮层；只有配准失败时才回退到轻量灰度重叠检测。
+    private func registeredScrollRows(previous: CGImage, current: CGImage) -> Int? {
+        let width = min(previous.width, current.width)
+        let height = min(previous.height, current.height)
+        guard width >= 80, height >= 80 else { return nil }
+
+        let horizontalInset = width / 10
+        let topInset = height / 6
+        let bottomInset = height / 8
+        let cropRect = CGRect(
+            x: horizontalInset,
+            y: topInset,
+            width: width - horizontalInset * 2,
+            height: height - topInset - bottomInset
+        )
+        guard let previousCrop = previous.cropping(to: cropRect),
+              let currentCrop = current.cropping(to: cropRect) else { return nil }
+
+        let request = VNTranslationalImageRegistrationRequest(targetedCGImage: previousCrop)
+        let handler = VNImageRequestHandler(cgImage: currentCrop, options: [:])
+        guard (try? handler.perform([request])) != nil,
+              let observation = request.results?.first as? VNImageTranslationAlignmentObservation else {
+            return nil
+        }
+
+        let translation = observation.alignmentTransform.ty
+        guard translation.isFinite, translation >= -1 else { return nil }
+        let rows = max(0, Int(translation.rounded()))
+        if mode == .automatic {
+            let maximumExpectedRows = max(
+                40,
+                Int((CGFloat(automaticScrollStep) * max(scaleFactor, 1) * 2.5).rounded())
+            )
+            guard rows <= maximumExpectedRows else { return nil }
+        } else {
+            guard rows <= Int(CGFloat(height) * 0.95) else { return nil }
+        }
+        return rows
     }
 
     private var targetRectCenter: CGPoint? {
@@ -578,6 +645,29 @@ final class ScrollCaptureController {
         return context.makeImage()
     }
 
+    #if DEBUG
+    /// 将真实滚动截图验收产生的完整拼接结果写到临时目录，便于人工检查原图。
+    func writeAuditImage(to url: URL) -> Bool {
+        guard let image = renderSegments() else { return false }
+        return writeAuditImage(image, to: url)
+    }
+
+    func configureAuditImageOutput(to url: URL?) {
+        auditOutputURL = url
+    }
+
+    private func writeAuditImage(_ image: CGImage, to url: URL) -> Bool {
+        guard let destination = CGImageDestinationCreateWithURL(
+            url as CFURL,
+            "public.png" as CFString,
+            1,
+            nil
+        ) else { return false }
+        CGImageDestinationAddImage(destination, image, nil)
+        return CGImageDestinationFinalize(destination)
+    }
+    #endif
+
     /// 实时预览只合成低分辨率缩略图，避免每次追加都重建数万像素高的成片。
     private func updateLivePreview() {
         guard let first = segments.first else {
@@ -646,6 +736,9 @@ final class ScrollCaptureController {
         hasObservedGrowth = false
         lastCaptureFailureDescription = nil
         lastSampledScrollRows = nil
+        #if DEBUG
+        auditOutputURL = nil
+        #endif
         mode = .automatic
         isPaused = false
         isFinishing = false

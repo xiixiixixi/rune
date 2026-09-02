@@ -154,9 +154,16 @@ struct PreviewCardView: View {
     let overlay: PreviewOverlay
 
     @State private var thumbnail: NSImage?
+    @State private var screenshotPixelSize: CGSize = .zero
 
     private var isVideo: Bool {
         overlay.currentKind == .recording
+    }
+
+    private var isLongScreenshot: Bool {
+        !isVideo
+            && screenshotPixelSize.width > 0
+            && screenshotPixelSize.height / screenshotPixelSize.width >= 3
     }
 
     var body: some View {
@@ -222,21 +229,38 @@ struct PreviewCardView: View {
     }
 
     private var preview: some View {
-        ZStack {
+        ZStack(alignment: .bottomLeading) {
             RuneTheme.workspace
 
             if let thumbnail {
                 Image(nsImage: thumbnail)
                     .resizable()
-                    .aspectRatio(contentMode: .fit)
+                    .aspectRatio(contentMode: isLongScreenshot ? .fill : .fit)
                     .frame(
                         width: PreviewCardMetrics.mediaSize.width,
-                        height: PreviewCardMetrics.mediaSize.height
+                        height: PreviewCardMetrics.mediaSize.height,
+                        alignment: .top
                     )
                     .clipped()
             } else {
                 ProgressView()
                     .controlSize(.small)
+            }
+
+            if isLongScreenshot {
+                HStack(spacing: 5) {
+                    Image(systemName: "rectangle.portrait.and.arrow.forward")
+                    Text("长图")
+                    Text("\(Int(screenshotPixelSize.width)) × \(Int(screenshotPixelSize.height))")
+                        .monospacedDigit()
+                }
+                .font(RuneFont.swiftUI(size: 9.5, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 8)
+                .frame(height: 24)
+                .background(.black.opacity(0.72), in: Capsule())
+                .padding(8)
+                .allowsHitTesting(false)
             }
 
             if isVideo {
@@ -330,10 +354,12 @@ struct PreviewCardView: View {
     private func loadThumbnail(from url: URL?) {
         guard let url else {
             thumbnail = nil
+            screenshotPixelSize = .zero
             return
         }
 
         if isVideo, ["mov", "mp4"].contains(url.pathExtension.lowercased()) {
+            screenshotPixelSize = .zero
             Task {
                 let asset = AVURLAsset(url: url)
                 let generator = AVAssetImageGenerator(asset: asset)
@@ -349,6 +375,18 @@ struct PreviewCardView: View {
                 }
             }
         } else {
+            if let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+               let properties = CGImageSourceCopyPropertiesAtIndex(
+                   source,
+                   0,
+                   nil
+               ) as? [CFString: Any] {
+                let width = properties[kCGImagePropertyPixelWidth] as? CGFloat ?? 0
+                let height = properties[kCGImagePropertyPixelHeight] as? CGFloat ?? 0
+                screenshotPixelSize = CGSize(width: width, height: height)
+            } else {
+                screenshotPixelSize = .zero
+            }
             thumbnail = NSImage(contentsOf: url)
         }
     }

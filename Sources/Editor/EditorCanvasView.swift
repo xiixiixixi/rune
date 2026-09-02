@@ -6,146 +6,35 @@ struct EditorCanvasView: View {
     @State private var hasActiveInteraction = false
     @State private var hoveredLocation: CGPoint?
     @State private var currentCursor: AnnotationCanvasCursor = .arrow
+    @State private var longImageZoom: CGFloat = 1
+
+    private let longImageAspectThreshold: CGFloat = 3
+    private let minimumLongImageZoom: CGFloat = 0.25
+    private let maximumLongImageZoom: CGFloat = 4
 
     var body: some View {
         GeometryReader { proxy in
             if let sourceImage = model.sourceImage {
-                let imgW = CGFloat(sourceImage.width)
-                let imgH = CGFloat(sourceImage.height)
-                let shortEdge = min(imgW, imgH)
-                let pad = shortEdge * model.config.padding
+                let metrics = canvasMetrics(for: sourceImage)
 
-                var canvasW = imgW + pad * 2
-                var canvasH = imgH + pad * 2
-                let _ = {
-                    if let ratio = model.config.aspectRatio.numericValue {
-                        let current = canvasW / canvasH
-                        if current < ratio { canvasW = canvasH * ratio }
-                        else { canvasH = canvasW / ratio }
-                    }
-                }()
-
-                let canvasSize = CGSize(width: canvasW, height: canvasH)
-                let canvasFrame = aspectFitRect(imageSize: canvasSize, in: proxy.size)
-
-                let totalHPad = canvasW - imgW
-                let totalVPad = canvasH - imgH
-                let imgXNorm = model.config.alignment.xFactor * totalHPad / canvasW
-                let imgYNorm = model.config.alignment.yFactor * totalVPad / canvasH
-                let imgWNorm = imgW / canvasW
-                let imgHNorm = imgH / canvasH
-
-                let sourceImageFrame = CGRect(
-                    x: canvasFrame.minX + imgXNorm * canvasFrame.width,
-                    y: canvasFrame.minY + imgYNorm * canvasFrame.height,
-                    width: imgWNorm * canvasFrame.width,
-                    height: imgHNorm * canvasFrame.height
-                )
-
-                let baseRadius = model.config.cornerRadius * shortEdge
-                let m = model.config.alignment.cornerMultipliers
-                let cornerScale = min(canvasFrame.width / canvasW, canvasFrame.height / canvasH)
-                let viewRadii = (
-                    tl: baseRadius * m.tl * cornerScale,
-                    tr: baseRadius * m.tr * cornerScale,
-                    br: baseRadius * m.br * cornerScale,
-                    bl: baseRadius * m.bl * cornerScale
-                )
-
-                ZStack(alignment: .topLeading) {
-                    // Background layer
-                    CanvasBackgroundView(style: model.config.style)
-                        .frame(width: canvasFrame.width, height: canvasFrame.height)
-                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                        .position(x: canvasFrame.midX, y: canvasFrame.midY)
-
-                    // Shadow + Screenshot layer
-                    CanvasScreenshotView(
-                        image: sourceImage,
-                        frame: sourceImageFrame,
-                        cornerRadii: viewRadii,
-                        shadowStrength: model.config.shadowStrength,
-                        shortEdge: shortEdge * cornerScale
+                if metrics.sourceAspectRatio >= longImageAspectThreshold {
+                    longImageViewport(
+                        sourceImage: sourceImage,
+                        metrics: metrics,
+                        viewportSize: proxy.size
                     )
-
-                    // Annotations
-                    ForEach(model.items) { item in
-                        AnnotationItemView(
-                            item: item,
-                            image: model.previewImage ?? NSImage(),
-                            sourceImage: model.sourceImage,
-                            originalImageSize: model.imageSize,
-                            imageFrame: sourceImageFrame,
-                            canvasFrame: canvasFrame,
-                            isSelected: model.selectedItemIDs.contains(item.id),
-                            showsResizeHandles: model.selectionCount == 1,
-                            isEditingText: item.id == model.editingTextItemID,
-                            allowsRedactionPreviewCaching: !(model.isTransformingExistingAnnotation && model.selectedItemIDs.contains(item.id)),
-                            text: Binding(
-                                get: { model.text(for: item.id) },
-                                set: { model.setText($0, for: item.id) }
-                            ),
-                            onCommitText: model.commitTextEditing,
-                            onTextSizeChange: { size in
-                                model.setTextViewContentSize(size, for: item.id, imageFrame: sourceImageFrame, allowedBounds: model.annotationBounds(for: sourceImageFrame, boundaryFrame: canvasFrame))
-                            }
-                        )
-                    }
-                    .allowsHitTesting(!model.isCropping)
-
-                    if model.isCropping {
-                        ImageCropOverlay(cropRect: $model.cropRect, imageSize: CGSize(width: sourceImageFrame.width, height: sourceImageFrame.height))
-                            .position(x: sourceImageFrame.midX, y: sourceImageFrame.midY)
-                    } else if model.hasCrop {
-                        ImageCropPreview(cropRect: model.cropRect, imageSize: CGSize(width: sourceImageFrame.width, height: sourceImageFrame.height))
-                            .position(x: sourceImageFrame.midX, y: sourceImageFrame.midY)
-                    }
-
-                    if let draftItem = model.draftItem {
-                        AnnotationItemView(
-                            item: draftItem,
-                            image: model.previewImage ?? NSImage(),
-                            sourceImage: model.sourceImage,
-                            originalImageSize: model.imageSize,
-                            imageFrame: sourceImageFrame,
-                            canvasFrame: canvasFrame,
-                            isSelected: false,
-                            showsResizeHandles: false,
-                            isEditingText: false,
-                            allowsRedactionPreviewCaching: false,
-                            text: .constant(draftItem.text),
-                            onCommitText: {},
-                            onTextSizeChange: { _ in }
-                        )
-                    }
-
-                    if let selectionRect = model.selectionRect {
-                        let viewSel = viewRect(selectionRect, in: sourceImageFrame)
-                        AnnotationMarqueeSelectionView()
-                            .frame(
-                                width: max(viewSel.width, 1),
-                                height: max(viewSel.height, 1)
-                            )
-                            .position(x: viewSel.midX, y: viewSel.midY)
-                    }
+                } else {
+                    let canvasFrame = aspectFitRect(
+                        imageSize: metrics.canvasSize,
+                        in: proxy.size
+                    )
+                    canvasSurface(
+                        sourceImage: sourceImage,
+                        metrics: metrics,
+                        canvasFrame: canvasFrame,
+                        containerSize: proxy.size
+                    )
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .gesture(interactionGesture(imageFrame: sourceImageFrame, boundaryFrame: canvasFrame))
-                .onContinuousHover { phase in
-                    switch phase {
-                    case .active(let location):
-                        hoveredLocation = location
-                        updateCursor(at: location, imageFrame: sourceImageFrame)
-                    case .ended:
-                        hoveredLocation = nil
-                        setCursor(.arrow)
-                    }
-                }
-                .onChange(of: model.selectedTool) { _, _ in refreshCursor(imageFrame: sourceImageFrame) }
-                .onChange(of: model.itemIDs) { _, _ in refreshCursor(imageFrame: sourceImageFrame) }
-                .onChange(of: model.selectedItemIDs) { _, _ in refreshCursor(imageFrame: sourceImageFrame) }
-                .onDisappear { setCursor(.arrow) }
             } else {
                 ContentUnavailableView("正在载入图片…", systemImage: "photo")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -155,6 +44,302 @@ struct EditorCanvasView: View {
             YumYumGlow()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .opacity(0.75)
+        )
+        .onChange(of: model.imageSize) { _, _ in
+            longImageZoom = 1
+        }
+    }
+
+    private func longImageViewport(
+        sourceImage: CGImage,
+        metrics: EditorCanvasMetrics,
+        viewportSize: CGSize
+    ) -> some View {
+        let documentPadding: CGFloat = 24
+        let availableWidth = max(viewportSize.width - documentPadding * 2, 1)
+        let fitWidthScale = min(availableWidth / max(metrics.canvasSize.width, 1), 1)
+        let displayScale = fitWidthScale * longImageZoom
+        let displaySize = CGSize(
+            width: metrics.canvasSize.width * displayScale,
+            height: metrics.canvasSize.height * displayScale
+        )
+        let canvasFrame = CGRect(origin: .zero, size: displaySize)
+        let scrollAxes: Axis.Set = longImageZoom > 1.001
+            ? [.vertical, .horizontal]
+            : .vertical
+
+        return ScrollView(scrollAxes) {
+            canvasSurface(
+                sourceImage: sourceImage,
+                metrics: metrics,
+                canvasFrame: canvasFrame,
+                containerSize: displaySize
+            )
+            .padding(documentPadding)
+            .frame(
+                minWidth: viewportSize.width,
+                minHeight: viewportSize.height,
+                alignment: .top
+            )
+        }
+        .defaultScrollAnchor(.top)
+        .overlay(alignment: .bottomTrailing) {
+            longImageZoomControls(metrics: metrics)
+                .padding(14)
+        }
+    }
+
+    private func canvasSurface(
+        sourceImage: CGImage,
+        metrics: EditorCanvasMetrics,
+        canvasFrame: CGRect,
+        containerSize: CGSize
+    ) -> some View {
+        let sourceImageFrame = metrics.sourceImageFrame(in: canvasFrame)
+        let baseRadius = model.config.cornerRadius * metrics.shortEdge
+        let m = model.config.alignment.cornerMultipliers
+        let cornerScale = min(
+            canvasFrame.width / max(metrics.canvasSize.width, 1),
+            canvasFrame.height / max(metrics.canvasSize.height, 1)
+        )
+        let viewRadii = (
+            tl: baseRadius * m.tl * cornerScale,
+            tr: baseRadius * m.tr * cornerScale,
+            br: baseRadius * m.br * cornerScale,
+            bl: baseRadius * m.bl * cornerScale
+        )
+
+        return ZStack(alignment: .topLeading) {
+            CanvasBackgroundView(style: model.config.style)
+                .frame(width: canvasFrame.width, height: canvasFrame.height)
+                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                .position(x: canvasFrame.midX, y: canvasFrame.midY)
+
+            CanvasScreenshotView(
+                image: sourceImage,
+                frame: sourceImageFrame,
+                cornerRadii: viewRadii,
+                shadowStrength: model.config.shadowStrength,
+                shortEdge: metrics.shortEdge * cornerScale
+            )
+
+            ForEach(model.items) { item in
+                AnnotationItemView(
+                    item: item,
+                    image: model.previewImage ?? NSImage(),
+                    sourceImage: model.sourceImage,
+                    originalImageSize: model.imageSize,
+                    imageFrame: sourceImageFrame,
+                    canvasFrame: canvasFrame,
+                    isSelected: model.selectedItemIDs.contains(item.id),
+                    showsResizeHandles: model.selectionCount == 1,
+                    isEditingText: item.id == model.editingTextItemID,
+                    allowsRedactionPreviewCaching: !(model.isTransformingExistingAnnotation && model.selectedItemIDs.contains(item.id)),
+                    text: Binding(
+                        get: { model.text(for: item.id) },
+                        set: { model.setText($0, for: item.id) }
+                    ),
+                    onCommitText: model.commitTextEditing,
+                    onTextSizeChange: { size in
+                        model.setTextViewContentSize(
+                            size,
+                            for: item.id,
+                            imageFrame: sourceImageFrame,
+                            allowedBounds: model.annotationBounds(
+                                for: sourceImageFrame,
+                                boundaryFrame: canvasFrame
+                            )
+                        )
+                    }
+                )
+            }
+            .allowsHitTesting(!model.isCropping)
+
+            if model.isCropping {
+                ImageCropOverlay(
+                    cropRect: $model.cropRect,
+                    imageSize: sourceImageFrame.size
+                )
+                .position(x: sourceImageFrame.midX, y: sourceImageFrame.midY)
+            } else if model.hasCrop {
+                ImageCropPreview(
+                    cropRect: model.cropRect,
+                    imageSize: sourceImageFrame.size
+                )
+                .position(x: sourceImageFrame.midX, y: sourceImageFrame.midY)
+            }
+
+            if let draftItem = model.draftItem {
+                AnnotationItemView(
+                    item: draftItem,
+                    image: model.previewImage ?? NSImage(),
+                    sourceImage: model.sourceImage,
+                    originalImageSize: model.imageSize,
+                    imageFrame: sourceImageFrame,
+                    canvasFrame: canvasFrame,
+                    isSelected: false,
+                    showsResizeHandles: false,
+                    isEditingText: false,
+                    allowsRedactionPreviewCaching: false,
+                    text: .constant(draftItem.text),
+                    onCommitText: {},
+                    onTextSizeChange: { _ in }
+                )
+            }
+
+            if let selectionRect = model.selectionRect {
+                let viewSel = viewRect(selectionRect, in: sourceImageFrame)
+                AnnotationMarqueeSelectionView()
+                    .frame(
+                        width: max(viewSel.width, 1),
+                        height: max(viewSel.height, 1)
+                    )
+                    .position(x: viewSel.midX, y: viewSel.midY)
+            }
+        }
+        .frame(
+            width: containerSize.width,
+            height: containerSize.height,
+            alignment: .topLeading
+        )
+        .contentShape(Rectangle())
+        .gesture(interactionGesture(imageFrame: sourceImageFrame, boundaryFrame: canvasFrame))
+        .onContinuousHover { phase in
+            switch phase {
+            case .active(let location):
+                hoveredLocation = location
+                updateCursor(at: location, imageFrame: sourceImageFrame)
+            case .ended:
+                hoveredLocation = nil
+                setCursor(.arrow)
+            }
+        }
+        .onChange(of: model.selectedTool) { _, _ in refreshCursor(imageFrame: sourceImageFrame) }
+        .onChange(of: model.itemIDs) { _, _ in refreshCursor(imageFrame: sourceImageFrame) }
+        .onChange(of: model.selectedItemIDs) { _, _ in refreshCursor(imageFrame: sourceImageFrame) }
+        .onDisappear { setCursor(.arrow) }
+    }
+
+    private func longImageZoomControls(metrics: EditorCanvasMetrics) -> some View {
+        HStack(spacing: 6) {
+            Label("长图", systemImage: "rectangle.portrait.and.arrow.forward")
+                .font(RuneFont.swiftUI(size: 11, weight: .semibold))
+                .foregroundStyle(RuneTheme.chromeText)
+
+            Text("\(Int(metrics.imageSize.width)) × \(Int(metrics.imageSize.height))")
+                .font(RuneFont.mono(size: 10))
+                .foregroundStyle(RuneTheme.chromeMuted)
+                .monospacedDigit()
+
+            Rectangle()
+                .fill(RuneTheme.chromeLine)
+                .frame(width: 1, height: 18)
+
+            zoomButton(
+                systemImage: "minus",
+                label: "缩小长图",
+                disabled: longImageZoom <= minimumLongImageZoom + 0.001
+            ) {
+                longImageZoom = max(minimumLongImageZoom, longImageZoom / 1.25)
+            }
+
+            Text("\(Int((longImageZoom * 100).rounded()))%")
+                .font(RuneFont.mono(size: 10))
+                .foregroundStyle(RuneTheme.chromeText)
+                .monospacedDigit()
+                .frame(width: 42)
+
+            zoomButton(
+                systemImage: "plus",
+                label: "放大长图",
+                disabled: longImageZoom >= maximumLongImageZoom - 0.001
+            ) {
+                longImageZoom = min(maximumLongImageZoom, longImageZoom * 1.25)
+            }
+
+            Button {
+                longImageZoom = 1
+            } label: {
+                Label("适合宽度", systemImage: "arrow.left.and.right")
+                    .font(RuneFont.swiftUI(size: 10.5, weight: .medium))
+                    .foregroundStyle(RuneTheme.chromeText)
+                    .padding(.horizontal, 8)
+                    .frame(height: 28)
+                    .background(
+                        RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
+                            .fill(Color.white.opacity(0.055))
+                    )
+            }
+            .buttonStyle(.plain)
+            .help("恢复适合宽度")
+            .accessibilityLabel("恢复长图适合宽度")
+        }
+        .padding(6)
+        .background(
+            RoundedRectangle(cornerRadius: RuneTheme.cardCorner, style: .continuous)
+                .fill(RuneTheme.chromeBase.opacity(0.96))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: RuneTheme.cardCorner, style: .continuous)
+                .strokeBorder(RuneTheme.chromeLine, lineWidth: 0.8)
+        )
+        .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
+    }
+
+    private func zoomButton(
+        systemImage: String,
+        label: String,
+        disabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(RuneFont.swiftUI(size: 10.5, weight: .semibold))
+                .foregroundStyle(disabled ? RuneTheme.chromeMuted.opacity(0.45) : RuneTheme.chromeText)
+                .frame(width: 28, height: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: RuneTheme.buttonCorner, style: .continuous)
+                        .fill(Color.white.opacity(disabled ? 0.025 : 0.055))
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .help(label)
+        .accessibilityLabel(label)
+    }
+
+    private func canvasMetrics(for sourceImage: CGImage) -> EditorCanvasMetrics {
+        let imageSize = CGSize(width: sourceImage.width, height: sourceImage.height)
+        let shortEdge = min(imageSize.width, imageSize.height)
+        let padding = shortEdge * model.config.padding
+
+        var canvasSize = CGSize(
+            width: imageSize.width + padding * 2,
+            height: imageSize.height + padding * 2
+        )
+        if let ratio = model.config.aspectRatio.numericValue {
+            let currentRatio = canvasSize.width / max(canvasSize.height, 1)
+            if currentRatio < ratio {
+                canvasSize.width = canvasSize.height * ratio
+            } else {
+                canvasSize.height = canvasSize.width / ratio
+            }
+        }
+
+        let horizontalPadding = canvasSize.width - imageSize.width
+        let verticalPadding = canvasSize.height - imageSize.height
+        return EditorCanvasMetrics(
+            imageSize: imageSize,
+            canvasSize: canvasSize,
+            imageOriginRatio: CGPoint(
+                x: model.config.alignment.xFactor * horizontalPadding / max(canvasSize.width, 1),
+                y: model.config.alignment.yFactor * verticalPadding / max(canvasSize.height, 1)
+            ),
+            imageSizeRatio: CGSize(
+                width: imageSize.width / max(canvasSize.width, 1),
+                height: imageSize.height / max(canvasSize.height, 1)
+            ),
+            shortEdge: shortEdge
         )
     }
 
@@ -225,6 +410,27 @@ struct EditorCanvasView: View {
         guard currentCursor != cursor else { return }
         currentCursor = cursor
         cursor.nsCursor.set()
+    }
+}
+
+private struct EditorCanvasMetrics {
+    let imageSize: CGSize
+    let canvasSize: CGSize
+    let imageOriginRatio: CGPoint
+    let imageSizeRatio: CGSize
+    let shortEdge: CGFloat
+
+    var sourceAspectRatio: CGFloat {
+        imageSize.height / max(imageSize.width, 1)
+    }
+
+    func sourceImageFrame(in canvasFrame: CGRect) -> CGRect {
+        CGRect(
+            x: canvasFrame.minX + imageOriginRatio.x * canvasFrame.width,
+            y: canvasFrame.minY + imageOriginRatio.y * canvasFrame.height,
+            width: imageSizeRatio.width * canvasFrame.width,
+            height: imageSizeRatio.height * canvasFrame.height
+        )
     }
 }
 

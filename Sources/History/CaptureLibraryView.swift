@@ -570,8 +570,12 @@ private struct CaptureLibraryCard: View {
                             GeometryReader { proxy in
                                 Image(nsImage: thumbnail)
                                     .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(width: proxy.size.width, height: proxy.size.height)
+                                    .aspectRatio(contentMode: isLongScreenshot ? .fill : .fit)
+                                    .frame(
+                                        width: proxy.size.width,
+                                        height: proxy.size.height,
+                                        alignment: .top
+                                    )
                                     .clipped()
                             }
                         } else {
@@ -589,6 +593,21 @@ private struct CaptureLibraryCard: View {
                                         .foregroundStyle(.white)
                                         .offset(x: 1)
                                 }
+                        } else if isLongScreenshot {
+                            HStack(spacing: 5) {
+                                Image(systemName: "rectangle.portrait.and.arrow.forward")
+                                Text("长图")
+                                Text("\(record.pixelWidth) × \(record.pixelHeight)")
+                                    .monospacedDigit()
+                            }
+                            .font(RuneFont.swiftUI(size: 9.5, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .frame(height: 24)
+                            .background(.black.opacity(0.72), in: Capsule())
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                            .padding(8)
+                            .allowsHitTesting(false)
                         }
                     }
                     .frame(maxWidth: .infinity)
@@ -709,6 +728,12 @@ private struct CaptureLibraryCard: View {
                 withBundleIdentifier: bundleID
               ) else { return nil }
         return NSWorkspace.shared.icon(forFile: appURL.path)
+    }
+
+    private var isLongScreenshot: Bool {
+        record.kind == .screenshot
+            && record.pixelWidth > 0
+            && CGFloat(record.pixelHeight) / CGFloat(record.pixelWidth) >= 3
     }
 
     private func loadThumbnail() async {

@@ -103,7 +103,9 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
 
         // 滚动长图真链路 E2E：锁定前台应用的主内容区，验证首帧、HID 滚动、
         // 重叠检测与追加是否连通。只写 /tmp 报告，结束时取消，不落历史记录。
-        if ProcessInfo.processInfo.arguments.contains("--audit-scroll-real") {
+        if ProcessInfo.processInfo.arguments.contains("--audit-scroll-real")
+            || ProcessInfo.processInfo.arguments.contains("--audit-scroll-real-full") {
+            let capturesFullPage = ProcessInfo.processInfo.arguments.contains("--audit-scroll-real-full")
             let sourceApplication = NSWorkspace.shared.runningApplications.first {
                 $0.bundleIdentifier == "com.google.Chrome"
             } ?? NSWorkspace.shared.frontmostApplication
@@ -118,12 +120,19 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                         NSApp.terminate(nil)
                         return
                     }
-                    let target = CGRect(
-                        x: screen.frame.minX + 250,
-                        y: 210,
-                        width: max(320, min(960, screen.frame.width - 300)),
-                        height: max(240, min(470, screen.frame.height - 270))
-                    )
+                    let target = capturesFullPage
+                        ? CGRect(
+                            x: screen.frame.minX + 40,
+                            y: 160,
+                            width: max(320, screen.frame.width - 80),
+                            height: max(240, min(800, screen.frame.height - 280))
+                        )
+                        : CGRect(
+                            x: screen.frame.minX + 250,
+                            y: 210,
+                            width: max(320, min(960, screen.frame.width - 300)),
+                            height: max(240, min(470, screen.frame.height - 270))
+                        )
                     let source = sourceApplication.map {
                         CaptureSource(
                             bundleIdentifier: $0.bundleIdentifier,
@@ -132,24 +141,44 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                             processID: $0.processIdentifier
                         )
                     }
+                    let controller = ScrollCaptureController.shared
+                    let auditImageURL = URL(
+                        fileURLWithPath: capturesFullPage
+                            ? "/tmp/rune-scroll-real-full.png"
+                            : "/tmp/rune-scroll-real.png"
+                    )
+                    try? FileManager.default.removeItem(at: auditImageURL)
                     await ScrollCaptureController.shared.start(
                         on: screen,
                         presetRegion: target,
                         source: source
                     )
-                    if ScrollCaptureController.shared.isAwaitingStart {
-                        ScrollCaptureController.shared.beginCapture()
-                        try? await Task.sleep(for: .seconds(7))
+                    if controller.isAwaitingStart {
+                        if capturesFullPage {
+                            controller.configureAuditImageOutput(to: auditImageURL)
+                        }
+                        controller.beginCapture()
+                        if capturesFullPage {
+                            for _ in 0..<150 where controller.isActive {
+                                try? await Task.sleep(for: .milliseconds(500))
+                            }
+                        } else {
+                            try? await Task.sleep(for: .seconds(7))
+                        }
                     }
-                    let controller = ScrollCaptureController.shared
+                    let wroteAuditImage = FileManager.default.fileExists(atPath: auditImageURL.path)
+                        || controller.writeAuditImage(to: auditImageURL)
                     let report = "mode=\(controller.mode.rawValue) frames=\(controller.capturedFrameCount) "
-                        + "height=\(controller.stitchedHeight) status=\(controller.statusMessage)"
+                        + "height=\(controller.stitchedHeight) image=\(wroteAuditImage ? auditImageURL.path : "FAIL") "
+                        + "status=\(controller.statusMessage)"
                     try? report.write(
                         toFile: "/tmp/rune-scroll-real.txt",
                         atomically: true,
                         encoding: .utf8
                     )
-                    controller.cancel()
+                    if controller.isActive {
+                        controller.cancel()
+                    }
                     NSApp.terminate(nil)
                 }
             }
@@ -318,15 +347,26 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                 )
                 DebugAuditSnapshot.captureAfter("18-recording-status-redesign.png")
             }
-        } else if ProcessInfo.processInfo.arguments.contains("--audit-preview") {
+        } else if let previewAuditArgument = ProcessInfo.processInfo.arguments.first(where: {
+            $0 == "--audit-preview" || $0.hasPrefix("--audit-preview-image=")
+        }) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                guard let url = Bundle.main.url(
-                    forResource: "mac-asset-7",
-                    withExtension: "png",
-                    subdirectory: "Backgrounds/mac"
-                ) else { return }
+                let url = previewAuditArgument.hasPrefix("--audit-preview-image=")
+                    ? URL(fileURLWithPath: String(
+                        previewAuditArgument.dropFirst("--audit-preview-image=".count)
+                    ))
+                    : Bundle.main.url(
+                        forResource: "mac-asset-7",
+                        withExtension: "png",
+                        subdirectory: "Backgrounds/mac"
+                    )
+                guard let url else { return }
                 PreviewOverlay.shared.show(url: url, on: NSScreen.main)
-                DebugAuditSnapshot.captureAfter("17-preview-card-redesign.png")
+                DebugAuditSnapshot.captureAfter(
+                    previewAuditArgument.hasPrefix("--audit-preview-image=")
+                        ? "preview-long-image.png"
+                        : "17-preview-card-redesign.png"
+                )
             }
         } else if ProcessInfo.processInfo.arguments.contains("--audit-video-preview") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
@@ -569,15 +609,27 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                     delay: 1.1
                 )
             }
-        } else if ProcessInfo.processInfo.arguments.contains("--audit-editor") {
+        } else if let editorAuditArgument = ProcessInfo.processInfo.arguments.first(where: {
+            $0 == "--audit-editor" || $0.hasPrefix("--audit-editor-image=")
+        }) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                guard let url = Bundle.main.url(
-                    forResource: "mac-asset-7",
-                    withExtension: "png",
-                    subdirectory: "Backgrounds/mac"
-                ) else { return }
+                let url = editorAuditArgument.hasPrefix("--audit-editor-image=")
+                    ? URL(fileURLWithPath: String(
+                        editorAuditArgument.dropFirst("--audit-editor-image=".count)
+                    ))
+                    : Bundle.main.url(
+                        forResource: "mac-asset-7",
+                        withExtension: "png",
+                        subdirectory: "Backgrounds/mac"
+                    )
+                guard let url else { return }
                 EditorWindowController.shared.open(url: url, on: NSScreen.main)
-                DebugAuditSnapshot.captureAfter("editor-redesign-final.png", delay: 1.2)
+                DebugAuditSnapshot.captureAfter(
+                    editorAuditArgument.hasPrefix("--audit-editor-image=")
+                        ? "editor-long-image.png"
+                        : "editor-redesign-final.png",
+                    delay: 1.2
+                )
             }
         } else if ProcessInfo.processInfo.arguments.contains("--audit-burst-setup") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
