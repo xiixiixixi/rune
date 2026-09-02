@@ -1,4 +1,5 @@
 import AppKit
+import OSLog
 import SwiftUI
 
 /// 截图确认模式控制器：截图后不落盘，冻结显示 + 底部工具栏，用户确认才保存。
@@ -10,6 +11,10 @@ import SwiftUI
 @MainActor
 final class CaptureConfirmController: NSObject {
     static let shared = CaptureConfirmController()
+    private static let transitionLogger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "com.tc.rune",
+        category: "ScrollCaptureTransition"
+    )
 
     private var canvasWindow: OverlayWindow?
     private var toolbarPanel: NSPanel?
@@ -139,7 +144,8 @@ final class CaptureConfirmController: NSObject {
 
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--audit-confirm")
-            || ProcessInfo.processInfo.arguments.contains("--audit-confirm-text") {
+            || ProcessInfo.processInfo.arguments.contains("--audit-confirm-text")
+            || ProcessInfo.processInfo.arguments.contains("--audit-confirm-scroll-e2e") {
             panel.makeKeyAndOrderFront(nil)
         }
         #endif
@@ -274,6 +280,9 @@ final class CaptureConfirmController: NSObject {
         pendingScrollRequested = true
         pendingScrollRegion = capturedRegion
         pendingScrollSource = capturedSource
+        Self.transitionLogger.notice(
+            "Long-image button requested transition regionPresent=\(self.capturedRegion != nil, privacy: .public) targetPID=\(self.capturedSource?.processID ?? -1, privacy: .public)"
+        )
         finish(result: nil)
     }
 
@@ -370,7 +379,8 @@ private final class ToolbarPanel: NSPanel {
     override var canBecomeKey: Bool {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--audit-confirm")
-            || ProcessInfo.processInfo.arguments.contains("--audit-confirm-text") {
+            || ProcessInfo.processInfo.arguments.contains("--audit-confirm-text")
+            || ProcessInfo.processInfo.arguments.contains("--audit-confirm-scroll-e2e") {
             return true
         }
         #endif

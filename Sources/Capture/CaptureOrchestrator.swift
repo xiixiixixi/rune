@@ -1,6 +1,7 @@
 import AppKit
 import CaptureKit
 import CaptureKitSCK
+import OSLog
 import SwiftUI
 
 /// Coordinates the full capture pipeline: hide window -> capture -> sound -> preview/editor.
@@ -8,6 +9,10 @@ import SwiftUI
 @Observable
 final class CaptureOrchestrator {
     static let shared = CaptureOrchestrator()
+    private static let transitionLogger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "com.tc.rune",
+        category: "ScrollCaptureTransition"
+    )
 
     private(set) var lastCaptureURL: URL?
     private var captureInProgress = false
@@ -265,11 +270,15 @@ final class CaptureOrchestrator {
             let scrollRegion = CaptureConfirmController.shared.pendingScrollRegion
             let scrollSource = CaptureConfirmController.shared.pendingScrollSource
             CaptureConfirmController.shared.clearPendingScroll()
+            Self.transitionLogger.notice(
+                "Consuming long-image transition regionPresent=\(scrollRegion != nil, privacy: .public) targetPID=\(scrollSource?.processID ?? -1, privacy: .public)"
+            )
             await ScrollCaptureController.shared.start(
                 on: screen,
                 presetRegion: scrollRegion,
                 source: scrollSource
             )
+            Self.transitionLogger.notice("Long-image controller start returned")
             return
         }
         if CaptureConfirmController.shared.pendingBurstRequested {
@@ -314,6 +323,31 @@ final class CaptureOrchestrator {
     func processExternalFrame(_ frame: CapturedFrame) async {
         await processCapturedFrame(frame)
     }
+
+    #if DEBUG
+    /// 用内存测试帧驱动真正的“截图确认 → 长图”生产链路。这个入口不复制
+    /// 转场逻辑，UI 自动化点击“长图”后仍由上面的 processCapturedFrame 消费。
+    func processScrollTransitionAuditFrame(
+        image: CGImage,
+        on screen: NSScreen,
+        region: CGRect,
+        backgroundImage: CGImage?,
+        source: CaptureSource?
+    ) async {
+        let frame = CapturedFrame(
+            image: image,
+            scaleFactor: screen.backingScaleFactor,
+            displayID: Self.displayID(for: screen)
+        )
+        await processCapturedFrame(
+            frame,
+            on: screen,
+            region: region,
+            backgroundImage: backgroundImage,
+            source: source
+        )
+    }
+    #endif
 
     /// 把 CGImage 写到临时目录，返回 URL。供 processFullscreenFrame 喂给 HistoryStore。
     private func writeCGImageToTemp(_ cgImage: CGImage) -> URL? {

@@ -8,7 +8,8 @@ public enum ScrollOverlapDetector {
         current: [UInt8],
         width: Int,
         height: Int,
-        maximumDifference: Double = 18
+        maximumDifference: Double = 18,
+        preferredOffset: Int? = nil
     ) -> Int? {
         guard width >= 8, height >= 16,
               previous.count == width * height,
@@ -19,13 +20,18 @@ public enum ScrollOverlapDetector {
             current: current,
             width: width,
             height: height,
-            offset: 0
+            offset: 0,
+            keptFraction: 0.96
         )
         if identicalScore < 2 { return 0 }
 
         let minOffset = max(2, height / 100)
-        let maxOffset = max(minOffset, Int(Double(height) * 0.82))
-        var bestOffset: Int?
+        // Page Down 和较快的触控板滚动通常只保留约 5%–15% 的可见重叠。
+        // 旧上限 82% 会把这类正常操作判成完全不相关；而且 previous 不会
+        // 前移，之后即使恢复小步滚动也无法继续拼接。保留至少 5% 画面用于
+        // 校验，既覆盖常见大步滚动，也避免在零重叠时猜测内容。
+        let maxOffset = max(minOffset, Int(Double(height) * 0.95))
+        var candidates: [(offset: Int, score: Double)] = []
         var bestScore = Double.greatestFiniteMagnitude
 
         for offset in minOffset...maxOffset {
@@ -36,14 +42,30 @@ public enum ScrollOverlapDetector {
                 height: height,
                 offset: offset
             )
+            candidates.append((offset, score))
             if score < bestScore {
                 bestScore = score
-                bestOffset = offset
             }
         }
 
         guard bestScore <= maximumDifference else { return nil }
-        return bestOffset
+        // 大面积纯色、留白或重复卡片会让多个偏移得到几乎相同的分数。自动
+        // 滚动知道自己发送的大致步长，近似并列时优先靠近它；只有视觉分数
+        // 明显更好时才偏离该提示，避免把 140 px 滚动误判成 2 px。
+        if let preferredOffset {
+            let nearBestLimit = min(maximumDifference, bestScore + 1.5)
+            return candidates
+                .filter { $0.score <= nearBestLimit }
+                .min {
+                    let lhsDistance = abs($0.offset - preferredOffset)
+                    let rhsDistance = abs($1.offset - preferredOffset)
+                    return lhsDistance == rhsDistance
+                        ? $0.score < $1.score
+                        : lhsDistance < rhsDistance
+                }?
+                .offset
+        }
+        return candidates.min { $0.score < $1.score }?.offset
     }
 
     private static func difference(
@@ -51,7 +73,8 @@ public enum ScrollOverlapDetector {
         current: [UInt8],
         width: Int,
         height: Int,
-        offset: Int
+        offset: Int,
+        keptFraction: Double = 0.72
     ) -> Double {
         let overlapHeight = height - offset
         guard overlapHeight > 0 else { return .greatestFiniteMagnitude }
@@ -88,7 +111,7 @@ public enum ScrollOverlapDetector {
         // 动态广告、视频、光标和吸顶条会污染少量采样行。取误差最低的
         // 72% 行做截尾均值，可容忍局部变化，又不会放过整帧无关内容。
         rowScores.sort()
-        let keptCount = max(1, Int(Double(rowScores.count) * 0.72))
+        let keptCount = max(1, Int(Double(rowScores.count) * keptFraction))
         let kept = rowScores.prefix(keptCount)
         return kept.reduce(0, +) / Double(kept.count)
     }

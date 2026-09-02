@@ -100,6 +100,61 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+
+        // 滚动长图真链路 E2E：锁定前台应用的主内容区，验证首帧、HID 滚动、
+        // 重叠检测与追加是否连通。只写 /tmp 报告，结束时取消，不落历史记录。
+        if ProcessInfo.processInfo.arguments.contains("--audit-scroll-real") {
+            let sourceApplication = NSWorkspace.shared.runningApplications.first {
+                $0.bundleIdentifier == "com.google.Chrome"
+            } ?? NSWorkspace.shared.frontmostApplication
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                Task { @MainActor in
+                    guard let screen = NSScreen.main else {
+                        try? "FAIL: 找不到主屏".write(
+                            toFile: "/tmp/rune-scroll-real.txt",
+                            atomically: true,
+                            encoding: .utf8
+                        )
+                        NSApp.terminate(nil)
+                        return
+                    }
+                    let target = CGRect(
+                        x: screen.frame.minX + 250,
+                        y: 210,
+                        width: max(320, min(960, screen.frame.width - 300)),
+                        height: max(240, min(470, screen.frame.height - 270))
+                    )
+                    let source = sourceApplication.map {
+                        CaptureSource(
+                            bundleIdentifier: $0.bundleIdentifier,
+                            applicationName: $0.localizedName ?? "前台应用",
+                            windowTitle: nil,
+                            processID: $0.processIdentifier
+                        )
+                    }
+                    await ScrollCaptureController.shared.start(
+                        on: screen,
+                        presetRegion: target,
+                        source: source
+                    )
+                    if ScrollCaptureController.shared.isAwaitingStart {
+                        ScrollCaptureController.shared.beginCapture()
+                        try? await Task.sleep(for: .seconds(7))
+                    }
+                    let controller = ScrollCaptureController.shared
+                    let report = "mode=\(controller.mode.rawValue) frames=\(controller.capturedFrameCount) "
+                        + "height=\(controller.stitchedHeight) status=\(controller.statusMessage)"
+                    try? report.write(
+                        toFile: "/tmp/rune-scroll-real.txt",
+                        atomically: true,
+                        encoding: .utf8
+                    )
+                    controller.cancel()
+                    NSApp.terminate(nil)
+                }
+            }
+            return
+        }
         #endif
 
         // M1 §5：改用 Carbon RegisterEventHotKey，不再需要辅助功能权限，直接注册。
@@ -386,7 +441,8 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
             }
         } else if ProcessInfo.processInfo.arguments.contains("--audit-confirm")
                     || ProcessInfo.processInfo.arguments.contains("--audit-confirm-text")
-                    || ProcessInfo.processInfo.arguments.contains("--audit-confirm-first-redaction") {
+                    || ProcessInfo.processInfo.arguments.contains("--audit-confirm-first-redaction")
+                    || ProcessInfo.processInfo.arguments.contains("--audit-confirm-scroll-e2e") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 let contentImageArgument = ProcessInfo.processInfo.arguments.first {
                     $0.hasPrefix("--audit-confirm-image=")
@@ -440,6 +496,37 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                     capturedImage = cropped
                 }
                 Task {
+                    if ProcessInfo.processInfo.arguments.contains("--audit-confirm-scroll-e2e") {
+                        let sourceApplication = NSWorkspace.shared.runningApplications.first {
+                            $0.bundleIdentifier == "com.google.Chrome"
+                        }
+                        let source = sourceApplication.map {
+                            CaptureSource(
+                                bundleIdentifier: $0.bundleIdentifier,
+                                applicationName: $0.localizedName ?? "Chrome",
+                                windowTitle: nil,
+                                processID: $0.processIdentifier
+                            )
+                        }
+                        await CaptureOrchestrator.shared.processScrollTransitionAuditFrame(
+                            image: capturedImage,
+                            on: screen,
+                            region: globalRegion,
+                            backgroundImage: cgImage,
+                            source: source
+                        )
+                        DebugAuditSnapshot.captureWindowsCompositeAfter(
+                            "scroll-transition-e2e.png",
+                            on: screen,
+                            background: nil,
+                            delay: 0.2
+                        )
+                        DebugAuditSnapshot.captureWindowLayoutAfter(
+                            "scroll-transition-e2e-layout.txt",
+                            delay: 0.2
+                        )
+                        return
+                    }
                     _ = await CaptureConfirmController.shared.present(
                         image: capturedImage,
                         on: screen,

@@ -1,6 +1,7 @@
 import AppKit
 import CaptureKit
 import CaptureKitSCK
+import OSLog
 import SwiftUI
 
 enum ScrollCaptureMode: String {
@@ -28,6 +29,10 @@ enum ScrollCaptureMode: String {
 @Observable
 final class ScrollCaptureController {
     static let shared = ScrollCaptureController()
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "com.tc.rune",
+        category: "ScrollCapture"
+    )
 
     private(set) var isActive = false
     private var isPreparing = false
@@ -53,6 +58,11 @@ final class ScrollCaptureController {
     private var hasObservedGrowth = false
     private var originalCursorLocation: CGPoint?
     private var cursorHiddenOnDisplay: CGDirectDisplayID?
+    private var lastCaptureFailureDescription: String?
+    private var lastSampledScrollRows: Int?
+    /// 动态网页的图片懒加载通常会持续 1–3 秒；这段时间只原地重抓，不继续滚。
+    private let maximumAutomaticMismatchRounds = 12
+    private let automaticScrollStep: Int32 = 140
 
     private enum FrameCaptureResult {
         case appended
@@ -69,13 +79,32 @@ final class ScrollCaptureController {
         presetRegion: CGRect? = nil,
         source: CaptureSource? = nil
     ) async {
-        guard !isActive, !isPreparing else { return }
+        if isActive {
+            // A previous transition may still be alive even if AppKit reordered its
+            // non-activating panels behind the target application. A second click
+            // must restore that session instead of silently swallowing the action.
+            if let targetRect {
+                ScrollCaptureStatusBarController.shared.show(
+                    on: screen,
+                    targetRect: targetRect
+                )
+                Self.logger.notice("Restored active scroll capture interface")
+            }
+            return
+        }
+        guard !isPreparing else {
+            Self.logger.notice("Ignored start request while scroll capture is preparing")
+            return
+        }
         isPreparing = true
         defer { isPreparing = false }
         guard await ScreenCapturePermissionController.shared.ensurePermission(
             for: .scrollCapture,
             on: screen
-        ) else { return }
+        ) else {
+            Self.logger.error("Scroll capture screen permission was not granted")
+            return
+        }
 
         // 预设选区（从确认画面「滚动长图」转入）时跳过框选
         var pointsRect = presetRegion
@@ -91,6 +120,9 @@ final class ScrollCaptureController {
         targetRect = pointsRect
         targetProcessID = captureSource?.processID
         mode = UIElementDetector.isTrusted && targetProcessID != nil ? .automatic : .manual
+        Self.logger.notice(
+            "Locked target region width=\(Int(pointsRect.width), privacy: .public) height=\(Int(pointsRect.height), privacy: .public) mode=\(self.mode.rawValue, privacy: .public) accessibilityTrusted=\(UIElementDetector.isTrusted, privacy: .public) targetPID=\(self.targetProcessID ?? -1, privacy: .public)"
+        )
         isActive = true
         isPaused = false
         isFinishing = false
@@ -100,11 +132,17 @@ final class ScrollCaptureController {
         livePreviewImage = nil
         statusMessage = "区域已锁定，正在准备长图"
 
-        ScrollCaptureStatusBarController.shared.show(on: screen, targetRect: pointsRect)
+        // Activate the captured application before creating the non-activating
+        // status panels. Doing this in the opposite order lets macOS reorder the
+        // freshly-created panels during app/Space activation, leaving an active
+        // capture session with no visible outline or controls.
         activateTargetApplication()
+        try? await Task.sleep(for: .milliseconds(100))
+        guard isActive else { return }
+        ScrollCaptureStatusBarController.shared.show(on: screen, targetRect: pointsRect)
 
         // 等待目标应用重新成为前台，也确保选区/确认蒙层已从 WindowServer 退场。
-        try? await Task.sleep(for: .milliseconds(180))
+        try? await Task.sleep(for: .milliseconds(80))
         guard isActive else { return }
 
         do {
@@ -120,8 +158,18 @@ final class ScrollCaptureController {
             updateLivePreview()
             statusMessage = mode == .automatic
                 ? "点击“开始滚动”，或先调整到内容顶部"
-                : "点击“开始滚动”，随后在选区内慢慢滚动"
+                : manualReadyInstruction
+            // The first ScreenCaptureKit request can itself cause a WindowServer
+            // ordering pass. Reassert the panels once the session is ready so the
+            // visible UI and the active controller cannot diverge.
+            ScrollCaptureStatusBarController.shared.bringToFront()
+            Self.logger.notice(
+                "Captured first frame width=\(first.image.width, privacy: .public) height=\(first.image.height, privacy: .public)"
+            )
         } catch {
+            Self.logger.error(
+                "First frame capture failed: \(String(describing: error), privacy: .public)"
+            )
             isActive = false
             ScrollCaptureStatusBarController.shared.dismiss()
             restoreAutomaticCursor()
@@ -146,6 +194,7 @@ final class ScrollCaptureController {
         } else {
             statusMessage = manualCaptureInstruction
         }
+        Self.logger.notice("Capture polling began in mode=\(self.mode.rawValue, privacy: .public)")
         beginPolling()
     }
 
@@ -165,6 +214,7 @@ final class ScrollCaptureController {
         ScrollCaptureStatusBarController.shared.dismiss()
 
         guard let image = renderSegments() else {
+            Self.logger.error("Failed to render \(self.segments.count, privacy: .public) scroll segments")
             isFinishing = false
             reset()
             showError("长图生成失败，请重试。")
@@ -174,6 +224,9 @@ final class ScrollCaptureController {
             image: image,
             scaleFactor: scaleFactor,
             displayID: displayID
+        )
+        Self.logger.notice(
+            "Rendered scroll capture frames=\(self.capturedFrameCount, privacy: .public) height=\(image.height, privacy: .public)"
         )
         reset(keepStatus: true)
         ScreenCapture.shared.playShutterSound()
@@ -218,7 +271,12 @@ final class ScrollCaptureController {
 
         guard UIElementDetector.isTrusted, targetProcessID != nil else {
             UIElementDetector.requestAccess()
-            statusMessage = "自动滚动需要辅助功能权限；当前继续手动捕获"
+            statusMessage = targetProcessID == nil
+                ? "没有识别到目标应用；当前继续手动捕获"
+                : "自动滚动需要辅助功能权限；授权后再点一次"
+            Self.logger.notice(
+                "Automatic mode unavailable accessibilityTrusted=\(UIElementDetector.isTrusted, privacy: .public) hasTargetProcess=\(self.targetProcessID != nil, privacy: .public)"
+            )
             return
         }
 
@@ -242,6 +300,9 @@ final class ScrollCaptureController {
         hasObservedGrowth = false
         captureTask?.cancel()
         captureTask = Task { [weak self] in
+            // 匹配失败通常发生在网页仍在惯性滚动、动画或懒加载时。失败后必须
+            // 原地重抓，不能继续发送滚轮事件，否则位移会叠加到彻底失去重叠。
+            var retryWithoutScrolling = false
             while !Task.isCancelled {
                 guard !Task.isCancelled, let self, self.isActive else { break }
 
@@ -251,8 +312,12 @@ final class ScrollCaptureController {
                 }
 
                 if self.mode == .automatic {
-                    self.postAutomaticScroll()
-                    try? await Task.sleep(for: .milliseconds(420))
+                    if retryWithoutScrolling {
+                        try? await Task.sleep(for: .milliseconds(280))
+                    } else {
+                        self.postAutomaticScroll()
+                        try? await Task.sleep(for: .milliseconds(420))
+                    }
                 } else {
                     try? await Task.sleep(for: .milliseconds(260))
                 }
@@ -260,11 +325,14 @@ final class ScrollCaptureController {
 
                 switch await self.captureNextFrame() {
                 case .appended:
+                    retryWithoutScrolling = false
                     self.hasObservedGrowth = true
                     self.unchangedRounds = 0
                     self.mismatchRounds = 0
 
                 case .unchanged:
+                    retryWithoutScrolling = false
+                    self.mismatchRounds = 0
                     guard self.mode == .automatic else { continue }
                     self.unchangedRounds += 1
                     if self.hasObservedGrowth, self.unchangedRounds >= 5 {
@@ -279,7 +347,15 @@ final class ScrollCaptureController {
 
                 case .mismatch:
                     self.mismatchRounds += 1
-                    if self.mode == .automatic, self.mismatchRounds >= 3 {
+                    if self.mismatchRounds == 1 {
+                        Self.logger.notice("Frame overlap mismatch")
+                    }
+                    if self.mode == .automatic,
+                       self.mismatchRounds < self.maximumAutomaticMismatchRounds {
+                        retryWithoutScrolling = true
+                        self.statusMessage = "页面仍在变化，正在等待稳定后继续"
+                    } else if self.mode == .automatic {
+                        retryWithoutScrolling = false
                         self.switchToManual(
                             reason: "页面变化太快，已切到手动；请慢一点滚动"
                         )
@@ -292,6 +368,7 @@ final class ScrollCaptureController {
                     return
 
                 case .failed:
+                    retryWithoutScrolling = self.mode == .automatic
                     if self.mode == .manual {
                         self.statusMessage = "暂时没有抓到画面；可继续滚动或点完成"
                     }
@@ -314,11 +391,23 @@ final class ScrollCaptureController {
                 return .mismatch
             }
 
+            let preferredOffset: Int?
+            if let lastSampledScrollRows {
+                preferredOffset = lastSampledScrollRows
+            } else if mode == .automatic {
+                preferredOffset = max(2, Int(
+                    (CGFloat(automaticScrollStep) / CGFloat(next.image.height)
+                        * CGFloat(previousGray.height)).rounded()
+                ))
+            } else {
+                preferredOffset = nil
+            }
             guard let sampledRows = ScrollOverlapDetector.appendedRowCount(
                 previous: previousGray.pixels,
                 current: currentGray.pixels,
                 width: previousGray.width,
-                height: previousGray.height
+                height: previousGray.height,
+                preferredOffset: preferredOffset
             ) else {
                 return .mismatch
             }
@@ -340,14 +429,24 @@ final class ScrollCaptureController {
             guard let newBottom = next.image.cropping(to: cropRect) else { return .failed }
             segments.append(newBottom)
             self.previousImage = next.image
+            lastCaptureFailureDescription = nil
+            lastSampledScrollRows = sampledRows
             capturedFrameCount += 1
             stitchedHeight += appendedRows
             updateLivePreview()
             statusMessage = mode == .automatic
                 ? "自动滚动中：已拼接 \(capturedFrameCount) 段"
                 : "手动滚动中：已拼接 \(capturedFrameCount) 段"
+            Self.logger.debug(
+                "Appended segment rows=\(appendedRows, privacy: .public) frames=\(self.capturedFrameCount, privacy: .public)"
+            )
             return .appended
         } catch {
+            let description = String(describing: error)
+            if description != lastCaptureFailureDescription {
+                Self.logger.error("Frame capture failed: \(description, privacy: .public)")
+                lastCaptureFailureDescription = description
+            }
             return .failed
         }
     }
@@ -358,8 +457,18 @@ final class ScrollCaptureController {
 
     private var manualCaptureInstruction: String {
         UIElementDetector.isTrusted
-            ? "请在选区内向下滚动；Esc 或“完成”收尾"
-            : "请在选区内向下滚动；点“完成”收尾"
+            ? "手动模式：请小步向下滚动；Esc 或“完成”收尾"
+            : "手动模式：请小步向下滚动；点“完成”收尾"
+    }
+
+    private var manualReadyInstruction: String {
+        if !UIElementDetector.isTrusted {
+            return "未开启辅助功能，当前为手动模式；点击“开始滚动”"
+        }
+        if targetProcessID == nil {
+            return "未识别到目标应用，当前为手动模式；点击“开始滚动”"
+        }
+        return "点击“开始滚动”，随后在选区内小步滚动"
     }
 
     private func activateTargetApplication() {
@@ -395,7 +504,7 @@ final class ScrollCaptureController {
             scrollWheelEvent2Source: source,
             units: .pixel,
             wheelCount: 1,
-            wheel1: -140,
+            wheel1: -automaticScrollStep,
             wheel2: 0,
             wheel3: 0
         ) else { return }
@@ -535,6 +644,8 @@ final class ScrollCaptureController {
         unchangedRounds = 0
         mismatchRounds = 0
         hasObservedGrowth = false
+        lastCaptureFailureDescription = nil
+        lastSampledScrollRows = nil
         mode = .automatic
         isPaused = false
         isFinishing = false
@@ -604,6 +715,12 @@ final class ScrollCaptureStatusBarController {
             panel.orderOut(nil)
         }
         panels.removeAll()
+    }
+
+    func bringToFront() {
+        for panel in panels {
+            panel.orderFrontRegardless()
+        }
     }
 
     private func resolvedScreen(_ preferred: NSScreen?, pointsRect: CGRect?) -> NSScreen? {
@@ -720,6 +837,7 @@ final class ScrollCaptureStatusBarController {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = shadow
+        panel.isReleasedWhenClosed = false
         panel.level = .screenSaver
         panel.hidesOnDeactivate = false
         panel.ignoresMouseEvents = ignoresMouseEvents
