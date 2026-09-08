@@ -29,6 +29,10 @@ final class CaptureConfirmController: NSObject {
     /// 焦点守护：点完工具栏按钮后把键盘焦点还给画布（否则 Enter/Esc 失灵）
     private var focusMonitor: Any?
 
+    /// 选区被拖动/缩放后的工具栏锚点（全局 AppKit 坐标）。
+    /// nil = 用原始截图选区锚定（默认行为）。
+    private var toolbarAnchorOverride: CGRect?
+
     /// 画布视图（弱引用供工具栏驱动）
     private(set) weak var canvas: ConfirmCanvasView?
 
@@ -57,6 +61,7 @@ final class CaptureConfirmController: NSObject {
         pendingScrollSource = nil
         pendingBurstRequested = false
         pendingBurstRegion = nil
+        confirmedImage = nil
 
         let targetScreen = screen ?? NSScreen.main ?? NSScreen.screens.first!
         capturedRegion = region
@@ -90,6 +95,7 @@ final class CaptureConfirmController: NSObject {
         targetScreen = screen
         captureImage = image
         freezeImage = backgroundImage
+        toolbarAnchorOverride = nil
         let canvas = ConfirmCanvasView(
             image: image,
             backgroundImage: backgroundImage,
@@ -178,7 +184,7 @@ final class CaptureConfirmController: NSObject {
         // 屏幕太窄时装不下就缩到屏幕内（保留最小边距 16）
         let finalWidth = min(size.width, sf.width - 32)
         let finalHeight = min(size.height, sf.height - 24)
-        let captureFrame = capturedRegion.flatMap { appKitFrame(for: $0) }
+        let captureFrame = toolbarAnchorOverride ?? capturedRegion.flatMap { appKitFrame(for: $0) }
         let x = min(
             max((captureFrame?.midX ?? sf.midX) - finalWidth / 2, sf.minX + 16),
             sf.maxX - finalWidth - 16
@@ -247,11 +253,15 @@ final class CaptureConfirmController: NSObject {
 
     // MARK: - 结束
 
+    /// 确认画布选区调整后的成图（nil = 未调整）。编排器保存时优先用它；
+    /// 每次确认会话开始时清空。
+    private(set) var confirmedImage: CGImage?
+
     /// 用户点保存/按 Enter。
     func confirm() {
         canvas?.finishTextEditing()
-        let items = canvas?.annotations ?? []
-        finish(result: items)
+        confirmedImage = canvas?.croppedImage()
+        finish(result: canvas?.remappedAnnotations() ?? [])
     }
 
     /// 回车默认动作：复制到剪贴板 + 保存。保存流程读 copiedDuringConfirm
@@ -262,7 +272,8 @@ final class CaptureConfirmController: NSObject {
         copiedDuringConfirm = true
         canvas?.finishTextEditing()
         canvas?.copyImageToPasteboard()
-        finish(result: canvas?.annotations ?? [])
+        confirmedImage = canvas?.croppedImage()
+        finish(result: canvas?.remappedAnnotations() ?? [])
     }
 
     /// 用户点取消/按 Esc。零残留。
@@ -312,6 +323,14 @@ final class CaptureConfirmController: NSObject {
         let cont = continuation
         continuation = nil
         cont?.resume(returning: result)
+    }
+
+    /// 确认画布选区移动/缩放时由画布调用：工具栏跟随新选区重新落位。
+    /// 位置规则不变——优先选区下方，放不下换上方，再不行回屏幕底部。
+    func relayoutToolbar(near anchor: CGRect) {
+        guard let panel = toolbarPanel else { return }
+        toolbarAnchorOverride = anchor
+        applyToolbarSize(panel.frame.size)
     }
 
     /// 每次鼠标抬起：若画布窗丢了 key（被工具栏按钮点击影响）就立刻拿回来。

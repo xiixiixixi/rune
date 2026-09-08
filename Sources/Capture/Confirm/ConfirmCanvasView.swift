@@ -22,6 +22,7 @@ final class ConfirmCanvasView: NSView {
 
     var annotations: [AnnotationItem] = []
     private var undoStack: [[AnnotationItem]] = []
+    private var redoStack: [[AnnotationItem]] = []
 
     var selectedTool: AnnotationTool = .select
     var selectedSwatch: AnnotationSwatch = .mustard   // 与工具栏默认一致（曾不同步导致默认仍是红）
@@ -37,6 +38,180 @@ final class ConfirmCanvasView: NSView {
     // 选中拖动
     private var movingID: AnnotationItem.ID?
     private var moveOffset: CGPoint = .zero
+
+    // MARK: - 选区再调整（Snipaste 式：确认态拖角/边改选区）
+    //
+    // cropRect 为 nil 表示未调整（选区=原图范围）。有整屏定格帧时可向外扩
+    // （像素从定格帧取），否则（长图等）只能向内缩。
+
+    private enum CropHandle {
+        case topLeft, top, topRight, right, bottomRight, bottom, bottomLeft, left
+    }
+
+    private var cropRect: CGRect?
+    private var resizingHandle: CropHandle?
+    // 拖动整个选区（选择工具下点选区内部空白处）
+    private var movingCrop = false
+    private var cropMoveStart: CGPoint?
+    private var cropMoveOrigin: CGRect?
+
+    /// 当前生效的选区（视图坐标）。
+    var effectiveCropRect: CGRect {
+        cropRect ?? imageDrawRect
+    }
+
+    /// 选区允许的活动范围：有整屏定格帧=整屏；否则=原图区域。
+    private var cropAllowedBounds: CGRect {
+        backgroundImage != nil ? bounds : imageDrawRect
+    }
+
+    private func cropHandle(at p: CGPoint) -> CropHandle? {
+        guard selectedTool == .select, !ocrMode else { return nil }
+        let c = effectiveCropRect
+        let tolerance: CGFloat = 9
+        let nearLeft = abs(p.x - c.minX) <= tolerance
+        let nearRight = abs(p.x - c.maxX) <= tolerance
+        let nearBottom = abs(p.y - c.minY) <= tolerance
+        let nearTop = abs(p.y - c.maxY) <= tolerance
+        let withinY = p.y >= c.minY - tolerance && p.y <= c.maxY + tolerance
+        let withinX = p.x >= c.minX - tolerance && p.x <= c.maxX + tolerance
+        // 角优先，其次边
+        if nearLeft && nearTop { return .topLeft }
+        if nearRight && nearTop { return .topRight }
+        if nearLeft && nearBottom { return .bottomLeft }
+        if nearRight && nearBottom { return .bottomRight }
+        if nearLeft && withinY { return .left }
+        if nearRight && withinY { return .right }
+        if nearTop && withinX { return .top }
+        if nearBottom && withinX { return .bottom }
+        return nil
+    }
+
+    private func applyCropResize(to location: CGPoint) {        let limit = cropAllowedBounds
+        let p = CGPoint(
+            x: min(max(location.x, limit.minX), limit.maxX),
+            y: min(max(location.y, limit.minY), limit.maxY)
+        )
+        let c = cropRect ?? imageDrawRect
+        let minSize: CGFloat = 24
+        var x0 = c.minX, y0 = c.minY, x1 = c.maxX, y1 = c.maxY
+        switch resizingHandle {
+        case .left: x0 = min(p.x, x1 - minSize)
+        case .right: x1 = max(p.x, x0 + minSize)
+        case .bottom: y0 = min(p.y, y1 - minSize)
+        case .top: y1 = max(p.y, y0 + minSize)
+        case .bottomLeft: x0 = min(p.x, x1 - minSize); y0 = min(p.y, y1 - minSize)
+        case .bottomRight: x1 = max(p.x, x0 + minSize); y0 = min(p.y, y1 - minSize)
+        case .topLeft: x0 = min(p.x, x1 - minSize); y1 = max(p.y, y0 + minSize)
+        case .topRight: x1 = max(p.x, x0 + minSize); y1 = max(p.y, y0 + minSize)
+        case nil: return
+        }
+        let clamped = CGRect(
+            x: x0, y: y0, width: x1 - x0, height: y1 - y0
+        ).intersection(limit)
+        guard clamped.width >= minSize * 0.5, clamped.height >= minSize * 0.5 else { return }
+        cropRect = clamped
+        notifyToolbarFollow()
+        needsDisplay = true
+    }
+
+    /// 拖动整个选区：位移钳制在允许范围内（有定格帧=整屏，否则=原图区域）。
+    private func applyCropMove(to location: CGPoint) {
+        guard let start = cropMoveStart, let origin = cropMoveOrigin else { return }
+        let limit = cropAllowedBounds
+        let dx = min(
+            max(location.x - start.x, limit.minX - origin.minX),
+            limit.maxX - origin.maxX
+        )
+        let dy = min(
+            max(location.y - start.y, limit.minY - origin.minY),
+            limit.maxY - origin.maxY
+        )
+        cropRect = origin.offsetBy(dx: dx, dy: dy)
+        notifyToolbarFollow()
+        needsDisplay = true
+    }
+
+    /// 选区变了：悬浮工具栏跟着选区重新落位（下方 → 上方 → 屏幕底部）。
+    private func notifyToolbarFollow() {
+        let c = effectiveCropRect
+        controller?.relayoutToolbar(near: CGRect(
+            x: screen.frame.minX + c.minX,
+            y: screen.frame.minY + c.minY,
+            width: c.width,
+            height: c.height
+        ))
+    }
+
+    /// 选区调整后的成图（nil = 未调整）。有整屏定格帧时向外扩的像素从定格帧取。
+    func croppedImage() -> CGImage? {
+        guard let cropRect else { return nil }
+        let c = cropRect.intersection(cropAllowedBounds)
+        guard c.width > 4, c.height > 4 else { return nil }
+        if let backgroundImage {
+            let scaleX = CGFloat(backgroundImage.width) / max(bounds.width, 1)
+            let scaleY = CGFloat(backgroundImage.height) / max(bounds.height, 1)
+            let pixelRect = CGRect(
+                x: c.minX * scaleX,
+                y: (bounds.height - c.maxY) * scaleY,
+                width: c.width * scaleX,
+                height: c.height * scaleY
+            ).integral
+            guard pixelRect.minX >= 0, pixelRect.minY >= 0,
+                  pixelRect.maxX <= CGFloat(backgroundImage.width),
+                  pixelRect.maxY <= CGFloat(backgroundImage.height) else { return nil }
+            return backgroundImage.cropping(to: pixelRect)
+        }
+        let r = imageDrawRect
+        let intersection = c.intersection(r)
+        guard !intersection.isNull, intersection.width > 4, intersection.height > 4 else {
+            return nil
+        }
+        let scaleX = CGFloat(image.width) / max(r.width, 1)
+        let scaleY = CGFloat(image.height) / max(r.height, 1)
+        let pixelRect = CGRect(
+            x: (intersection.minX - r.minX) * scaleX,
+            y: (r.maxY - intersection.maxY) * scaleY,
+            width: intersection.width * scaleX,
+            height: intersection.height * scaleY
+        ).integral
+        guard pixelRect.minX >= 0, pixelRect.minY >= 0,
+              pixelRect.maxX <= CGFloat(image.width),
+              pixelRect.maxY <= CGFloat(image.height) else { return nil }
+        return image.cropping(to: pixelRect)
+    }
+
+    /// 标注从原图归一化坐标重映射到裁剪后选区（完全落在选区外的丢弃）。
+    func remappedAnnotations() -> [AnnotationItem] {
+        let crop = effectiveCropRect
+        guard cropRect != nil, crop.width > 1, crop.height > 1 else { return annotations }
+        let r = imageDrawRect
+        func mapPoint(_ p: CGPoint) -> CGPoint {
+            let viewX = r.minX + p.x * r.width
+            let viewY = r.maxY - p.y * r.height
+            return CGPoint(
+                x: (viewX - crop.minX) / crop.width,
+                y: (crop.maxY - viewY) / crop.height
+            )
+        }
+        var result: [AnnotationItem] = []
+        for var item in annotations {
+            let topLeft = mapPoint(CGPoint(x: item.rect.minX, y: item.rect.minY))
+            let bottomRight = mapPoint(CGPoint(x: item.rect.maxX, y: item.rect.maxY))
+            item.rect = CGRect(
+                x: min(topLeft.x, bottomRight.x),
+                y: min(topLeft.y, bottomRight.y),
+                width: abs(bottomRight.x - topLeft.x),
+                height: abs(bottomRight.y - topLeft.y)
+            )
+            item.points = item.points.map(mapPoint)
+            if item.rect.maxX >= 0, item.rect.minX <= 1,
+               item.rect.maxY >= 0, item.rect.minY <= 1 {
+                result.append(item)
+            }
+        }
+        return result
+    }
 
     // 选字模式（钉钉/飞书式）：识别出的文字块可点选/划选复制
     var ocrMode = false
@@ -93,6 +268,7 @@ final class ConfirmCanvasView: NSView {
 
     func undo() {
         guard !undoStack.isEmpty else { return }
+        redoStack.append(annotations)
         annotations = undoStack.removeLast()
         selectedID = nil
         needsDisplay = true
@@ -100,6 +276,17 @@ final class ConfirmCanvasView: NSView {
     }
 
     var canUndo: Bool { !undoStack.isEmpty }
+
+    func redo() {
+        guard !redoStack.isEmpty else { return }
+        undoStack.append(annotations)
+        annotations = redoStack.removeLast()
+        selectedID = nil
+        needsDisplay = true
+        postCanvasStateChange()
+    }
+
+    var canRedo: Bool { !redoStack.isEmpty }
 
     /// 选中态下改颜色/粗细（CleanShot 式：点工具栏色点/粗细直接改选中标注）
     func updateSelectedAnnotation(swatch: AnnotationSwatch? = nil, strokeWidth: CGFloat? = nil) {
@@ -113,13 +300,18 @@ final class ConfirmCanvasView: NSView {
     func deleteSelected() {
         guard let id = selectedID else { return }
         pushUndo()
+        let wasNumbered = annotations.first(where: { $0.id == id })?.tool == .numberedCircle
         annotations.removeAll { $0.id == id }
         selectedID = nil
+        if wasNumbered {
+            renumberCircleAnnotations()
+        }
         needsDisplay = true
     }
 
     private func pushUndo() {
         undoStack.append(annotations)
+        redoStack.removeAll()
         postCanvasStateChange()
     }
 
@@ -143,12 +335,28 @@ final class ConfirmCanvasView: NSView {
         // 2. 截中的画面回到原来的空间位置，而不是重新居中展示。
         ctx.saveGState()
         ctx.interpolationQuality = .high
-        let drawRect = imageDrawRect
-        ctx.draw(image, in: drawRect)
+        let drawRect = effectiveCropRect
+        ctx.draw(image, in: imageDrawRect)
         ctx.restoreGState()
+
+        // 2.5 选区调整后：选区外压暗，让"什么会被裁掉"一目了然。
+        if cropRect != nil {
+            let c = drawRect
+            let outside = [
+                CGRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: max(0, c.minY - bounds.minY)),
+                CGRect(x: bounds.minX, y: c.maxY, width: bounds.width, height: max(0, bounds.maxY - c.maxY)),
+                CGRect(x: bounds.minX, y: c.minY, width: max(0, c.minX - bounds.minX), height: c.height),
+                CGRect(x: c.maxX, y: c.minY, width: max(0, bounds.maxX - c.maxX), height: c.height),
+            ]
+            NSColor.black.withAlphaComponent(0.38).setFill()
+            for rect in outside where rect.width > 0.5 && rect.height > 0.5 {
+                rect.fill()
+            }
+        }
 
         // 3. 只保留细边界标识选区；选区外维持原始亮度。
         drawFrozenEdge(around: drawRect)
+        drawCropHandles(around: drawRect)
 
         // 3.5 选字模式：文字块高亮（必须在"无标注提前 return"之前，
         // 否则刚截完图（0 标注）时蓝块永远画不出来）
@@ -169,12 +377,15 @@ final class ConfirmCanvasView: NSView {
             }
         }
 
-        // 4. 画标注（归一化坐标映射到 drawRect；Y-down → CG 用 flipped 渲染）
+        // 4. 画标注（归一化坐标映射到 imageDrawRect；Y-down → CG 用 flipped 渲染）。
+        // 注意锚点必须是 imageDrawRect（与 normalizedPoint/viewRect 同一坐标系）——
+        // 选区框（effectiveCropRect）只决定最终裁剪输出，不能参与编辑坐标，
+        // 否则选区一挪/一缩，画出的框就会偏移到别处。
         // 马赛克草稿特殊处理：AnnotationDrawing 的 blur 需要画布快照（此处没有），
         // 拖拽阶段由本视图直接画棋盘格预览（选中即见"这是打码"），保存烘焙才是真马赛克
         var items = annotations
         if let draft {
-            if draft.tool == .blur, draft.rect.width > 0.003, draft.rect.height > 0.003 {
+            if draft.tool.isRedactionTool, draft.rect.width > 0.003, draft.rect.height > 0.003 {
                 drawCheckerboardPreview(in: viewRect(for: draft.rect), ctx: ctx)
             } else {
                 items.append(draft)
@@ -190,9 +401,14 @@ final class ConfirmCanvasView: NSView {
         if !vectorItems.isEmpty {
             ctx.saveGState()
             // AnnotationDrawing.draw(flipped:true) 要求上下文为 Y-down：整体翻转一次
-            ctx.translateBy(x: 0, y: drawRect.maxY)
+            ctx.translateBy(x: 0, y: imageDrawRect.maxY)
             ctx.scaleBy(x: 1, y: -1)
-            let flippedRect = CGRect(x: drawRect.minX, y: 0, width: drawRect.width, height: drawRect.height)
+            let flippedRect = CGRect(
+                x: imageDrawRect.minX,
+                y: 0,
+                width: imageDrawRect.width,
+                height: imageDrawRect.height
+            )
             AnnotationDrawing.draw(
                 vectorItems,
                 in: ctx,
@@ -204,7 +420,17 @@ final class ConfirmCanvasView: NSView {
             ctx.restoreGState()
         }
 
-        // 5. 选中高亮：红色圆角虚线框 + 四角白色手柄方块（视觉上"可操作"）
+        // 5. 悬停高亮 + 选中装饰（capcap 式：红虚线框 + 8 向缩放句柄 +
+        // 箭头/直线端点圆 + 右上角删除按钮）
+        if let hoveredID = hoveredAnnotationID,
+           hoveredID != selectedID,
+           let hovered = annotations.first(where: { $0.id == hoveredID }) {
+            let r = viewRect(for: hovered.bounds).insetBy(dx: -3, dy: -3)
+            ctx.addPath(CGPath(roundedRect: r, cornerWidth: 5, cornerHeight: 5, transform: nil))
+            ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.55).cgColor)
+            ctx.setLineWidth(1)
+            ctx.strokePath()
+        }
         if let id = selectedID,
            let item = annotations.first(where: { $0.id == id }) {
             let r = viewRect(for: item.bounds).insetBy(dx: -4, dy: -4)
@@ -215,20 +441,82 @@ final class ConfirmCanvasView: NSView {
             ctx.setLineDash(phase: 0, lengths: [4, 3])
             ctx.strokePath()
             ctx.setLineDash(phase: 0, lengths: [])
-            // 四角手柄：白底红边小方块
-            let hs: CGFloat = 7
-            for corner in [r.origin,
-                           CGPoint(x: r.maxX, y: r.minY),
-                           CGPoint(x: r.minX, y: r.maxY),
-                           CGPoint(x: r.maxX, y: r.maxY)] {
-                let rect = CGRect(x: corner.x - hs/2, y: corner.y - hs/2, width: hs, height: hs)
-                ctx.setFillColor(NSColor.white.cgColor)
-                ctx.setStrokeColor(NSColor.systemRed.cgColor)
-                ctx.setLineWidth(1.5)
-                ctx.fill(rect)
-                ctx.stroke(rect)
+
+            // 句柄：矩形类 8 向方块；箭头/直线首尾端点圆
+            if item.tool == .arrow || item.tool == .line {
+                for anchor in annotationHandleAnchors(item) {
+                    let radius: CGFloat = 5
+                    let dot = CGRect(
+                        x: anchor.point.x - radius,
+                        y: anchor.point.y - radius,
+                        width: radius * 2,
+                        height: radius * 2
+                    )
+                    ctx.setFillColor(NSColor.white.cgColor)
+                    ctx.setStrokeColor(NSColor.systemRed.cgColor)
+                    ctx.setLineWidth(1.5)
+                    ctx.fillEllipse(in: dot)
+                    ctx.strokeEllipse(in: dot)
+                }
+            } else if item.tool != .freehand && item.tool != .text {
+                let hs: CGFloat = 7
+                for anchor in annotationHandleAnchors(item) {
+                    guard case .rectAnchor = anchor.handle else { continue }
+                    let rect = CGRect(
+                        x: anchor.point.x - hs / 2,
+                        y: anchor.point.y - hs / 2,
+                        width: hs,
+                        height: hs
+                    )
+                    ctx.setFillColor(NSColor.white.cgColor)
+                    ctx.setStrokeColor(NSColor.systemRed.cgColor)
+                    ctx.setLineWidth(1.5)
+                    ctx.fill(rect)
+                    ctx.stroke(rect)
+                }
+            }
+
+            // 删除按钮：右上角小圆 ×；编号标注在下方再给 +/− 步进（capcap 式）
+            let button = deleteButtonRect(for: item)
+            var actionButtons: [(rect: CGRect, glyph: Glyph)] = [(button, .cross)]
+            if item.tool == .numberedCircle {
+                actionButtons.append((numberStepButtonRect(for: item, increment: true), .plus))
+                actionButtons.append((numberStepButtonRect(for: item, increment: false), .minus))
+            }
+            for (rect, glyph) in actionButtons {
+                let circle = CGRect(
+                    x: rect.midX - 9, y: rect.midY - 9, width: 18, height: 18
+                )
+                ctx.setFillColor(NSColor.black.withAlphaComponent(0.72).cgColor)
+                ctx.fillEllipse(in: circle)
+                ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.85).cgColor)
+                ctx.setLineWidth(1.2)
+                ctx.strokeEllipse(in: circle)
+                let arm: CGFloat = 3.4
+                ctx.setStrokeColor(NSColor.white.cgColor)
+                ctx.setLineWidth(1.6)
+                ctx.setLineCap(.round)
+                switch glyph {
+                case .cross:
+                    ctx.move(to: CGPoint(x: rect.midX - arm, y: rect.midY - arm))
+                    ctx.addLine(to: CGPoint(x: rect.midX + arm, y: rect.midY + arm))
+                    ctx.move(to: CGPoint(x: rect.midX - arm, y: rect.midY + arm))
+                    ctx.addLine(to: CGPoint(x: rect.midX + arm, y: rect.midY - arm))
+                case .plus, .minus:
+                    ctx.move(to: CGPoint(x: rect.midX - arm, y: rect.midY))
+                    ctx.addLine(to: CGPoint(x: rect.midX + arm, y: rect.midY))
+                    if case .plus = glyph {
+                        ctx.move(to: CGPoint(x: rect.midX, y: rect.midY - arm))
+                        ctx.addLine(to: CGPoint(x: rect.midX, y: rect.midY + arm))
+                    }
+                }
+                ctx.strokePath()
             }
         }
+    }
+
+    private enum Glyph {
+        case cross, plus, minus
     }
 
     private func drawRedactionPreviews(_ items: [AnnotationItem]) {
@@ -289,12 +577,82 @@ final class ConfirmCanvasView: NSView {
            abs(pointSize.height - bounds.height) < 2 {
             return bounds
         }
+        // 长图（滚动截图等）：整幅按屏幕比例自适应，而不是按原始点尺寸居中——
+        // 一张数千点高的长图居中摆放时两头都画在屏幕外，用户只能看到中段。
+        // 底部留出确认工具栏的空间。
+        if pointSize.width > bounds.width || pointSize.height > bounds.height {
+            let horizontalMargin: CGFloat = 28
+            let topMargin: CGFloat = 28
+            let bottomMargin: CGFloat = 104
+            let availableWidth = bounds.width - horizontalMargin * 2
+            let availableHeight = bounds.height - topMargin - bottomMargin
+            guard availableWidth > 10, availableHeight > 10 else {
+                return CGRect(
+                    x: bounds.midX - pointSize.width / 2,
+                    y: bounds.midY - pointSize.height / 2,
+                    width: pointSize.width,
+                    height: pointSize.height
+                )
+            }
+            let fitScale = min(
+                availableWidth / pointSize.width,
+                availableHeight / pointSize.height
+            )
+            let fittedSize = CGSize(
+                width: pointSize.width * fitScale,
+                height: pointSize.height * fitScale
+            )
+            return CGRect(
+                x: bounds.midX - fittedSize.width / 2,
+                y: bottomMargin + (availableHeight - fittedSize.height) / 2,
+                width: fittedSize.width,
+                height: fittedSize.height
+            )
+        }
         return CGRect(
             x: bounds.midX - pointSize.width / 2,
             y: bounds.midY - pointSize.height / 2,
             width: pointSize.width,
             height: pointSize.height
         )
+    }
+
+    /// 选区再调整句柄：选择工具下在四角/四边画白色圆点，提示可拖动。
+    private func drawCropHandles(around rect: CGRect) {
+        guard selectedTool == .select, !ocrMode else { return }
+        let radius: CGFloat = 4.5
+        let centers = [
+            CGPoint(x: rect.minX, y: rect.minY),
+            CGPoint(x: rect.midX, y: rect.minY),
+            CGPoint(x: rect.maxX, y: rect.minY),
+            CGPoint(x: rect.maxX, y: rect.midY),
+            CGPoint(x: rect.maxX, y: rect.maxY),
+            CGPoint(x: rect.midX, y: rect.maxY),
+            CGPoint(x: rect.minX, y: rect.maxY),
+            CGPoint(x: rect.minX, y: rect.midY),
+        ]
+        for center in centers {
+            let halo = NSBezierPath(
+                ovalIn: CGRect(
+                    x: center.x - radius,
+                    y: center.y - radius,
+                    width: radius * 2,
+                    height: radius * 2
+                )
+            )
+            NSColor.black.withAlphaComponent(0.35).setFill()
+            halo.fill()
+            let dot = NSBezierPath(
+                ovalIn: CGRect(
+                    x: center.x - radius + 1,
+                    y: center.y - radius + 1,
+                    width: radius * 2 - 2,
+                    height: radius * 2 - 2
+                )
+            )
+            NSColor.white.setFill()
+            dot.fill()
+        }
     }
 
     private func drawFrozenEdge(around rect: CGRect) {
@@ -453,13 +811,305 @@ final class ConfirmCanvasView: NSView {
         path.stroke()
     }
 
-    // MARK: - 鼠标交互
+    // MARK: - 单标注交互（capcap 式：任何工具下点中标注先拖动；选中后
+    // 缩放句柄/端点重抓/删除按钮/悬停高亮；方向键微调；标注剪贴板）
+
+    private enum AnnotationHandle {
+        /// 0=左上 1=上中 2=右上 3=右中 4=右下 5=下中 6=左下 7=左中（归一化 Y-down 语义）
+        case rectAnchor(Int)
+        case endpointStart
+        case endpointEnd
+    }
+
+    private var annotationHandleDrag: AnnotationHandle?
+    private var handleDragOriginal: AnnotationItem?
+    private var hoveredAnnotationID: AnnotationItem.ID?
+    private var lastMouseLocation: CGPoint?
+    private var movedOnceDuringDrag = false
+    /// 标注剪贴板（跨截图会话可用）：⌘C/⌘X 复制，⌘V 原位偏移粘贴
+    private static var annotationClipboard: [AnnotationItem] = []
+
+    /// 视图坐标点（y-up）→ 归一化点（y-down，不夹取）
+    private func normalizedPointRaw(_ p: CGPoint) -> CGPoint {
+        let r = imageDrawRect
+        return CGPoint(
+            x: (p.x - r.minX) / max(r.width, 1),
+            y: (r.maxY - p.y) / max(r.height, 1)
+        )
+    }
+
+    /// 归一化点（y-down）→ 视图坐标点（y-up）
+    private func viewPoint(fromNormalized p: CGPoint) -> CGPoint {
+        let r = imageDrawRect
+        return CGPoint(x: r.minX + p.x * r.width, y: r.maxY - p.y * r.height)
+    }
+
+    private func annotationHit(at loc: CGPoint) -> AnnotationItem? {
+        let n = normalizedPoint(loc)
+        return annotations.last { item in
+            item.bounds.insetBy(dx: -0.008, dy: -0.008).contains(n)
+        }
+    }
+
+    /// 标注的句柄锚点（视图坐标）：矩形类 8 向 + 箭头/直线首尾端点。
+    private func annotationHandleAnchors(_ item: AnnotationItem) -> [(handle: AnnotationHandle, point: CGPoint)] {
+        if item.tool == .arrow || item.tool == .line,
+           item.points.count >= 2 {
+            return [
+                (.endpointStart, viewPoint(fromNormalized: item.points[0])),
+                (.endpointEnd, viewPoint(fromNormalized: item.points[item.points.count - 1])),
+            ]
+        }
+        let vr = viewRect(for: item.bounds)
+        let anchors: [(Int, CGPoint)] = [
+            (0, CGPoint(x: vr.minX, y: vr.maxY)),   // 左上（视图 y-up）
+            (1, CGPoint(x: vr.midX, y: vr.maxY)),
+            (2, CGPoint(x: vr.maxX, y: vr.maxY)),
+            (3, CGPoint(x: vr.maxX, y: vr.midY)),
+            (4, CGPoint(x: vr.maxX, y: vr.minY)),   // 右下
+            (5, CGPoint(x: vr.midX, y: vr.minY)),
+            (6, CGPoint(x: vr.minX, y: vr.minY)),
+            (7, CGPoint(x: vr.minX, y: vr.midY)),
+        ]
+        return anchors.map { (.rectAnchor($0.0), $0.1) }
+    }
+
+    private func annotationHandle(at loc: CGPoint, item: AnnotationItem) -> AnnotationHandle? {
+        let tolerance: CGFloat = 9
+        for anchor in annotationHandleAnchors(item)
+        where hypot(anchor.point.x - loc.x, anchor.point.y - loc.y) <= tolerance {
+            return anchor.handle
+        }
+        return nil
+    }
+
+    /// 选中标注右上角的删除按钮（小圆 × ）。
+    private func deleteButtonRect(for item: AnnotationItem) -> CGRect {
+        let vr = viewRect(for: item.bounds)
+        let side: CGFloat = 20
+        return CGRect(
+            x: vr.maxX + 6,
+            y: vr.maxY - side,
+            width: side,
+            height: side
+        )
+    }
+
+    /// 选中编号标注的 ± 步进按钮（capcap 式：直接调编号，删号后手动补齐）。
+    private func numberStepButtonRect(for item: AnnotationItem, increment: Bool) -> CGRect {
+        let vr = viewRect(for: item.bounds)
+        let side: CGFloat = 20
+        let row: CGFloat = increment ? 2 : 3   // 删除按钮为第 1 行
+        let y = vr.maxY - side * row - CGFloat(row - 1) * 4
+        return CGRect(x: vr.maxX + 6, y: y, width: side, height: side)
+    }
+
+    private func adjustNumberedCircle(_ item: AnnotationItem, by delta: Int) {
+        guard let idx = annotations.firstIndex(where: { $0.id == item.id }) else { return }
+        let current = Int(annotations[idx].text) ?? 1
+        let next = min(999, max(1, current + delta))
+        pushUndo()
+        annotations[idx].text = "\(next)"
+        needsDisplay = true
+    }
+
+    /// 下一个编号 = 当前最大编号 + 1（删除中间号后再画不会重号）。
+    private var nextCircleNumber: Int {
+        (annotations
+            .filter { $0.tool == .numberedCircle }
+            .compactMap { Int($0.text) }
+            .max() ?? 0) + 1
+    }
+
+    /// 删除编号后整体重排（保持 1…N 连续，capcap 计数器同步同款语义）。
+    private func renumberCircleAnnotations() {
+        var number = 1
+        for index in annotations.indices where annotations[index].tool == .numberedCircle {
+            annotations[index].text = "\(number)"
+            number += 1
+        }
+    }
+
+    private func applyAnnotationHandleDrag(to loc: CGPoint) {
+        guard let handle = annotationHandleDrag,
+              let id = selectedID,
+              let idx = annotations.firstIndex(where: { $0.id == id }),
+              let original = handleDragOriginal else { return }
+        let r = imageDrawRect
+        let minNx = 12 / max(r.width, 1)
+        let minNy = 12 / max(r.height, 1)
+        var item = annotations[idx]
+        let n = normalizedPoint(loc)
+
+        switch handle {
+        case .rectAnchor(let anchor):
+            guard item.tool != .freehand else { return }
+            let o = original.rect
+            var x0 = o.minX, y0 = o.minY, x1 = o.maxX, y1 = o.maxY
+            // 归一化 Y-down：y0=顶、y1=底
+            switch anchor {
+            case 0: x0 = n.x; y0 = n.y
+            case 1: y0 = n.y
+            case 2: x1 = n.x; y0 = n.y
+            case 3: x1 = n.x
+            case 4: x1 = n.x; y1 = n.y
+            case 5: y1 = n.y
+            case 6: x0 = n.x; y1 = n.y
+            case 7: x0 = n.x
+            default: return
+            }
+            let rect = CGRect(
+                x: min(x0, x1), y: min(y0, y1),
+                width: abs(x1 - x0), height: abs(y1 - y0)
+            )
+            if rect.width >= minNx, rect.height >= minNy {
+                item.rect = rect
+            }
+
+        case .endpointStart, .endpointEnd:
+            guard item.tool == .arrow || item.tool == .line,
+                  item.points.count >= 2 else { return }
+            if case .endpointStart = handle {
+                item.points[0] = n
+            } else {
+                item.points[item.points.count - 1] = n
+            }
+            let a = item.points[0]
+            let b = item.points[item.points.count - 1]
+            item.rect = CGRect(
+                x: min(a.x, b.x), y: min(a.y, b.y),
+                width: abs(b.x - a.x), height: abs(b.y - a.y)
+            )
+        }
+        annotations[idx] = item
+        needsDisplay = true
+    }
+
+    /// 方向键微调选中标注（1pt，Shift = 10pt，capcap 同款）。
+    private func nudgeSelectedAnnotation(keyCode: UInt16, shiftHeld: Bool) {
+        guard let id = selectedID,
+              let idx = annotations.firstIndex(where: { $0.id == id }) else { return }
+        let step: CGFloat = shiftHeld ? 10 : 1
+        let r = imageDrawRect
+        let dx: CGFloat, dy: CGFloat   // 归一化 Y-down
+        switch keyCode {
+        case 123: dx = -step / max(r.width, 1); dy = 0
+        case 124: dx = step / max(r.width, 1); dy = 0
+        case 125: dx = 0; dy = step / max(r.height, 1)
+        case 126: dx = 0; dy = -step / max(r.height, 1)
+        default: return
+        }
+        pushUndo()
+        shiftAnnotation(&annotations[idx], by: CGPoint(x: dx, y: dy))
+        needsDisplay = true
+    }
+
+    /// 双击文字标注 → 原位重新编辑（取回文字预填）。
+    private func reEditTextAnnotation(_ item: AnnotationItem) {
+        pushUndo()
+        annotations.removeAll { $0.id == item.id }
+        if selectedID == item.id { selectedID = nil }
+        beginTextPlacement(
+            at: viewPoint(fromNormalized: CGPoint(x: item.rect.minX, y: item.rect.minY)),
+            prefill: item.text
+        )
+    }
+
+    // MARK: - 标注剪贴板
+
+    private func copySelectedAnnotationToClipboard() {
+        guard let id = selectedID,
+              let item = annotations.first(where: { $0.id == id }) else { return }
+        Self.annotationClipboard = [item]
+    }
+
+    private func pasteAnnotationsFromClipboard() {
+        guard !Self.annotationClipboard.isEmpty else { return }
+        pushUndo()
+        var pastedIDs: [AnnotationItem.ID] = []
+        for (offset, original) in Self.annotationClipboard.enumerated() {
+            let dx = CGFloat(2 + offset * 2) * 14 / max(imageDrawRect.width, 1)
+            let dy = -CGFloat(2 + offset * 2) * 14 / max(imageDrawRect.height, 1)
+            var copy = original
+            copy.rect = original.rect.offsetBy(dx: dx, dy: dy)
+            copy.points = original.points.map {
+                CGPoint(x: $0.x + dx, y: $0.y + dy)
+            }
+            // 重新生成 id，避免与源标注重复
+            copy = AnnotationItem(
+                tool: copy.tool,
+                rect: copy.rect,
+                points: copy.points,
+                swatch: copy.swatch,
+                strokeWidth: copy.strokeWidth,
+                redactionDensity: copy.redactionDensity,
+                text: copy.text,
+                textLineHeight: copy.textLineHeight,
+                fontName: copy.fontName,
+                isBold: copy.isBold,
+                isItalic: copy.isItalic,
+                isUnderline: copy.isUnderline,
+                textAlignment: copy.textAlignment
+            )
+            annotations.append(copy)
+            pastedIDs.append(copy.id)
+        }
+        // 粘贴可能带入编号圆点：整体重排，避免与已有编号重复
+        if Self.annotationClipboard.contains(where: { $0.tool == .numberedCircle }) {
+            renumberCircleAnnotations()
+        }
+        selectedID = pastedIDs.last
+        needsDisplay = true
+    }
+
+    // MARK: - 悬停追踪
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = hoverTrackingArea {
+            removeTrackingArea(existing)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseMoved, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        hoverTrackingArea = area
+    }
+
+    private var hoverTrackingArea: NSTrackingArea?
+
+    override func mouseMoved(with event: NSEvent) {
+        let loc = convert(event.locationInWindow, from: nil)
+        lastMouseLocation = loc
+        guard !ocrMode, editingTextView == nil,
+              annotationHandleDrag == nil, movingID == nil,
+              resizingHandle == nil, !movingCrop else { return }
+        let hit = imageDrawRect.contains(loc) ? annotationHit(at: loc) : nil
+        let newHovered = hit?.id
+        guard newHovered != hoveredAnnotationID else { return }
+        hoveredAnnotationID = newHovered
+        needsDisplay = true
+    }
+
 
     override func mouseDown(with event: NSEvent) {
         let loc = convert(event.locationInWindow, from: nil)
         // 点到文字框以外时，先结束上一段文字：空内容丢弃，有内容保留。
         // 这样保持文字工具连续放置时，也不会残留一个失去焦点的输入框。
         finishTextEditing()
+
+        // 选区再调整：选择工具下抓到角/边句柄 → 拖动改选区（角/边命中
+        // 区延伸到选区外 9pt，必须在"只许亮区编辑"的守卫之前判定）。
+        if let handle = cropHandle(at: loc) {
+            cropRect = effectiveCropRect
+            resizingHandle = handle
+            needsDisplay = true
+            return
+        }
+
         // 暗场只是“时间冻结”的背景，不是可编辑画布；标注只发生在截中的亮区。
         guard imageDrawRect.contains(loc) else { return }
 
@@ -483,18 +1133,60 @@ final class ConfirmCanvasView: NSView {
 
         let n = normalizedPoint(loc)
 
-        if selectedTool == .select {
-            // 点选：命中检测（从后往前=最上层优先）
-            if let hit = annotations.last(where: ({ item in
-                let b = item.bounds.insetBy(dx: -0.01, dy: -0.01)
-                return b.contains(n)
-            })) {
-                selectedID = hit.id
-                movingID = hit.id
-                moveOffset = CGPoint(x: n.x - hit.bounds.midX, y: n.y - hit.bounds.midY)
-            } else {
-                selectedID = nil
+        // capcap 规则：句柄优先于整体拖动——选中标注的角/边句柄必须比
+        // "点中标注=移动"先判定，否则拖角永远变成移动，无法改大小。
+        if let id = selectedID,
+           let item = annotations.first(where: { $0.id == id }) {
+            if deleteButtonRect(for: item).contains(loc) {
+                deleteSelected()
+                return
             }
+            if item.tool == .numberedCircle {
+                if numberStepButtonRect(for: item, increment: true).contains(loc) {
+                    adjustNumberedCircle(item, by: 1)
+                    return
+                }
+                if numberStepButtonRect(for: item, increment: false).contains(loc) {
+                    adjustNumberedCircle(item, by: -1)
+                    return
+                }
+            }
+            if let handle = annotationHandle(at: loc, item: item) {
+                pushUndo()
+                handleDragOriginal = item
+                annotationHandleDrag = handle
+                return
+            }
+        }
+
+        // capcap 通用规则：点中已有标注 = 选中并拖动它，不管当前是什么工具；
+        // 绘图工具只接管空白处的按下。文字标注双击 = 原位重新编辑。
+        if !ocrMode, let hit = annotationHit(at: loc) {
+            if event.clickCount >= 2, hit.tool == .text {
+                reEditTextAnnotation(hit)
+                return
+            }
+            selectedID = hit.id
+            movingID = hit.id
+            movedOnceDuringDrag = false
+            moveOffset = CGPoint(x: n.x - hit.bounds.midX, y: n.y - hit.bounds.midY)
+            needsDisplay = true
+            return
+        }
+
+        // 空白处双击 = 确认（复制并保存，capcap 同款）
+        if event.clickCount >= 2 {
+            controller?.copyAndConfirm()
+            return
+        }
+
+        if selectedTool == .select {
+            selectedID = nil
+            // 空白处按下：拖动整个选区框（Snipaste 式移动）
+            cropRect = effectiveCropRect
+            movingCrop = true
+            cropMoveStart = loc
+            cropMoveOrigin = cropRect
             needsDisplay = true
             return
         }
@@ -507,14 +1199,13 @@ final class ConfirmCanvasView: NSView {
             // 只除高度的话，宽高比≠1 的图里会被横向拉成椭圆（用户实测抓到的 bug）。
             let wNorm = 22.0 / max(r.width, 1)
             let hNorm = 22.0 / max(r.height, 1)
-            let next = annotations.filter { $0.tool == .numberedCircle }.count + 1
             let item = AnnotationItem(
                 tool: .numberedCircle,
                 rect: CGRect(x: n.x - wNorm / 2, y: n.y - hNorm / 2, width: wNorm, height: hNorm),
                 points: [],
                 swatch: selectedSwatch,
                 strokeWidth: strokeWidth,
-                text: "\(next)"
+                text: "\(nextCircleNumber)"
             )
             annotations.append(item)
             selectedID = item.id
@@ -537,11 +1228,33 @@ final class ConfirmCanvasView: NSView {
 
     override func mouseDragged(with event: NSEvent) {
         let loc = convert(event.locationInWindow, from: nil)
+
+        // 选区再调整拖拽
+        if resizingHandle != nil {
+            applyCropResize(to: loc)
+            return
+        }
+        if movingCrop {
+            applyCropMove(to: loc)
+            return
+        }
+
+        // 标注句柄拖拽（缩放 / 端点重抓）
+        if annotationHandleDrag != nil {
+            applyAnnotationHandleDrag(to: loc)
+            return
+        }
+
         let n = normalizedPoint(loc)
 
-        // 移动选中标注
-        if selectedTool == .select, let id = movingID,
+        // 移动标注（capcap 通用规则：任何工具下点中的标注都可拖动；
+        // 首次实际移动才入撤销栈，纯点击不留空撤销记录）
+        if let id = movingID,
            let idx = annotations.firstIndex(where: { $0.id == id }) {
+            if !movedOnceDuringDrag {
+                pushUndo()
+                movedOnceDuringDrag = true
+            }
             let b = annotations[idx].bounds
             let newCenter = CGPoint(x: n.x - moveOffset.x, y: n.y - moveOffset.y)
             let dx = newCenter.x - b.midX
@@ -551,22 +1264,42 @@ final class ConfirmCanvasView: NSView {
             return
         }
 
-        // 拖画草稿
+        // 拖画草稿（Shift = 正方形/正圆/角度吸附）
         guard selectedTool != .select, selectedTool != .text else { return }
         dragCurrent = n
-        updateDraft(to: n)
+        updateDraft(to: n, shiftConstrained: event.modifierFlags.contains(.shift))
         needsDisplay = true
     }
 
     override func mouseUp(with event: NSEvent) {
+        if resizingHandle != nil {
+            resizingHandle = nil
+            needsDisplay = true
+            return
+        }
+        if movingCrop {
+            movingCrop = false
+            cropMoveStart = nil
+            cropMoveOrigin = nil
+            needsDisplay = true
+            return
+        }
+        if annotationHandleDrag != nil {
+            annotationHandleDrag = nil
+            handleDragOriginal = nil
+            postCanvasStateChange()
+            needsDisplay = true
+            return
+        }
+        movedOnceDuringDrag = false
         movingID = nil
         guard selectedTool != .select, selectedTool != .text,
               let start = dragStart else { return }
         let loc = convert(event.locationInWindow, from: nil)
         let n = normalizedPoint(loc)
 
-        // 太小的丢弃（误触）
-        let rect = rectFrom(start, n)
+        // 太小的丢弃（误触）——用草稿自身的矩形（含 Shift 约束后的尺寸）
+        let rect = draft?.rect ?? rectFrom(start, n)
         if rect.width < 0.008 || rect.height < 0.008 {
             draft = nil
             needsDisplay = true
@@ -587,7 +1320,7 @@ final class ConfirmCanvasView: NSView {
     // MARK: - 键盘
 
     override func keyDown(with event: NSEvent) {
-        // ⌘Z 撤销 / ⌘⇧Z 重做（重做第一版省略，仅撤销）
+        // ⌘Z 撤销 / 裸 Z 重做（capcap 同款）
         if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers == "z" {
             undo()
             return
@@ -599,9 +1332,68 @@ final class ConfirmCanvasView: NSView {
             controller?.copyAndConfirm()
         case 51:   // Delete → 删除选中
             deleteSelected()
+        case 123, 124, 125, 126:  // 方向键 → 微调选中标注（1pt，Shift=10pt）
+            guard editingTextView == nil else { break }
+            nudgeSelectedAnnotation(
+                keyCode: event.keyCode,
+                shiftHeld: event.modifierFlags.contains(.shift)
+            )
         default:
-            super.keyDown(with: event)
+            // 标注剪贴板（capcap 式：⌘C/⌘X/⌘V，跨截图会话可用）
+            if editingTextView == nil,
+               event.modifierFlags.contains(.command),
+               let key = event.charactersIgnoringModifiers?.lowercased(),
+               ["c", "x", "v"].contains(key) {
+                switch key {
+                case "c": copySelectedAnnotationToClipboard()
+                case "x":
+                    copySelectedAnnotationToClipboard()
+                    deleteSelected()
+                case "v": pasteAnnotationsFromClipboard()
+                default: break
+                }
+                return
+            }
+            // 单键快捷键（capcap 式：字母直接切工具/动作）。文字输入期间不生效。
+            guard editingTextView == nil,
+                  let key = event.charactersIgnoringModifiers?.lowercased(),
+                  event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
+                  key.count == 1 else {
+                super.keyDown(with: event)
+                return
+            }
+            switch key {
+            case "v": switchTool(to: .select)
+            case "r": switchTool(to: .rectangle)
+            case "f": switchTool(to: .filledRectangle)
+            case "o": switchTool(to: .ellipse)
+            case "l": switchTool(to: .line)
+            case "a": switchTool(to: .arrow)
+            case "d": switchTool(to: .freehand)
+            case "t": switchTool(to: .text)
+            case "m": switchTool(to: .blur)
+            case "e": switchTool(to: .pixelate)
+            case "g": switchTool(to: .spotlight)
+            case "n": switchTool(to: .numberedCircle)
+            case "z": redo()
+            case "p":
+                pinImage()
+                controller?.cancel()
+            case "x":
+                controller?.cancel()
+            default:
+                super.keyDown(with: event)
+            }
         }
+    }
+
+    /// 键盘切工具：与工具栏点击同效（清选中、换光标、通知工具栏同步高亮）。
+    private func switchTool(to tool: AnnotationTool) {
+        finishTextEditing()
+        selectedTool = tool
+        selectedID = nil
+        refreshCursor()
+        postCanvasStateChange()
     }
 
     // MARK: - 文字就地输入
@@ -620,7 +1412,7 @@ final class ConfirmCanvasView: NSView {
         endTextEditing(commit: true)
     }
 
-    private func beginTextPlacement(at viewPoint: CGPoint) {
+    private func beginTextPlacement(at viewPoint: CGPoint, prefill: String = "") {
         let n = normalizedPoint(viewPoint)
         pushUndo()
         let item = AnnotationItem(
@@ -629,7 +1421,7 @@ final class ConfirmCanvasView: NSView {
             points: [],
             swatch: selectedSwatch,
             strokeWidth: strokeWidth,
-            text: ""
+            text: prefill
         )
         annotations.append(item)
         selectedID = item.id
@@ -808,37 +1600,75 @@ final class ConfirmCanvasView: NSView {
         let rect = CGRect(x: n.x, y: n.y, width: 0, height: 0)
         let item: AnnotationItem
         switch selectedTool {
-        case .rectangle:
-            item = AnnotationItem(tool: .rectangle, rect: rect, points: [], swatch: selectedSwatch, strokeWidth: strokeWidth)
+        case .rectangle, .filledRectangle, .ellipse:
+            item = AnnotationItem(tool: selectedTool, rect: rect, points: [], swatch: selectedSwatch, strokeWidth: strokeWidth)
+        case .line:
+            item = AnnotationItem(tool: .line, rect: rect, points: [n, n], swatch: selectedSwatch, strokeWidth: strokeWidth)
         case .arrow:
             item = AnnotationItem(tool: .arrow, rect: rect, points: [n, n], swatch: selectedSwatch, strokeWidth: strokeWidth)
+        case .freehand:
+            item = AnnotationItem(tool: .freehand, rect: rect, points: [n], swatch: selectedSwatch, strokeWidth: strokeWidth)
         case .blur:
             item = AnnotationItem(tool: .blur, rect: rect, points: [], swatch: selectedSwatch, strokeWidth: strokeWidth, redactionDensity: 0.6)
+        case .pixelate:
+            item = AnnotationItem(tool: .pixelate, rect: rect, points: [], swatch: selectedSwatch, strokeWidth: strokeWidth, redactionDensity: 0.55)
         case .spotlight:
             item = AnnotationItem(tool: .spotlight, rect: rect, points: [], swatch: selectedSwatch, strokeWidth: strokeWidth)
         case .numberedCircle:
-            let next = annotations.filter { $0.tool == .numberedCircle }.count + 1
-            item = AnnotationItem(tool: .numberedCircle, rect: rect, points: [], swatch: selectedSwatch, strokeWidth: strokeWidth, text: "\(next)")
+            item = AnnotationItem(tool: .numberedCircle, rect: rect, points: [], swatch: selectedSwatch, strokeWidth: strokeWidth, text: "\(nextCircleNumber)")
         default:
             return
         }
         draft = item
     }
 
-    private func updateDraft(to n: CGPoint) {
+    private func updateDraft(to n: CGPoint, shiftConstrained: Bool = false) {
         guard var d = draft else { return }
+        let target = shiftConstrained ? shiftConstrainedPoint(n, for: d.tool) : n
         switch d.tool {
-        case .rectangle, .blur, .spotlight:
-            d.rect = rectFrom(dragStart ?? n, n)
-        case .arrow:
-            d.points = [dragStart ?? n, n]
-            d.rect = rectFrom(dragStart ?? n, n)
-        case .numberedCircle:
-            d.rect = rectFrom(dragStart ?? n, n)
+        case .rectangle, .filledRectangle, .ellipse, .blur, .pixelate, .spotlight, .numberedCircle:
+            d.rect = rectFrom(dragStart ?? target, target)
+        case .arrow, .line:
+            d.points = [dragStart ?? target, target]
+            d.rect = rectFrom(dragStart ?? target, target)
+        case .freehand:
+            // 画笔跟随拖动持续追加轨迹点
+            d.points.append(n)
+            d.rect = d.rect.union(CGRect(x: n.x, y: n.y, width: 0, height: 0))
         default:
             break
         }
         draft = d
+    }
+
+    /// Shift 约束（归一化坐标，需先换算到视图点空间再还原）：
+    /// - 矩形类（方框/圆形/打码/聚光/编号）→ 正方形 / 正圆
+    /// - 直线 / 箭头 → 吸附到水平 / 垂直 / 45°
+    private func shiftConstrainedPoint(_ n: CGPoint, for tool: AnnotationTool) -> CGPoint {
+        guard let start = dragStart else { return n }
+        let r = imageDrawRect
+        guard r.width > 1, r.height > 1 else { return n }
+        let dxView = (n.x - start.x) * r.width
+        let dyView = (n.y - start.y) * r.height
+
+        switch tool {
+        case .rectangle, .filledRectangle, .ellipse, .blur, .pixelate, .spotlight, .numberedCircle:
+            let side = max(abs(dxView), abs(dyView))
+            let dx = (dxView >= 0 ? side : -side) / r.width
+            let dy = (dyView >= 0 ? side : -side) / r.height
+            return CGPoint(x: start.x + dx, y: start.y + dy)
+        case .line, .arrow:
+            let length = hypot(dxView, dyView)
+            guard length > 0.5 else { return n }
+            let angle = atan2(dyView, dxView)
+            let snapped = (angle / (CGFloat.pi / 4)).rounded() * (CGFloat.pi / 4)
+            return CGPoint(
+                x: start.x + cos(snapped) * length / r.width,
+                y: start.y + sin(snapped) * length / r.height
+            )
+        default:
+            return n
+        }
     }
 
     private func rectFrom(_ a: CGPoint, _ b: CGPoint) -> CGRect {
@@ -1070,7 +1900,9 @@ final class ConfirmCanvasView: NSView {
     func renderedImage() -> CGImage? {
         finishTextEditing()
         let config = AppPreferences.defaultBeautifierConfig
-        return BeautifierRenderer.render(image: image, config: config, annotations: annotations)
+        // 选区调整后：基图换成裁剪结果，标注重映射到新选区（复制/贴图同款）
+        let base = croppedImage() ?? image
+        return BeautifierRenderer.render(image: base, config: config, annotations: remappedAnnotations())
     }
 
     /// 复制到剪贴板（含标注）。

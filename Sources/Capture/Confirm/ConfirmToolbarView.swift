@@ -10,6 +10,7 @@ struct ConfirmToolbarView: View {
     @State private var swatch: AnnotationSwatch = .mustard
     @State private var widthRaw = 1
     @State private var canUndo = false
+    @State private var canRedo = false
     @State private var ocrActive = false
     @State private var contentAnalysisState: CaptureContentAnalysisState = .analyzing
     @State private var plateTool: AnnotationTool = .select
@@ -22,11 +23,11 @@ struct ConfirmToolbarView: View {
     private let widths: [CGFloat] = [2, 4, 8]
 
     private var showsColorOptions: Bool {
-        [.rectangle, .arrow, .text, .numberedCircle].contains(activeTool)
+        [.rectangle, .filledRectangle, .ellipse, .line, .arrow, .freehand, .text, .numberedCircle].contains(activeTool)
     }
 
     private var showsWidthOptions: Bool {
-        [.rectangle, .arrow, .numberedCircle].contains(activeTool)
+        [.rectangle, .filledRectangle, .ellipse, .line, .arrow, .freehand, .numberedCircle].contains(activeTool)
     }
 
     var body: some View {
@@ -49,6 +50,19 @@ struct ConfirmToolbarView: View {
                 canvas?.finishTextEditing()
                 canvas?.undo()
                 canUndo = canvas?.canUndo ?? false
+                canRedo = canvas?.canRedo ?? false
+            }
+
+            FreezeToolButton(
+                title: "重做",
+                help: "重做被撤销的标注（Z）",
+                icon: "arrow.uturn.forward",
+                isEnabled: canRedo
+            ) {
+                canvas?.finishTextEditing()
+                canvas?.redo()
+                canUndo = canvas?.canUndo ?? false
+                canRedo = canvas?.canRedo ?? false
             }
 
             FreezeSeparator()
@@ -84,7 +98,7 @@ struct ConfirmToolbarView: View {
 
             FreezeToolButton(
                 title: "贴图",
-                help: "把截图钉在桌面最上层，方便对照",
+                help: "把截图钉在桌面最上层，方便对照（P）",
                 icon: "pin.fill"
             ) {
                 canvas?.pinImage()
@@ -96,7 +110,7 @@ struct ConfirmToolbarView: View {
             FreezeEndButton(title: "取消", icon: "xmark", isPrimary: false) {
                 controller.cancel()
             }
-            .help("放弃这次截图（Esc）")
+            .help("放弃这次截图（Esc 或 X）")
 
             FreezeEndButton(title: "复制", icon: "square.on.square", isPrimary: true) {
                 controller.copyAndConfirm()
@@ -125,7 +139,13 @@ struct ConfirmToolbarView: View {
         .onReceive(NotificationCenter.default.publisher(for: .confirmCanvasStateDidChange)) { note in
             guard note.object as? ConfirmCanvasView === canvas else { return }
             canUndo = canvas?.canUndo ?? false
+            canRedo = canvas?.canRedo ?? false
             ocrActive = canvas?.ocrMode ?? false
+            // 键盘快捷键切工具时同步高亮
+            if let tool = canvas?.selectedTool, tool != activeTool {
+                activeTool = tool
+                plateTool = tool
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .confirmCaptureContentDidChange)) { note in
             guard note.object as? ConfirmCanvasView === canvas else { return }
@@ -161,7 +181,11 @@ struct ConfirmToolbarView: View {
 
         case let .ready(analysis):
             if let text = analysis.text {
-                Button("复制全部文字", systemImage: "doc.on.doc") {
+                let characterCount = text.replacingOccurrences(of: "\n", with: "").count
+                Button(
+                    "复制全部文字（\(analysis.textBlockCount) 行 · \(characterCount) 字）",
+                    systemImage: "doc.on.doc"
+                ) {
                     copyString(text, message: "已复制全部文字")
                 }
                 Button(
@@ -246,7 +270,8 @@ struct ConfirmToolbarView: View {
                 return ("链接 \(analysis.links.count)", "link", true)
             }
             if analysis.textBlockCount > 0 {
-                return ("文字 \(analysis.textBlockCount)", "text.viewfinder", true)
+                // Vision 按行返回识别结果——标"行"避免被读成"字数"
+                return ("文字 \(analysis.textBlockCount) 行", "text.viewfinder", true)
             }
             return ("内容", "doc.viewfinder", true)
         case .empty:
@@ -293,7 +318,7 @@ struct ConfirmToolbarView: View {
         HStack(spacing: 1) {
             FreezeToolButton(
                 title: "选择",
-                help: "选择并移动已经画好的标注，Delete 可以删除",
+                help: "选择并移动已经画好的标注，Delete 可以删除（V）",
                 icon: "cursorarrow.rays",
                 isActive: activeTool == .select,
                 showsSelectionPlate: plateTool == .select,
@@ -303,7 +328,7 @@ struct ConfirmToolbarView: View {
 
             FreezeToolButton(
                 title: "方框",
-                help: "拖拽画出一个醒目的矩形框",
+                help: "拖拽画出一个醒目的矩形框；Shift = 正方形（R）",
                 icon: "rectangle.dashed",
                 isActive: activeTool == .rectangle,
                 showsSelectionPlate: plateTool == .rectangle,
@@ -312,8 +337,28 @@ struct ConfirmToolbarView: View {
             ) { activate(.rectangle) }
 
             FreezeToolButton(
+                title: "圆形",
+                help: "拖拽画椭圆，按住 Shift 可画正圆（O）",
+                icon: "circle",
+                isActive: activeTool == .ellipse,
+                showsSelectionPlate: plateTool == .ellipse,
+                isCompact: true,
+                selectionNamespace: toolSelectionNamespace
+            ) { activate(.ellipse) }
+
+            FreezeToolButton(
+                title: "直线",
+                help: "拖拽画一条直线；Shift = 水平/垂直/45°（L）",
+                icon: "line.diagonal",
+                isActive: activeTool == .line,
+                showsSelectionPlate: plateTool == .line,
+                isCompact: true,
+                selectionNamespace: toolSelectionNamespace
+            ) { activate(.line) }
+
+            FreezeToolButton(
                 title: "箭头",
-                help: "拖拽画一支指向重点的箭头",
+                help: "拖拽画一支指向重点的箭头；Shift = 水平/垂直/45°（A）",
                 icon: "arrow.up.right",
                 isActive: activeTool == .arrow,
                 showsSelectionPlate: plateTool == .arrow,
@@ -322,8 +367,18 @@ struct ConfirmToolbarView: View {
             ) { activate(.arrow) }
 
             FreezeToolButton(
+                title: "画笔",
+                help: "自由手绘勾画（D）",
+                icon: "scribble",
+                isActive: activeTool == .freehand,
+                showsSelectionPlate: plateTool == .freehand,
+                isCompact: true,
+                selectionNamespace: toolSelectionNamespace
+            ) { activate(.freehand) }
+
+            FreezeToolButton(
                 title: "文字",
-                help: "点击截图任意位置输入说明文字",
+                help: "点击截图任意位置输入说明文字（T）",
                 icon: "character.cursor.ibeam",
                 isActive: activeTool == .text,
                 showsSelectionPlate: plateTool == .text,
@@ -333,7 +388,7 @@ struct ConfirmToolbarView: View {
 
             FreezeToolButton(
                 title: "打码",
-                help: "拖拽框住需要隐藏的隐私内容",
+                help: "拖拽框住需要隐藏的隐私内容（M）",
                 icon: "square.grid.3x3.fill",
                 isActive: activeTool == .blur,
                 showsSelectionPlate: plateTool == .blur,
@@ -342,8 +397,18 @@ struct ConfirmToolbarView: View {
             ) { activate(.blur) }
 
             FreezeToolButton(
+                title: "像素化",
+                help: "拖拽把区域打成马赛克（E）",
+                icon: "app.background.dotted",
+                isActive: activeTool == .pixelate,
+                showsSelectionPlate: plateTool == .pixelate,
+                isCompact: true,
+                selectionNamespace: toolSelectionNamespace
+            ) { activate(.pixelate) }
+
+            FreezeToolButton(
                 title: "聚光",
-                help: "保留重点区域，其余画面自动压暗",
+                help: "保留重点区域，其余画面自动压暗（G）",
                 icon: "viewfinder.circle",
                 isActive: activeTool == .spotlight,
                 showsSelectionPlate: plateTool == .spotlight,
@@ -353,7 +418,7 @@ struct ConfirmToolbarView: View {
 
             FreezeToolButton(
                 title: "编号",
-                help: "依次放置 1、2、3…编号圆点",
+                help: "依次放置 1、2、3…编号圆点（N）",
                 icon: "number.circle",
                 isActive: activeTool == .numberedCircle,
                 showsSelectionPlate: plateTool == .numberedCircle,
