@@ -507,6 +507,9 @@ private final class SelectionView: NSView {
     /// mouseDown 后悬停态会清空，但单击确认仍需记住按下时命中的界面区域。
     private var pressedElement: ElementHover?
     private var elementDetectionTask: Task<Void, Never>?
+    /// 拖到屏幕边缘 8pt 内自动贴边（系统截图工具同款手感），
+    /// 配合近全屏贴齐让"拖满全屏"一次到位。
+    private static let edgeMagnetRadius: CGFloat = 8
     private let onSelect: (CGRect, CaptureSource?) -> Void
     private let onSelectWindow: (WindowCandidate) -> Void
     private let onCancel: () -> Void
@@ -724,7 +727,11 @@ private final class SelectionView: NSView {
     }
 
     private func drawSelection(start: NSPoint, current: NSPoint) {
-        let selectionRect = rectFromPoints(start, current)
+        // 预览与最终结果共用同一套规范几何（钳制+磁吸+近全屏贴齐），所见即所得
+        let selectionRect = SelectionGeometry.fullScreenSnapped(
+            rectFromPoints(start, current),
+            in: bounds
+        )
         guard selectionRect.width > 2, selectionRect.height > 2 else { return }
 
         // M1 §3.3：遮罩覆盖选区外区域（even-odd 规则挖空选区），让选区内显示冻结帧。
@@ -829,12 +836,24 @@ private final class SelectionView: NSView {
 
     override func mouseDragged(with event: NSEvent) {
         crosshairCursor.set()
-        var loc = convert(event.locationInWindow, from: nil)
+        guard let start = dragStart else { return }
+        let raw = convert(event.locationInWindow, from: nil)
+        // 幅度超过阈值才算明确的自定义拉取：小抖动不磁吸（否则贴边单击会被
+        // 磁吸劫持成一条选区），幅度判定与"窗口高亮退场"用同一阈值。
+        let isExplicitDrag = hypot(raw.x - start.x, raw.y - start.y) > 4
+        var loc: NSPoint
+        if isExplicitDrag {
+            loc = SelectionGeometry.magnetized(
+                raw, in: bounds, radius: Self.edgeMagnetRadius
+            )
+        } else {
+            loc = SelectionGeometry.clamped(raw, to: bounds)
+        }
         // M1 §3.3：若有比例约束，按 aspectRatioMode 调整 dragCurrent
-        loc = constrainToAspectRatio(loc)
+        loc = SelectionGeometry.clamped(constrainToAspectRatio(loc), to: bounds)
         dragCurrent = loc
         // 拖出幅度超过阈值 → 明确是自定义拉取，窗口高亮退场
-        if let start = dragStart, hypot(loc.x - start.x, loc.y - start.y) > 4 {
+        if isExplicitDrag {
             hoveredWindow = nil
             pressedElement = nil
         }
@@ -844,18 +863,26 @@ private final class SelectionView: NSView {
 
     override func mouseUp(with event: NSEvent) {
         guard let start = dragStart else { return }
-        let end = convert(event.locationInWindow, from: nil)
-        let rect = rectFromPoints(start, end)
+        let rawEnd = convert(event.locationInWindow, from: nil)
+        let rawRect = rectFromPoints(start, rawEnd)
 
-        if rect.width > 3, rect.height > 3 {
+        if rawRect.width > 3, rawRect.height > 3 {
             machine.reduce(.confirm)
+            // 相邻双屏拖全屏框时松手点常甩到另一块屏：钳制+磁吸+近全屏贴齐，
+            // 保证选区永远收敛在本屏内，不再触发"选区范围无效"。
+            let rect = SelectionGeometry.selectionRect(
+                from: start,
+                to: rawEnd,
+                in: bounds,
+                magnetRadius: Self.edgeMagnetRadius
+            )
             let center = CGPoint(x: rect.midX, y: rect.midY)
             onSelect(rect, hitWindow(at: center)?.source ?? fallbackSource)
         } else if let element = pressedElement,
-                  element.localRect.insetBy(dx: -2, dy: -2).contains(end) {
+                  element.localRect.insetBy(dx: -2, dy: -2).contains(rawEnd) {
             machine.reduce(.confirm)
             onSelect(element.localRect, element.source)
-        } else if let hit = hitWindow(at: end) {
+        } else if let hit = hitWindow(at: rawEnd) {
             // 区域+窗口+全屏合并：原地点击命中窗口 → 截整窗
             machine.reduce(.confirm)
             onSelectWindow(hit)
@@ -943,7 +970,7 @@ private final class SelectionView: NSView {
         }
     }
 
-    /// 方向键微调 dragCurrent（每次 1 点）。
+    /// 方向键微调 dragCurrent（每次 1 点）。微调是精细操作，只钳制不做磁吸。
     private func nudgeSelection(by keyCode: UInt16) {
         guard dragStart != nil, var cur = dragCurrent else { return }
         let step: CGFloat = 1.0
@@ -954,16 +981,21 @@ private final class SelectionView: NSView {
         case 126: cur.y += step  // 上
         default: break
         }
-        cur = constrainToAspectRatio(cur)
+        cur = SelectionGeometry.clamped(constrainToAspectRatio(cur), to: bounds)
         dragCurrent = cur
         machine.reduce(.adjustBegan)
         needsDisplay = true
     }
 
-    /// Enter 确认：等同于 mouseUp 确认选区。
+    /// Enter 确认：等同于 mouseUp 确认选区（同一套规范几何，含近全屏贴齐）。
     private func confirmSelection() {
         guard let start = dragStart, let end = dragCurrent else { return }
-        let rect = rectFromPoints(start, end)
+        let rect = SelectionGeometry.selectionRect(
+            from: start,
+            to: end,
+            in: bounds,
+            magnetRadius: Self.edgeMagnetRadius
+        )
         guard rect.width > 3, rect.height > 3 else { return }
         machine.reduce(.confirm)
         let center = CGPoint(x: rect.midX, y: rect.midY)

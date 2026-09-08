@@ -45,7 +45,8 @@ final class ScreenCapturePermissionController: NSObject, NSWindowDelegate {
     private var openedSystemSettings = false
     private var suppressGuideThisLaunch = false
     private var auditForcesDenied = false
-    private let nativePromptAttemptedKey = "rune_screen_capture_native_prompt_attempted"
+    private static let nativePromptAttemptedKey = "rune_screen_capture_native_prompt_attempted"
+    private static let nativePromptStampKey = "rune_screen_capture_native_prompt_attempted_stamp"
 
     private override init() {}
 
@@ -67,18 +68,28 @@ final class ScreenCapturePermissionController: NSObject, NSWindowDelegate {
         }
 
         // 用户已经关掉过本轮引导后，本次启动不再打扰；重启后仍会重新检测。
-        if suppressGuideThisLaunch { return false }
+        // 绝不静默吞掉截图请求：按了快捷键必须有反馈，否则表现为"点了没反应"
+        // （授权被系统设置删除后尤其懵）。
+        if suppressGuideThisLaunch {
+            ToastWindow.shared.show(
+                title: "暂时无法截图",
+                message: "请到 系统设置 › 隐私与安全性 › 屏幕录制 打开 Rune 后重试",
+                systemIcon: "lock.shield",
+                on: screen
+            )
+            return false
+        }
 
-        // 系统原生授权框只在用户第一次主动截图时请求一次。这个状态跨启动保存：
-        // 被拒绝后反复调用 CGRequestScreenCaptureAccess 会让 Rune 每次启动/截图都
-        // 继续弹同一个系统框。后续主动截图改为展示 Rune 自己的单一引导，由用户
-        // 决定何时打开系统设置。
-        let hasAttemptedNativePrompt = UserDefaults.standard.bool(
-            forKey: nativePromptAttemptedKey
-        )
-        if !requestedSystemPromptThisLaunch, !hasAttemptedNativePrompt {
+        // 系统原生授权框对"当前二进制"只请求一次（跨启动记忆）。macOS 的屏幕
+        // 录制授权钉在具体二进制上，换包即失效——指纹变了自动恢复"可弹一次"，
+        // 每次更新都能靠系统弹窗自愈，而不是落进永久哑掉的死胡同。
+        let promptAlreadyAttemptedThisBinary = Self.hasAttemptedNativePromptForCurrentBinary
+        if !requestedSystemPromptThisLaunch, !promptAlreadyAttemptedThisBinary {
             requestedSystemPromptThisLaunch = true
-            UserDefaults.standard.set(true, forKey: nativePromptAttemptedKey)
+            UserDefaults.standard.set(
+                Self.currentBinaryStamp(),
+                forKey: Self.nativePromptStampKey
+            )
             systemRequestReportedGranted = CGRequestScreenCaptureAccess()
             if systemRequestReportedGranted, CGPreflightScreenCaptureAccess() {
                 return true
@@ -97,6 +108,30 @@ final class ScreenCapturePermissionController: NSObject, NSWindowDelegate {
         await withCheckedContinuation { continuation in
             continuations.append(continuation)
         }
+    }
+
+    // MARK: - 原生授权框的"按二进制一次性"记忆
+
+    /// 当前可执行文件的指纹（大小 + 修改时间）：换包必变，重签名/同包不变。
+    private static func currentBinaryStamp() -> String {
+        guard let url = Bundle.main.executableURL,
+              let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attrs[.size] as? NSNumber,
+              let mtime = attrs[.modificationDate] as? Date else { return "unknown" }
+        return "\(size.uint64Value)-\(Int(mtime.timeIntervalSince1970))"
+    }
+
+    /// 系统原生授权框是否已对当前二进制请求过。旧版只存一次性布尔（跨二进制
+    /// 永久生效）——迁移时对当前二进制视为已请求过，避免老用户多挨一次弹窗；
+    /// 下次换包指纹不匹配，自动恢复可弹。
+    private static var hasAttemptedNativePromptForCurrentBinary: Bool {
+        let defaults = UserDefaults.standard
+        if let stored = defaults.string(forKey: nativePromptStampKey) {
+            return stored == currentBinaryStamp()
+        }
+        guard defaults.bool(forKey: nativePromptAttemptedKey) else { return false }
+        defaults.set(currentBinaryStamp(), forKey: nativePromptStampKey)
+        return true
     }
 
     #if DEBUG

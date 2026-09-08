@@ -163,33 +163,22 @@ final class CaptureOrchestrator {
     /// （主屏左上原点），整屏帧只覆盖 selection.displayID，先换算到屏内局部点、再乘
     /// 图像实际像素比（图像宽 ÷ 显示器点宽，Retina 下为 2）。
     /// 单击选窗口时 pointsRect 即该窗口全局矩形，同一条路径直接可用。
+    /// 像素换算与钳制见 SelectionGeometry.visiblePixelRect（纯函数，有单测）：
+    /// 越界选区裁到图像内而非判死，只有完全不相交才返回 nil。
     private static func cropDisplayFrame(
         _ displayFrame: CapturedFrame,
         selection: RegionSelection
     ) -> CapturedFrame? {
         let image = displayFrame.image
         let displayBounds = CGDisplayBounds(selection.displayID)
-        let scale = CGFloat(image.width) / max(displayBounds.width, 1)
-        let local = CGRect(
-            x: selection.pointsRect.minX - displayBounds.minX,
-            y: selection.pointsRect.minY - displayBounds.minY,
-            width: selection.pointsRect.width,
-            height: selection.pointsRect.height
-        )
-        let pixelRect = CGRect(
-            x: local.minX * scale,
-            y: local.minY * scale,
-            width: local.width * scale,
-            height: local.height * scale
-        ).integral
-        guard pixelRect.minX >= 0, pixelRect.minY >= 0,
-              pixelRect.maxX <= CGFloat(image.width),
-              pixelRect.maxY <= CGFloat(image.height),
-              pixelRect.width >= 1, pixelRect.height >= 1,
-              let cropped = image.cropping(to: pixelRect) else { return nil }
+        guard let pixelRect = SelectionGeometry.visiblePixelRect(
+            pointsRect: selection.pointsRect,
+            displayBounds: displayBounds,
+            imageSize: CGSize(width: image.width, height: image.height)
+        ), let cropped = image.cropping(to: pixelRect) else { return nil }
         return CapturedFrame(
             image: cropped,
-            scaleFactor: scale,
+            scaleFactor: CGFloat(image.width) / max(displayBounds.width, 1),
             displayID: selection.displayID
         )
     }
@@ -300,7 +289,9 @@ final class CaptureOrchestrator {
         }
         guard let annotations else { return }   // 取消：零残留
 
-        guard let tempURL = writeCGImageToTemp(frame.image) else { return }
+        // 确认画布选区调整（拖角/边）后的成图；未调整时为原图
+        let finalImage = CaptureConfirmController.shared.confirmedImage ?? frame.image
+        guard let tempURL = writeCGImageToTemp(finalImage) else { return }
 
         guard let record = await HistoryStore.shared.importCapture(
             from: tempURL,
