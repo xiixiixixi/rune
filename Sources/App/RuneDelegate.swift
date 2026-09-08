@@ -157,6 +157,11 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                         if capturesFullPage {
                             controller.configureAuditImageOutput(to: auditImageURL)
                         }
+                        // 滚动截图默认手动模式（用户自己滚）；无人值守的审计
+                        // 需要自动注入滚轮，显式切换一次。
+                        if controller.mode != .automatic {
+                            controller.toggleMode()
+                        }
                         controller.beginCapture()
                         if capturesFullPage {
                             for _ in 0..<150 where controller.isActive {
