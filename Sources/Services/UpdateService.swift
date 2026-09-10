@@ -168,7 +168,6 @@ enum UpdateService {
             throw RuneUpdateError.missingPackage
         }
         let delegate = DownloadProgressDelegate()
-        delegate.onProgress = progress
         let session = URLSession(
             configuration: .ephemeral,
             delegate: delegate,
@@ -177,17 +176,32 @@ enum UpdateService {
         defer { session.finishTasksAndInvalidate() }
 
         return try await withCheckedThrowingContinuation { continuation in
-            delegate.onFinish = { continuation.resume(with: $0) }
+            delegate.configure(
+                onProgress: progress,
+                onFinish: { continuation.resume(with: $0) }
+            )
             session.downloadTask(with: url).resume()
         }
     }
 
     private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelegate {
-        var onProgress: (@MainActor (Double) -> Void)?
-        var onFinish: ((Result<URL, Error>) -> Void)?
+        // 老 SDK 把 URLSessionDownloadDelegate 判成 Sendable，可变存储属性会被
+        // Swift 6 拒编译（Xcode 26 的 SDK 不报，macos-15 runner 上报）。
+        // nonisolated(unsafe)：并发由下面两条保证手动兜住——回调槽都在 resume()
+        // 之前写好，且 delegate 回调全部走 URLSession 自建的同一个串行队列；
+        // settle 另有锁，因为 continuation 双重 resume 会直接崩。
+        private nonisolated(unsafe) var onProgress: (@MainActor (Double) -> Void)?
+        private nonisolated(unsafe) var onFinish: ((Result<URL, Error>) -> Void)?
+        private nonisolated(unsafe) var didSettle = false
+        private let settleLock = NSLock()
 
-        /// didFinish 与 didComplete 都会到，只允许 settle 一次。
-        private var didSettle = false
+        func configure(
+            onProgress: @escaping @MainActor (Double) -> Void,
+            onFinish: @escaping (Result<URL, Error>) -> Void
+        ) {
+            self.onProgress = onProgress
+            self.onFinish = onFinish
+        }
 
         func urlSession(
             _ session: URLSession,
@@ -237,10 +251,17 @@ enum UpdateService {
             }
         }
 
+        /// didFinish 与 didComplete 都会到，只允许 settle 一次。
         private func settle(_ result: Result<URL, Error>) {
-            guard !didSettle else { return }
+            settleLock.lock()
+            guard !didSettle else {
+                settleLock.unlock()
+                return
+            }
             didSettle = true
-            onFinish?(result)
+            let handler = onFinish
+            settleLock.unlock()
+            handler?(result)
         }
     }
 
