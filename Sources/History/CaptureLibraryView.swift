@@ -6,6 +6,7 @@ enum CaptureLibrarySection: String, CaseIterable, Identifiable {
     case favorites = "收藏"
     case screenshots = "截图"
     case recordings = "录屏"
+    case clipboardOnly = "仅复制"
 
     var id: String { rawValue }
 
@@ -15,6 +16,7 @@ enum CaptureLibrarySection: String, CaseIterable, Identifiable {
         case .favorites: return "star"
         case .screenshots: return "photo.on.rectangle.angled"
         case .recordings: return "video"
+        case .clipboardOnly: return "doc.on.doc"
         }
     }
 }
@@ -50,6 +52,7 @@ struct CaptureLibraryView: View {
             case .favorites: record.isFavorite
             case .screenshots: record.kind == .screenshot
             case .recordings: record.kind == .recording
+            case .clipboardOnly: record.disposition == .clipboardOnly
             }
 
             guard matchesSection else { return false }
@@ -309,6 +312,7 @@ struct CaptureLibraryView: View {
         case .favorites: return "保留最常用的内容"
         case .screenshots: return "可以搜索图片中识别到的文字"
         case .recordings: return "继续剪辑、复制或分享录屏"
+        case .clipboardOnly: return "只复制过、还没保存到文件夹的截图"
         }
     }
 
@@ -318,6 +322,7 @@ struct CaptureLibraryView: View {
         case .favorites: HistoryStore.shared.records.count(where: \.isFavorite)
         case .screenshots: HistoryStore.shared.records.count { $0.kind == .screenshot }
         case .recordings: HistoryStore.shared.records.count { $0.kind == .recording }
+        case .clipboardOnly: HistoryStore.shared.records.count { $0.disposition == .clipboardOnly }
         }
     }
 
@@ -451,6 +456,7 @@ private struct LibraryEmptyState: View {
         case .favorites: return "还没有收藏"
         case .screenshots: return "还没有截图"
         case .recordings: return "还没有录屏"
+        case .clipboardOnly: return "还没有只复制的截图"
         }
     }
 
@@ -459,6 +465,7 @@ private struct LibraryEmptyState: View {
         case .all, .screenshots: return "完成一次截图后，就能在这里搜索、复制、贴图和继续编辑。"
         case .favorites: return "点素材右上角的星标，把经常使用的内容留在这里。"
         case .recordings: return "完成一次录屏后，就能在这里继续剪辑或复制文件。"
+        case .clipboardOnly: return "确认台上点「复制」而不保存的截图会留在这里，随时可以补存到文件夹。"
         }
     }
 }
@@ -593,18 +600,19 @@ private struct CaptureLibraryCard: View {
                                         .foregroundStyle(.white)
                                         .offset(x: 1)
                                 }
-                        } else if isLongScreenshot {
-                            HStack(spacing: 5) {
-                                Image(systemName: "rectangle.portrait.and.arrow.forward")
-                                Text("长图")
-                                Text("\(record.pixelWidth) × \(record.pixelHeight)")
-                                    .monospacedDigit()
+                        } else if isLongScreenshot || record.disposition == .clipboardOnly {
+                            HStack(spacing: 6) {
+                                if record.disposition == .clipboardOnly {
+                                    plateBadge(icon: "doc.on.doc", title: "仅复制")
+                                }
+                                if isLongScreenshot {
+                                    plateBadge(
+                                        icon: "rectangle.portrait.and.arrow.forward",
+                                        title: "长图",
+                                        detail: "\(record.pixelWidth) × \(record.pixelHeight)"
+                                    )
+                                }
                             }
-                            .font(RuneFont.swiftUI(size: 9.5, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 8)
-                            .frame(height: 24)
-                            .background(.black.opacity(0.72), in: Capsule())
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                             .padding(8)
                             .allowsHitTesting(false)
@@ -641,6 +649,12 @@ private struct CaptureLibraryCard: View {
                             Menu {
                                 Button(action: editRecord) {
                                     Label(record.kind == .recording ? "继续剪辑" : "在编辑器中打开", systemImage: "slider.horizontal.3")
+                                }
+
+                                if record.disposition == .clipboardOnly {
+                                    Button(action: exportRecord) {
+                                        Label("保存到文件夹", systemImage: "square.and.arrow.down")
+                                    }
                                 }
 
                                 Button {
@@ -706,6 +720,23 @@ private struct CaptureLibraryCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(record.kind == .recording ? "打开录屏 \(record.displayName)" : "预览截图 \(record.displayName)")
+    }
+
+    /// 缩略图左下角的状态胶囊：长图尺寸、是否只复制过。
+    private func plateBadge(icon: String, title: String, detail: String? = nil) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+            Text(title)
+            if let detail {
+                Text(detail)
+                    .monospacedDigit()
+            }
+        }
+        .font(RuneFont.swiftUI(size: 9.5, weight: .semibold))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 8)
+        .frame(height: 24)
+        .background(.black.opacity(0.72), in: Capsule())
     }
 
     private func plateButton(_ icon: String, help: String, action: @escaping () -> Void) -> some View {
@@ -774,7 +805,10 @@ private struct CaptureLibraryCard: View {
         if record.kind == .recording {
             VideoEditorWindowController.shared.open(url: HistoryStore.shared.displayURLForRecord(record))
         } else {
-            PreviewOverlay.shared.show(url: HistoryStore.shared.displayURLForRecord(record))
+            PreviewOverlay.shared.show(
+                url: HistoryStore.shared.displayURLForRecord(record),
+                isClipboardOnly: record.disposition == .clipboardOnly
+            )
         }
     }
 
@@ -795,6 +829,12 @@ private struct CaptureLibraryCard: View {
             url: HistoryStore.shared.displayURLForRecord(record),
             placement: .bottomRight
         )
+    }
+
+    /// 「仅复制」的成品补写到保存文件夹，之后这条记录就是正常已保存素材。
+    @MainActor
+    private func exportRecord() {
+        LibraryExport.saveToFolder(record)
     }
 }
 
@@ -849,6 +889,7 @@ private struct LibraryDetailPanel: View {
                 if let source = record.sourceAppName {
                     detailRow("来源", source)
                 }
+                detailRow("去向", exportDestinationLabel)
             }
             .padding(.top, 12)
 
@@ -876,6 +917,12 @@ private struct LibraryDetailPanel: View {
 
                 if record.kind == .screenshot {
                     detailAction("贴到屏幕", systemImage: "pin", action: pinRecord)
+                }
+
+                if record.disposition == .clipboardOnly {
+                    detailAction("保存到文件夹", systemImage: "square.and.arrow.down") {
+                        LibraryExport.saveToFolder(record)
+                    }
                 }
 
                 detailAction(
@@ -948,6 +995,13 @@ private struct LibraryDetailPanel: View {
         )
     }
 
+    /// 「去向」一栏：仅复制，还是已保存到哪个文件夹。
+    private var exportDestinationLabel: String {
+        guard record.disposition == .exported else { return "仅复制（未保存）" }
+        guard let path = record.beautifiedPath else { return "已保存" }
+        return "已保存到「\(URL(fileURLWithPath: path).deletingLastPathComponent().lastPathComponent)」"
+    }
+
     private func detailRow(_ label: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(label)
@@ -1003,7 +1057,10 @@ private struct LibraryDetailPanel: View {
         if record.kind == .recording {
             VideoEditorWindowController.shared.open(url: url)
         } else {
-            PreviewOverlay.shared.show(url: url)
+            PreviewOverlay.shared.show(
+                url: url,
+                isClipboardOnly: record.disposition == .clipboardOnly
+            )
         }
     }
 
@@ -1050,5 +1107,32 @@ private struct LibraryDetailPanel: View {
         NSWorkspace.shared.activateFileViewerSelecting([
             HistoryStore.shared.displayURLForRecord(record),
         ])
+    }
+}
+
+// MARK: - 仅复制素材补保存
+
+/// 「仅复制」的截图原本只在 Rune 库内。补保存把它写进设置里的保存文件夹，
+/// 成品随即只剩一份（库内那份会被删掉），记录转为正常已保存素材。
+@MainActor
+private enum LibraryExport {
+    static func saveToFolder(_ record: CaptureRecord) {
+        guard let url = HistoryStore.shared.exportClipboardOnly(
+            record.id,
+            to: AppPreferences.saveDirectory
+        ) else {
+            ToastWindow.shared.show(
+                title: "没有保存成功",
+                message: "请检查保存文件夹是否可写",
+                systemIcon: "exclamationmark.triangle"
+            )
+            return
+        }
+        HistoryStore.shared.markUsed(record.id)
+        ToastWindow.shared.show(
+            title: "已保存",
+            message: "已保存到「\(url.deletingLastPathComponent().lastPathComponent)」",
+            systemIcon: "square.and.arrow.down"
+        )
     }
 }

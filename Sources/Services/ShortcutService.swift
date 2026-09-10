@@ -44,6 +44,8 @@ final class ShortcutService {
         static let defaultColorPicker = Shortcut(keyCode: UInt32(kVK_ANSI_C), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
         static let defaultRecording   = Shortcut(keyCode: UInt32(kVK_ANSI_2), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
         static let defaultBurst       = Shortcut(keyCode: UInt32(kVK_ANSI_B), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
+        /// 贴剪贴板：Snipaste 的 F3 语义——复制过的东西直接贴到屏幕上。
+        static let defaultPastePin    = Shortcut(keyCode: UInt32(kVK_ANSI_V), modifiers: UInt32(cmdKey | shiftKey), enabled: true)
     }
 
     enum Action: UInt32, CaseIterable {
@@ -55,6 +57,7 @@ final class ShortcutService {
         case recording = 6
         case burst = 7
         case main = 8
+        case pastePin = 9
     }
 
     // MARK: - Registration (Carbon RegisterEventHotKey)
@@ -68,7 +71,7 @@ final class ShortcutService {
 
         // 单一入口：截图类只注册主键 ⇧⌘A；region/fullscreen/window/ocr
         // 已并入主入口流程（旧键不再注册，避免一堆全局键互相打架）
-        let activeActions: Set<Action> = [.main, .burst, .colorPicker, .recording]
+        let activeActions: Set<Action> = [.main, .burst, .colorPicker, .recording, .pastePin]
         for action in Action.allCases where activeActions.contains(action) {
             let shortcut = loadShortcut(for: action) ?? defaultShortcut(for: action)
             guard shortcut.enabled else { continue }
@@ -113,6 +116,7 @@ final class ShortcutService {
         case .colorPicker: return .defaultColorPicker
         case .recording:   return .defaultRecording
         case .burst:       return .defaultBurst
+        case .pastePin:    return .defaultPastePin
         }
     }
 
@@ -182,6 +186,9 @@ final class ShortcutService {
                 } else {
                     await BurstCaptureController.shared.prepareAndBegin(presetMode: .burst, on: mouseScreen)
                 }
+            } else if action == .pastePin {
+                // 把剪贴板里的图直接贴到屏幕上，不用先截图。
+                PinnedScreenshotController.shared.pinFromClipboard(on: mouseScreen)
             } else {
                 await CaptureOrchestrator.shared.performCapture(action, on: mouseScreen)
             }

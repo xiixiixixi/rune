@@ -628,6 +628,8 @@ struct GeneralSettingsTab: View {
     @AppStorage("bs_exportFormat") private var exportFormatRaw: String = ExportFormat.png.rawValue
     @AppStorage("bs_exportQuality") private var exportQuality: Double = 0.9
     @AppStorage("bs_fileNameFormat") private var fileNameFormatRaw: String = FileNameFormat.systemStyle.rawValue
+    @AppStorage("rune_confirmReturnAction") private var confirmReturnActionRaw: String = ConfirmReturnAction.copyOnly.rawValue
+    @AppStorage("rune_captureFlow") private var captureFlowRaw: String = CaptureFlow.confirm.rawValue
 
     @State private var defaultConfig: BeautifierConfig
     @State private var launchAtLogin = false
@@ -701,6 +703,22 @@ struct GeneralSettingsTab: View {
             }
 
             SettingsSectionGroup("行为") {
+                        SettingsLine(
+                            icon: "viewfinder",
+                            title: "框选后",
+                            detail: "松开鼠标之后是打开确认台，还是直接进剪贴板。框选时按住 ⌥ 可临时反过来。"
+                        ) {
+                            captureFlowMenu
+                        }
+
+                        SettingsLine(
+                            icon: "return",
+                            title: "回车默认动作",
+                            detail: "截图确认台按 Enter 或双击空白处时做哪件事。"
+                        ) {
+                            confirmReturnActionMenu
+                        }
+
                         SettingsLine(
                             icon: "doc.on.clipboard",
                             title: "保存后复制",
@@ -827,6 +845,68 @@ struct GeneralSettingsTab: View {
 
     private var fileNameLabel: String {
         (FileNameFormat(rawValue: fileNameFormatRaw) ?? .systemStyle).label
+    }
+
+    private var captureFlowMenu: some View {
+        RuneMenu(menuWidth: 236, entries: {
+            CaptureFlow.allCases.map { flow in
+                .item(
+                    RuneMenuItem(
+                        flow.label,
+                        systemImage: flow.icon,
+                        isSelected: flow.rawValue == captureFlowRaw
+                    ) {
+                        captureFlowRaw = flow.rawValue
+                    }
+                )
+            }
+        }) {
+            SettingsControlPlate(
+                text: captureFlowLabel,
+                showsChevron: true
+            )
+        }
+        .accessibilityLabel("框选后，当前为\(captureFlowLabel)")
+        .accessibilityHint(captureFlowDetail)
+    }
+
+    private var captureFlowLabel: String {
+        (CaptureFlow(rawValue: captureFlowRaw) ?? .confirm).label
+    }
+
+    private var captureFlowDetail: String {
+        (CaptureFlow(rawValue: captureFlowRaw) ?? .confirm).detail
+    }
+
+    private var confirmReturnActionMenu: some View {
+        RuneMenu(menuWidth: 236, entries: {
+            ConfirmReturnAction.allCases.map { action in
+                .item(
+                    RuneMenuItem(
+                        action.label,
+                        systemImage: action.icon,
+                        isSelected: action.rawValue == confirmReturnActionRaw
+                    ) {
+                        confirmReturnActionRaw = action.rawValue
+                    }
+                )
+            }
+        }) {
+            SettingsControlPlate(
+                text: confirmReturnActionLabel,
+                showsChevron: true
+            )
+        }
+        .accessibilityLabel("回车默认动作，当前为\(confirmReturnActionLabel)")
+        .accessibilityHint(confirmReturnActionDetail)
+    }
+
+    private var confirmReturnActionLabel: String {
+        (ConfirmReturnAction(rawValue: confirmReturnActionRaw) ?? .copyOnly).label
+    }
+
+    private var confirmReturnActionDetail: String {
+        (ConfirmReturnAction(rawValue: confirmReturnActionRaw) ?? .copyOnly).detail
     }
 
     private func updateLaunchAtLogin(enabled: Bool) {
@@ -978,6 +1058,7 @@ private struct SettingsShortcutPlate: View {
         case .colorPicker: return .defaultColorPicker
         case .recording: return .defaultRecording
         case .burst: return .defaultBurst
+        case .pastePin: return .defaultPastePin
         }
     }
 
@@ -1743,6 +1824,7 @@ struct CaptureSettingsTab: View {
                     ShortcutRow(label: "连拍", action: .burst)
                     ShortcutRow(label: "录屏", action: .recording)
                     ShortcutRow(label: "取色", action: .colorPicker)
+                    ShortcutRow(label: "贴剪贴板", action: .pastePin)
                 }
                 .padding(.horizontal, 16)
                 .id(shortcutResetID)
@@ -1843,6 +1925,7 @@ struct CaptureSettingsTab: View {
             case .recording: .defaultRecording
             case .window: .defaultWindow
             case .burst: .defaultBurst
+            case .pastePin: .defaultPastePin
             }
             ShortcutService.shared.saveShortcut(shortcut, for: action)
         }
@@ -2218,6 +2301,7 @@ struct ShortcutRow: View {
         case .colorPicker: return .defaultColorPicker
         case .recording: return .defaultRecording
         case .burst: return .defaultBurst
+        case .pastePin: return .defaultPastePin
         }
     }
 
@@ -2530,7 +2614,10 @@ struct HistoryTab: View {
         Menu {
             Button {
                 let url = HistoryStore.shared.displayURLForRecord(record)
-                PreviewOverlay.shared.show(url: url)
+                PreviewOverlay.shared.show(
+                    url: url,
+                    isClipboardOnly: record.disposition == .clipboardOnly
+                )
             } label: {
                 Label("快速查看", systemImage: "eye")
             }

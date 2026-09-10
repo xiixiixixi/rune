@@ -36,7 +36,24 @@ final class PinnedScreenshotController {
         auditShowsControls: Bool = false
     ) {
         guard let image = NSImage(contentsOf: url) else { return }
+        pin(
+            image: image,
+            on: preferredScreen,
+            placement: placement,
+            auditShowsControls: auditShowsControls,
+            sourceURL: url
+        )
+    }
 
+    /// 内存里的图直接贴，不必先落盘（剪贴板贴图走这条）。
+    /// `sourceURL` 为空时，工具条自动收起「编辑图片 / 在访达中显示」两项。
+    func pin(
+        image: NSImage,
+        on preferredScreen: NSScreen? = nil,
+        placement: PinnedPlacement = .center,
+        auditShowsControls: Bool = false,
+        sourceURL: URL? = nil
+    ) {
         // Compute initial panel size: scale image to max 400pt on longest side.
         let maxSide: CGFloat = 400
         let imgSize = image.size
@@ -70,7 +87,7 @@ final class PinnedScreenshotController {
         interaction.baseSize = panelSize
         let contentView = PinnedScreenshotView(
             image: image,
-            sourceURL: url,
+            sourceURL: sourceURL,
             interaction: interaction,
             alwaysShowsControls: auditShowsControls,
             onClose: { [weak self, weak panel] in
@@ -113,6 +130,48 @@ final class PinnedScreenshotController {
         sessions.forEach { $0.panel.orderOut(nil) }
         sessions.removeAll()
         teardownMonitorIfNeeded()
+    }
+
+    // MARK: - 从剪贴板贴图（Snipaste 的 F3 语义）
+
+    /// 把剪贴板里的图直接贴到屏幕上——不必先截图。
+    /// - Returns: 贴成功为 true；剪贴板里没有图时为 false（调用方负责提示）。
+    @discardableResult
+    func pinFromClipboard(on preferredScreen: NSScreen? = nil) -> Bool {
+        guard let image = Self.imageFromPasteboard() else {
+            ToastWindow.shared.show(
+                title: "剪贴板里没有图片",
+                message: "先复制一张图，或者用 ⌘⇧E 截一张",
+                systemIcon: "doc.on.clipboard",
+                on: preferredScreen
+            )
+            return false
+        }
+        pin(image: image, on: preferredScreen, placement: .center)
+        return true
+    }
+
+    /// 剪贴板取图：文件 → 位图 → 原始 PNG/TIFF，逐级降级。
+    /// 截图工具和访达复制出来的通常是文件 URL，浏览器/聊天窗口给的是位图。
+    static func imageFromPasteboard(_ pasteboard: NSPasteboard = .general) -> NSImage? {
+        if let urls = pasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        ) as? [URL] {
+            for url in urls {
+                if let image = NSImage(contentsOf: url) { return image }
+            }
+        }
+        if let images = pasteboard.readObjects(forClasses: [NSImage.self]) as? [NSImage],
+           let image = images.first {
+            return image
+        }
+        for type in [NSPasteboard.PasteboardType.png, .tiff] {
+            if let data = pasteboard.data(forType: type), let image = NSImage(data: data) {
+                return image
+            }
+        }
+        return nil
     }
 
     /// 鼠标穿透开启后，贴图本身收不到点击；菜单栏提供统一恢复入口。

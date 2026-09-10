@@ -20,6 +20,35 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
+    #if DEBUG
+    /// 快速模式验收报告：把"该写哪儿、不该写哪儿"落成可断言的文本。
+    /// 配合 `--audit-quick-copy --audit-save-directory=<空目录>` 使用。
+    @MainActor
+    private static func quickCopyAuditReport() -> String {
+        let saveDirectory = AppPreferences.saveDirectory
+        let savedFiles = (try? FileManager.default.contentsOfDirectory(atPath: saveDirectory)) ?? []
+
+        var lines = [
+            "saveDirectory=\(saveDirectory)",
+            "savedFileCount=\(savedFiles.count)",
+            "pasteboardHasImage=\(PinnedScreenshotController.imageFromPasteboard() != nil)",
+        ]
+
+        guard let latest = HistoryStore.shared.records.first else {
+            lines.append("recordDisposition=<no record>")
+            return lines.joined(separator: "\n") + "\n"
+        }
+
+        let rendered = HistoryStore.shared.renderedURLForRecord(latest)
+        lines.append("recordDisposition=\(latest.disposition.rawValue)")
+        lines.append("recordBeautifiedPath=\(latest.beautifiedPath ?? "<nil>")")
+        lines.append("recordFilename=\(latest.filename)")
+        lines.append("renderedExists=\(FileManager.default.fileExists(atPath: rendered.path))")
+        lines.append("renderedPath=\(rendered.path)")
+        return lines.joined(separator: "\n") + "\n"
+    }
+    #endif
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         ExceptionLogger.install()
         RuneFont.registerBundledFonts()
@@ -483,6 +512,32 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                 panel.makeKeyAndOrderFront(nil)
                 self.debugAuditWindow = panel
                 DebugAuditSnapshot.captureAfter("confirm-toolbar.png", delay: 0.9)
+            }
+        } else if ProcessInfo.processInfo.arguments.contains("--audit-quick-copy") {
+            // 快速模式端到端：不弹确认台，直接走真实保存链。
+            // 验收点是"用户文件夹零写入 + 库内 rendered/ 有成品 + 剪贴板有图"，
+            // 所以把三者都写进报告文件供脚本断言。
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                guard let imageURL = Bundle.main.url(
+                    forResource: "mac-asset-3",
+                    withExtension: "jpg",
+                    subdirectory: "Backgrounds/mac"
+                ), let image = NSImage(contentsOf: imageURL),
+                   let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
+                   let screen = NSScreen.main else { return }
+
+                Task { @MainActor in
+                    await CaptureOrchestrator.shared.processQuickCopyAuditFrame(
+                        image: cgImage,
+                        on: screen
+                    )
+                    try? Self.quickCopyAuditReport().write(
+                        to: URL(fileURLWithPath: "/tmp/rune-quick-copy.txt"),
+                        atomically: true,
+                        encoding: .utf8
+                    )
+                    NSApp.terminate(nil)
+                }
             }
         } else if ProcessInfo.processInfo.arguments.contains("--audit-confirm")
                     || ProcessInfo.processInfo.arguments.contains("--audit-confirm-text")

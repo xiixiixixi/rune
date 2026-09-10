@@ -13,6 +13,9 @@ struct RegionSelection {
     let windowID: CGWindowID?
     /// 截图来源应用。窗口点击为精确来源；区域框选取中心点最上层窗口。
     let source: CaptureSource?
+    /// 松手时是否按着 ⌥：反转「框选后」偏好——平时走确认台的人不用改设置
+    /// 就能快速复制一次，反之亦然。
+    var togglesQuickCopy: Bool = false
 }
 
 /// 区域+窗口合并模式的候选窗口（Sendable：SCWindow 不能直接传出）。
@@ -305,7 +308,8 @@ final class RegionSelectionOverlay {
             scaleFactor: screen.backingScaleFactor,
             displayID: displayID,
             windowID: nil,
-            source: source ?? frontmostSource
+            source: source ?? frontmostSource,
+            togglesQuickCopy: NSEvent.modifierFlags.contains(.option)
         )
 
         completeSelection(
@@ -333,7 +337,8 @@ final class RegionSelectionOverlay {
             scaleFactor: screen.backingScaleFactor,
             displayID: displayID,
             windowID: candidate.id,
-            source: candidate.source
+            source: candidate.source,
+            togglesQuickCopy: NSEvent.modifierFlags.contains(.option)
         )
 
         completeSelection(selection, shutterRect: nil, on: screen)
@@ -755,7 +760,7 @@ private final class SelectionView: NSView {
             case .ratio16_9: return "  (16:9)"
             }
         }()
-        let label = "\(w) × \(h)\(ratioText)" as NSString
+        let label = "\(w) × \(h)\(ratioText)\(Self.flowHint())" as NSString
         let attrs: [NSAttributedString.Key: Any] = [
             .font: RuneFont.appKit(size: 11, weight: .medium),
             .foregroundColor: NSColor.white,
@@ -770,6 +775,12 @@ private final class SelectionView: NSView {
         NSColor.black.withAlphaComponent(0.7).setFill()
         NSBezierPath(roundedRect: labelRect, xRadius: 4, yRadius: 4).fill()
         label.draw(at: NSPoint(x: labelRect.minX + 6, y: labelRect.minY + 2), withAttributes: attrs)
+    }
+
+    /// 只在按住 ⌥ 时才提示——平时不占地方，一按住就告诉你松手会发生什么。
+    private static func flowHint() -> String {
+        guard NSEvent.modifierFlags.contains(.option) else { return "" }
+        return AppPreferences.captureFlow == .quickCopy ? "  ⌥ 打开确认台" : "  ⌥ 直接复制"
     }
 
     /// 不使用粗重圆角或整圈霓虹：左下是冷色，右上是暖色，像薄玻璃的折射边。
@@ -950,6 +961,12 @@ private final class SelectionView: NSView {
             self.hoveredElement = ElementHover(localRect: localRect, source: source)
             self.needsDisplay = true
         }
+    }
+
+    /// ⌥ 按下/松开时立刻重画，让尺寸标签里的「⌥ 直接复制 / 打开确认台」提示
+    /// 跟着修饰键实时出现和消失。
+    override func flagsChanged(with event: NSEvent) {
+        needsDisplay = true
     }
 
     /// M1 §3.4 键盘交互：Esc 取消、Tab 轮换比例、方向键微调选区、Enter 确认。

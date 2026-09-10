@@ -23,9 +23,11 @@ APP_RELEASE  = $(DERIVED_DIR)/Build/Products/$(CONFIG_REL)/$(PRODUCT_NAME).app
 VERSION     := $(shell python3 -c "import json; print(json.load(open('version.json'))['version'])")
 DMG_NAME     = Rune-$(VERSION).dmg
 DMG_DIR      = release
-# 正式 Apple 证书仍可通过 LOCAL_SIGN_IDENTITY 覆盖。本机开发默认使用 Rune
-# 自有的固定证书，避免每次编译都因签名身份变化而丢失屏幕录制权限。
-LOCAL_SIGN_IDENTITY ?= Rune Local Developer
+# 正式 Apple 证书仍可通过 LOCAL_SIGN_IDENTITY 覆盖。默认值必须是本机钥匙串里
+# **真实存在**、且与已安装的 /Applications/Rune.app 同一个证书——TCC（屏幕录制）
+# 记录绑定在 designated requirement 上，换了签名身份就要重新授权。
+# 查当前可用身份：security find-identity -v -p codesigning
+LOCAL_SIGN_IDENTITY ?= BetterShot Developer
 ifeq ($(strip $(LOCAL_SIGN_IDENTITY)),-)
 LOCAL_SIGN_REQUIREMENTS = --requirements '=designated => identifier "com.tc.rune"'
 endif

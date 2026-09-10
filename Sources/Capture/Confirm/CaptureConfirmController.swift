@@ -2,12 +2,24 @@ import AppKit
 import OSLog
 import SwiftUI
 
+/// 用户在确认台上的收尾动作，决定保存链怎么落地（见 CaptureOrchestrator.galleryApplyAndSave）。
+enum ConfirmDisposition: Equatable {
+    /// 保存到用户文件夹（是否同时复制由「保存后复制」偏好决定）。
+    case save
+    /// 只复制到剪贴板：成品留在 Rune 库内，用户文件夹零写入。
+    case copyOnly
+    /// 复制到剪贴板 + 保存到用户文件夹。
+    case copyAndSave
+}
+
 /// 截图确认模式控制器：截图后不落盘，冻结显示 + 底部工具栏，用户确认才保存。
 ///
 /// 交互（docs/交互设计.md · 截图确认模式）：
 /// - 全屏 OverlayWindow 显示刚截的图（屏幕冻结感）
 /// - 屏幕底部居中浮起红白工具栏（标注/复制/贴图/取消/保存）
-/// - Enter=保存、Esc=取消（零残留：不写文件、不建历史）
+/// - Enter=回车默认动作（出厂仅复制）、⇧⌘Enter=复制并保存、⌘S=保存、
+///   Esc=取消（零残留：不写文件、不建历史）
+/// - 「仅复制」也会进 Rune 历史，成品留在库内，用户文件夹零写入
 @MainActor
 final class CaptureConfirmController: NSObject {
     static let shared = CaptureConfirmController()
@@ -62,6 +74,7 @@ final class CaptureConfirmController: NSObject {
         pendingBurstRequested = false
         pendingBurstRegion = nil
         confirmedImage = nil
+        disposition = .save
 
         let targetScreen = screen ?? NSScreen.main ?? NSScreen.screens.first!
         capturedRegion = region
@@ -257,19 +270,39 @@ final class CaptureConfirmController: NSObject {
     /// 每次确认会话开始时清空。
     private(set) var confirmedImage: CGImage?
 
-    /// 用户点保存/按 Enter。
+    /// 用户点保存/按 Enter（保存类动作）。
     func confirm() {
+        disposition = .save
         canvas?.finishTextEditing()
         confirmedImage = canvas?.croppedImage()
         finish(result: canvas?.remappedAnnotations() ?? [])
     }
 
-    /// 回车默认动作：复制到剪贴板 + 保存。保存流程读 copiedDuringConfirm
-    /// 决定完成提示文案（"已复制到剪贴板"），读后复位。
-    var copiedDuringConfirm = false
+    /// 本次确认的收尾动作。每次开场在 present() 复位为 .save，
+    /// 保存链消费它决定"要不要写用户文件夹"。读后不复位——下一次会话自己会重置。
+    private(set) var disposition: ConfirmDisposition = .save
 
+    /// 回车默认动作：跟随「回车默认动作」设置，出厂为仅复制。
+    func confirmWithPreferredAction() {
+        switch AppPreferences.confirmReturnAction {
+        case .copyOnly: copyOnlyAndConfirm()
+        case .copyAndSave: copyAndConfirm()
+        case .save: confirm()
+        }
+    }
+
+    /// 仅复制：进剪贴板 + Rune 历史，但不写用户文件夹。
+    func copyOnlyAndConfirm() {
+        disposition = .copyOnly
+        canvas?.finishTextEditing()
+        canvas?.copyImageToPasteboard()
+        confirmedImage = canvas?.croppedImage()
+        finish(result: canvas?.remappedAnnotations() ?? [])
+    }
+
+    /// 复制并保存：剪贴板 + 用户文件夹。
     func copyAndConfirm() {
-        copiedDuringConfirm = true
+        disposition = .copyAndSave
         canvas?.finishTextEditing()
         canvas?.copyImageToPasteboard()
         confirmedImage = canvas?.croppedImage()

@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import ImageIO
 @preconcurrency import AVFoundation
 
 /// Persists capture history as a JSON file in Application Support.
@@ -12,6 +13,11 @@ final class HistoryStore {
     private(set) var indexingRecordIDs: Set<UUID> = []
     private let storageDir: URL
     private let manifestURL: URL
+
+    /// 「仅复制」的成品存放处：与底片同名，避免历史里出现两份各自演化的图。
+    private var renderedDir: URL {
+        storageDir.appendingPathComponent("rendered", isDirectory: true)
+    }
 
     private init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -116,7 +122,74 @@ final class HistoryStore {
     func setBeautifiedPath(_ path: String, for recordID: UUID) {
         guard let index = records.firstIndex(where: { $0.id == recordID }) else { return }
         records[index].beautifiedPath = path
+        records[index].disposition = .exported
         saveRecords()
+    }
+
+    /// 成品留在 Rune 库内的位置（仅复制时用）。文件名与底片同名，直接由记录推导。
+    func renderedURLForRecord(_ record: CaptureRecord) -> URL {
+        renderedDir.appendingPathComponent(record.filename)
+    }
+
+    /// 落盘「仅复制」的成品：标注 + 美化已烘焙，但只进 Rune 库，不碰用户文件夹。
+    @discardableResult
+    func writeRendered(_ image: CGImage, for recordID: UUID) -> URL? {
+        guard let record = records.first(where: { $0.id == recordID }) else { return nil }
+        try? FileManager.default.createDirectory(at: renderedDir, withIntermediateDirectories: true)
+        let url = renderedURLForRecord(record)
+        guard let destination = CGImageDestinationCreateWithURL(
+            url as CFURL,
+            "public.png" as CFString,
+            1, nil
+        ) else { return nil }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return url
+    }
+
+    /// 标记这条记录是「仅复制」：成品在库里，用户文件夹没有它的份。
+    func markClipboardOnly(_ recordID: UUID) {
+        guard let index = records.firstIndex(where: { $0.id == recordID }) else { return }
+        records[index].beautifiedPath = nil
+        records[index].disposition = .clipboardOnly
+        saveRecords()
+    }
+
+    /// 把「仅复制」的成品补写到用户文件夹，随后整条记录转为已导出。
+    /// 成品仍然只保留一份——补写成功后删除库内那一份。
+    @discardableResult
+    func exportClipboardOnly(_ recordID: UUID, to directory: String) -> URL? {
+        guard let index = records.firstIndex(where: { $0.id == recordID }) else { return nil }
+        let record = records[index]
+        let sourceURL = renderedURLForRecord(record)
+        guard let imageSource = CGImageSourceCreateWithURL(sourceURL as CFURL, nil),
+              let image = CGImageSourceCreateImageAtIndex(imageSource, 0, nil) else { return nil }
+
+        let dirURL = URL(fileURLWithPath: directory)
+        let ext = AppPreferences.exportFormat.fileExtension
+        let (_, destURL) = uniqueFilename(
+            baseName: AppPreferences.generateFileName(ext: ext),
+            in: dirURL
+        )
+
+        guard let destination = CGImageDestinationCreateWithURL(
+            destURL as CFURL,
+            AppPreferences.exportFormat.utType as CFString,
+            1, nil
+        ) else { return nil }
+
+        var options: [CFString: Any] = [:]
+        if AppPreferences.exportFormat == .jpeg {
+            options[kCGImageDestinationLossyCompressionQuality] = AppPreferences.exportQuality
+        }
+        CGImageDestinationAddImage(destination, image, options as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+
+        try? FileManager.default.removeItem(at: sourceURL)
+        records[index].beautifiedPath = destURL.path
+        records[index].disposition = .exported
+        saveRecords()
+        return destURL
     }
 
     func setFavorite(_ isFavorite: Bool, for recordID: UUID) {
@@ -184,13 +257,32 @@ final class HistoryStore {
     }
 
     func displayURLForRecord(_ record: CaptureRecord) -> URL {
+        // 成品优先：导出到用户文件夹的那一份，其次是只复制时留在库内的那一份。
         if let path = record.beautifiedPath {
             let url = URL(fileURLWithPath: path)
             if FileManager.default.fileExists(atPath: url.path) {
                 return url
             }
         }
+        let rendered = renderedURLForRecord(record)
+        if FileManager.default.fileExists(atPath: rendered.path) {
+            return rendered
+        }
+        // 兜底：底片（无标注）。历史缩略图仍可显示，只是看不到标注。
         return urlForRecord(record)
+    }
+
+    /// 反查：这个 URL 是不是某条记录的成品（导出件或库内件）。
+    /// 编辑器靠它精确定位底片——不再用文件名猜，跨秒边界也不会把成品当底片。
+    func record(matchingDisplayURL url: URL) -> CaptureRecord? {
+        let target = url.standardizedFileURL.path
+        return records.first { record in
+            if let path = record.beautifiedPath,
+               URL(fileURLWithPath: path).standardizedFileURL.path == target {
+                return true
+            }
+            return renderedURLForRecord(record).standardizedFileURL.path == target
+        }
     }
 
     func thumbnail(for record: CaptureRecord, maxSize: CGFloat = 120) -> NSImage? {
@@ -252,6 +344,10 @@ final class HistoryStore {
             let baseURL = CaptureOrchestrator.baseImageURL(for: beautifiedURL)
             _ = moveToTrashIfPresent(baseURL)
         }
+        // 旧版本的 bases/ 副本按底片同名存放；新版本不再写，这里顺手清理历史遗留。
+        _ = moveToTrashIfPresent(CaptureOrchestrator.baseImageURL(for: url))
+        // 「仅复制」的成品也要一起走，否则删了记录库里还留着图。
+        _ = moveToTrashIfPresent(renderedURLForRecord(record))
         records.removeAll { $0.id == record.id }
         saveRecords()
     }
@@ -367,8 +463,18 @@ final class HistoryStore {
             }
         }
 
-        // Filter out records whose files no longer exist
-        records = decoded.filter { FileManager.default.fileExists(atPath: urlForRecord($0).path) }
+        // 底片或成品任一份还在就保留记录：用户手工清理过其中一份时，
+        // 历史不应该整条消失（旧版本只看底片，删了底片记录就没了）。
+        records = decoded.filter { record in
+            if FileManager.default.fileExists(atPath: urlForRecord(record).path) {
+                return true
+            }
+            if let path = record.beautifiedPath,
+               FileManager.default.fileExists(atPath: path) {
+                return true
+            }
+            return FileManager.default.fileExists(atPath: renderedURLForRecord(record).path)
+        }
         if didMigrateLegacyRecords {
             saveRecords()
         }

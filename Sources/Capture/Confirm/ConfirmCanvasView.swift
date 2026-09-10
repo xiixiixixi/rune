@@ -9,7 +9,8 @@ extension Notification.Name {
 /// 确认模式画布：显示截图 + 就地标注（拖画/选中/移动/删除）。
 ///
 /// 复用 AnnotationItem 模型（0-1 归一化、Y-down）与 AnnotationDrawing 烘焙渲染。
-/// 键盘（没有编辑文字时）：Esc=取消、Enter=复制并保存、⌘Z=撤销、Delete=删除选中。
+/// 键盘（没有编辑文字时）：Esc=取消、Enter=回车默认动作（出厂仅复制）、
+/// ⇧⌘Enter=复制并保存、⌘S=保存、⌘Z=撤销、Delete=删除选中。
 final class ConfirmCanvasView: NSView {
     private let image: CGImage
     private let backgroundImage: CGImage?
@@ -54,6 +55,10 @@ final class ConfirmCanvasView: NSView {
     private var movingCrop = false
     private var cropMoveStart: CGPoint?
     private var cropMoveOrigin: CGRect?
+
+    /// ⌥ 在选区内按下：待命把成品拖出去。移动超过阈值才真的开拖拽会话，
+    /// 这样"⌥ 点一下"不会误触发拖拽。
+    private var dragOutOrigin: CGPoint?
 
     /// 当前生效的选区（视图坐标）。
     var effectiveCropRect: CGRect {
@@ -1101,6 +1106,14 @@ final class ConfirmCanvasView: NSView {
         // 这样保持文字工具连续放置时，也不会残留一个失去焦点的输入框。
         finishTextEditing()
 
+        // ⌥ + 在选区内按下 = 把成品拖到别的应用。必须在所有分支之前判定：
+        // 选区内的普通拖动归"移动选区框"、点标注归"移动标注"，⌥ 是唯一
+        // 不会和它们抢同一段手势的入口。
+        if event.modifierFlags.contains(.option), imageDrawRect.contains(loc) {
+            dragOutOrigin = loc
+            return
+        }
+
         // 选区再调整：选择工具下抓到角/边句柄 → 拖动改选区（角/边命中
         // 区延伸到选区外 9pt，必须在"只许亮区编辑"的守卫之前判定）。
         if let handle = cropHandle(at: loc) {
@@ -1174,9 +1187,9 @@ final class ConfirmCanvasView: NSView {
             return
         }
 
-        // 空白处双击 = 确认（复制并保存，capcap 同款）
+        // 空白处双击 = 确认（回车默认动作，capcap 同款）
         if event.clickCount >= 2 {
-            controller?.copyAndConfirm()
+            controller?.confirmWithPreferredAction()
             return
         }
 
@@ -1229,6 +1242,15 @@ final class ConfirmCanvasView: NSView {
     override func mouseDragged(with event: NSEvent) {
         let loc = convert(event.locationInWindow, from: nil)
 
+        // ⌥ 拖出：越过阈值才交给系统拖拽会话（`beginDraggingSession` 一旦
+        // 调用，后续 mouseUp 由系统派发，这里不能再动状态）。
+        if let origin = dragOutOrigin {
+            guard hypot(loc.x - origin.x, loc.y - origin.y) >= 4 else { return }
+            dragOutOrigin = nil
+            beginImageDragOut(with: event)
+            return
+        }
+
         // 选区再调整拖拽
         if resizingHandle != nil {
             applyCropResize(to: loc)
@@ -1272,6 +1294,7 @@ final class ConfirmCanvasView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        dragOutOrigin = nil
         if resizingHandle != nil {
             resizingHandle = nil
             needsDisplay = true
@@ -1325,11 +1348,25 @@ final class ConfirmCanvasView: NSView {
             undo()
             return
         }
+        // ⌘S → 保存到文件夹（与工具栏「保存」同效）
+        if event.modifierFlags.contains(.command),
+           event.charactersIgnoringModifiers?.lowercased() == "s" {
+            controller?.confirm()
+            return
+        }
+        // ⇧⌘Enter → 复制并保存到文件夹。必须在 keyCode 分支之前拦：
+        // 下面的 case 36/76 不区分修饰键，否则会被当成默认动作。
+        if event.keyCode == 36 || event.keyCode == 76,
+           event.modifierFlags.contains(.command),
+           event.modifierFlags.contains(.shift) {
+            controller?.copyAndConfirm()
+            return
+        }
         switch event.keyCode {
         case 53:   // Esc → 选字模式优先退出选字；否则取消（零残留）
             if ocrMode { exitOCRMode() } else { controller?.cancel() }
-        case 36, 76:  // Enter / 小回车 → 复制 + 保存（默认动作）
-            controller?.copyAndConfirm()
+        case 36, 76:  // Enter / 小回车 → 回车默认动作（出厂仅复制，可在设置里改）
+            controller?.confirmWithPreferredAction()
         case 51:   // Delete → 删除选中
             deleteSelected()
         case 123, 124, 125, 126:  // 方向键 → 微调选中标注（1pt，Shift=10pt）
@@ -1914,6 +1951,54 @@ final class ConfirmCanvasView: NSView {
         pb.writeObjects([ns])
     }
 
+    /// 供工具栏「复制」按钮拖出：把成品包成拖拽项。
+    /// 拖动 = 直接拖进别的应用，单击 = 仅复制到剪贴板，两者互不干扰。
+    func dragItemProvider() -> NSItemProvider {
+        guard let rendered = renderedImage() else { return NSItemProvider() }
+        return ImageDragSource.itemProvider(
+            for: rendered,
+            suggestedName: Self.dragOutSuggestedName()
+        )
+    }
+
+    /// ⌥ 拖动：把成品从选区里"抠"出来，交给系统拖拽会话。
+    private func beginImageDragOut(with event: NSEvent) {
+        guard let rendered = renderedImage() else { return }
+        let item = NSDraggingItem(
+            pasteboardWriter: ImageDragSource.pasteboardItem(
+                for: rendered,
+                suggestedName: Self.dragOutSuggestedName()
+            )
+        )
+
+        // 拖拽预览按屏幕上的实际显示尺寸缩到 160pt 以内：
+        // 5K 长图原尺寸跟手会把整个屏幕糊住。
+        let drawn = imageDrawRect.size
+        let scale = min(160 / max(drawn.width, 1), 160 / max(drawn.height, 1), 1)
+        let previewSize = CGSize(
+            width: max(drawn.width * scale, 1),
+            height: max(drawn.height * scale, 1)
+        )
+        item.setDraggingFrame(
+            CGRect(
+                x: imageDrawRect.midX - previewSize.width / 2,
+                y: imageDrawRect.midY - previewSize.height / 2,
+                width: previewSize.width,
+                height: previewSize.height
+            ),
+            contents: NSImage(
+                cgImage: rendered,
+                size: NSSize(width: rendered.width, height: rendered.height)
+            )
+        )
+        beginDraggingSession(with: [item], event: event, source: self)
+    }
+
+    /// 拖出文件的建议名，跟随用户的「文件命名」偏好。
+    private static func dragOutSuggestedName() -> String {
+        (AppPreferences.generateFileName(ext: "png") as NSString).deletingPathExtension
+    }
+
     /// 钉为贴图（含标注），随后结束确认（不落历史文件）。
     func pinImage() {
         guard let cg = renderedImage() else { return }
@@ -1977,5 +2062,17 @@ private final class ConfirmMultilineTextView: NSTextView {
         NSAttributedString(string: placeholderString, attributes: attributes).draw(
             at: CGPoint(x: textContainerInset.width, y: textContainerInset.height)
         )
+    }
+}
+
+// MARK: - 拖出到其他应用
+
+extension ConfirmCanvasView: NSDraggingSource {
+    /// 拖出去永远是"复制一份给别人"，不移动、不删除原图。
+    func draggingSession(
+        _ session: NSDraggingSession,
+        sourceOperationMaskFor context: NSDraggingContext
+    ) -> NSDragOperation {
+        .copy
     }
 }

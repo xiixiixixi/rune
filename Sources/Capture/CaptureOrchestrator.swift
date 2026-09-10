@@ -58,6 +58,9 @@ final class CaptureOrchestrator {
         case .burst:
             // 连拍在 ShortcutService 热键回调里直接处理（开始/停止），不走 orchestrator。
             break
+        case .pastePin:
+            // 贴剪贴板同样在 ShortcutService 热键回调里直接处理。
+            break
         }
     }
 
@@ -153,8 +156,16 @@ final class CaptureOrchestrator {
             on: Self.screen(forDisplayID: selection.displayID),
             region: selection.pointsRect,
             backgroundImage: cleanDisplayFrame.image,
-            source: selection.source
+            source: selection.source,
+            // 「框选后」偏好决定走向；框选时按着 ⌥ 就反转它。
+            skipConfirm: Self.shouldSkipConfirm(togglesQuickCopy: selection.togglesQuickCopy)
         )
+    }
+
+    /// 快速模式判定：默认跟随「框选后」偏好，框选时按着 ⌥ 则取反。
+    private static func shouldSkipConfirm(togglesQuickCopy: Bool) -> Bool {
+        let quickByDefault = AppPreferences.captureFlow == .quickCopy
+        return togglesQuickCopy ? !quickByDefault : quickByDefault
     }
 
     /// M1 第⑤步（续）：窗口截图经应用自己的 WindowPickerOverlay 拿窗口 ID，
@@ -244,53 +255,70 @@ final class CaptureOrchestrator {
         on screen: NSScreen? = nil,
         region: CGRect? = nil,
         backgroundImage: CGImage? = nil,
-        source: CaptureSource? = nil
+        source: CaptureSource? = nil,
+        skipConfirm: Bool = false
     ) async {
-        // 确认模式：用户在冻结屏上标注，点保存才继续。
-        // 「滚动长图」会以 nil 结束确认并留下 pendingScrollRegion → 转滚动截图。
-        let annotations = await CaptureConfirmController.shared.present(
-            image: frame.image,
-            on: screen ?? captureScreen,
-            region: region,
-            backgroundImage: backgroundImage,
-            source: source
-        )
-        if CaptureConfirmController.shared.pendingScrollRequested {
-            let scrollRegion = CaptureConfirmController.shared.pendingScrollRegion
-            let scrollSource = CaptureConfirmController.shared.pendingScrollSource
-            CaptureConfirmController.shared.clearPendingScroll()
-            Self.transitionLogger.notice(
-                "Consuming long-image transition regionPresent=\(scrollRegion != nil, privacy: .public) targetPID=\(scrollSource?.processID ?? -1, privacy: .public)"
+        let annotations: [AnnotationItem]?
+        let disposition: ConfirmDisposition
+
+        if skipConfirm {
+            // 快速模式：不弹确认台，等同在确认台上点「复制」——
+            // 进剪贴板 + 素材库，用户文件夹零写入。
+            annotations = []
+            disposition = .copyOnly
+        } else {
+            // 确认模式：用户在冻结屏上标注，点保存才继续。
+            // 「滚动长图」会以 nil 结束确认并留下 pendingScrollRegion → 转滚动截图。
+            annotations = await CaptureConfirmController.shared.present(
+                image: frame.image,
+                on: screen ?? captureScreen,
+                region: region,
+                backgroundImage: backgroundImage,
+                source: source
             )
-            await ScrollCaptureController.shared.start(
-                on: screen,
-                presetRegion: scrollRegion,
-                source: scrollSource
-            )
-            Self.transitionLogger.notice("Long-image controller start returned")
-            return
-        }
-        if CaptureConfirmController.shared.pendingBurstRequested {
-            let burstRegion = CaptureConfirmController.shared.pendingBurstRegion
-            CaptureConfirmController.shared.clearPendingBurst()
-            if let burstRegion {
-                BurstCaptureController.shared.configureAndBegin(
-                    presetMode: .burst,
+            if CaptureConfirmController.shared.pendingScrollRequested {
+                let scrollRegion = CaptureConfirmController.shared.pendingScrollRegion
+                let scrollSource = CaptureConfirmController.shared.pendingScrollSource
+                CaptureConfirmController.shared.clearPendingScroll()
+                Self.transitionLogger.notice(
+                    "Consuming long-image transition regionPresent=\(scrollRegion != nil, privacy: .public) targetPID=\(scrollSource?.processID ?? -1, privacy: .public)"
+                )
+                await ScrollCaptureController.shared.start(
                     on: screen,
-                    region: burstRegion
+                    presetRegion: scrollRegion,
+                    source: scrollSource
                 )
-            } else {
-                await BurstCaptureController.shared.prepareAndBegin(
-                    presetMode: .burst,
-                    on: screen
-                )
+                Self.transitionLogger.notice("Long-image controller start returned")
+                return
             }
-            return
+            if CaptureConfirmController.shared.pendingBurstRequested {
+                let burstRegion = CaptureConfirmController.shared.pendingBurstRegion
+                CaptureConfirmController.shared.clearPendingBurst()
+                if let burstRegion {
+                    BurstCaptureController.shared.configureAndBegin(
+                        presetMode: .burst,
+                        on: screen,
+                        region: burstRegion
+                    )
+                } else {
+                    await BurstCaptureController.shared.prepareAndBegin(
+                        presetMode: .burst,
+                        on: screen
+                    )
+                }
+                return
+            }
+            disposition = CaptureConfirmController.shared.disposition
         }
+
         guard let annotations else { return }   // 取消：零残留
 
-        // 确认画布选区调整（拖角/边）后的成图；未调整时为原图
-        let finalImage = CaptureConfirmController.shared.confirmedImage ?? frame.image
+        // 确认画布选区调整（拖角/边）后的成图；未调整时为原图。
+        // 快速模式没有确认台，绝不能读 confirmedImage——它只在 present() 里重置，
+        // 否则会拿到上一张截图调整后的裁剪图。
+        let finalImage = skipConfirm
+            ? frame.image
+            : (CaptureConfirmController.shared.confirmedImage ?? frame.image)
         guard let tempURL = writeCGImageToTemp(finalImage) else { return }
 
         guard let record = await HistoryStore.shared.importCapture(
@@ -307,7 +335,12 @@ final class CaptureOrchestrator {
         // 清理临时文件（importCapture 已复制到保存目录）
         try? FileManager.default.removeItem(at: tempURL)
 
-        await galleryApplyAndSave(capturedURL, recordID: record.id, annotations: annotations)
+        await galleryApplyAndSave(
+            capturedURL,
+            recordID: record.id,
+            annotations: annotations,
+            disposition: disposition
+        )
     }
 
     /// 供滚动截图等扩展功能复用统一的保存、美化、历史与预览流程。
@@ -337,6 +370,18 @@ final class CaptureOrchestrator {
             backgroundImage: backgroundImage,
             source: source
         )
+    }
+
+    /// 用内存测试帧驱动真正的「快速模式」生产链路（跳过确认台）。
+    /// 和上面的长图入口一样，只是给 processCapturedFrame 传 skipConfirm，
+    /// 不复制任何保存/历史/剪贴板逻辑，验收的就是线上那条路径。
+    func processQuickCopyAuditFrame(image: CGImage, on screen: NSScreen) async {
+        let frame = CapturedFrame(
+            image: image,
+            scaleFactor: screen.backingScaleFactor,
+            displayID: Self.displayID(for: screen)
+        )
+        await processCapturedFrame(frame, on: screen, skipConfirm: true)
     }
     #endif
 
@@ -430,7 +475,12 @@ final class CaptureOrchestrator {
         }
     }
 
-    private func galleryApplyAndSave(_ url: URL, recordID: UUID? = nil, annotations: [AnnotationItem] = []) async {
+    private func galleryApplyAndSave(
+        _ url: URL,
+        recordID: UUID? = nil,
+        annotations: [AnnotationItem] = [],
+        disposition: ConfirmDisposition = .save
+    ) async {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
             showCaptureError("无法读取截图", detail: "原图仍保留在 Rune 历史中")
@@ -446,11 +496,29 @@ final class CaptureOrchestrator {
             return
         }
 
+        // 仅复制：成品只留 Rune 库内一份，用户文件夹零写入。
+        // 顺带把这条记录标成"仅复制"，素材库据此显示角标并提供补保存。
+        if disposition == .copyOnly {
+            guard let recordID else { return }
+            guard let renderedURL = HistoryStore.shared.writeRendered(rendered, for: recordID) else {
+                showCaptureError("截图没有保存", detail: "请检查磁盘空间后重试")
+                return
+            }
+            HistoryStore.shared.markClipboardOnly(recordID)
+            copyToClipboard(renderedURL)
+            ToastWindow.shared.show(
+                title: "已复制到剪贴板",
+                message: "未保存到文件夹，可在素材库补存",
+                systemIcon: "doc.on.doc",
+                on: captureScreen
+            )
+            PreviewOverlay.shared.show(url: renderedURL, on: captureScreen, isClipboardOnly: true)
+            return
+        }
+
         let savedURL = saveImage(rendered)
 
         if let savedURL {
-            saveBaseImage(rawURL: url, alongside: savedURL)
-
             if let recordID {
                 HistoryStore.shared.setBeautifiedPath(savedURL.path, for: recordID)
             }
@@ -463,9 +531,7 @@ final class CaptureOrchestrator {
         let displayURL = savedURL ?? url
 
         // 回车默认动作（复制+保存）优先提示剪贴板；「保存后复制」偏好次之
-        let copiedDuringConfirm = CaptureConfirmController.shared.copiedDuringConfirm
-        CaptureConfirmController.shared.copiedDuringConfirm = false
-        if savedURL != nil, copiedDuringConfirm {
+        if savedURL != nil, disposition == .copyAndSave {
             let appIcon = NSImage(named: "AppIcon") ?? NSApp.applicationIconImage
             ToastWindow.shared.show(
                 title: "已复制到剪贴板",
@@ -525,11 +591,6 @@ final class CaptureOrchestrator {
         return url
     }
 
-    private func saveBaseImage(rawURL: URL, alongside beautifiedURL: URL) {
-        let baseURL = Self.baseImageURL(for: beautifiedURL)
-        try? FileManager.default.copyItem(at: rawURL, to: baseURL)
-    }
-
     private static var baseStorageDir: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let dir = appSupport.appendingPathComponent("Rune/bases", isDirectory: true)
@@ -542,7 +603,19 @@ final class CaptureOrchestrator {
         return baseStorageDir.appendingPathComponent("\(name).base.png")
     }
 
+    /// 找出这个 URL 对应的底片（无标注原图）。
+    /// 首选按记录精确解析：成品可能在用户文件夹（导出）或 Rune 库内（仅复制），
+    /// 只有记录知道它的底片是谁。旧版本靠文件名猜 bases/，而底片和成品是两次
+    /// generateFileName 生成的，跨过 1 秒边界名字就对不上——会把成品当底片二次烘焙。
     static func resolveRawSource(for url: URL) -> URL {
+        if let record = HistoryStore.shared.record(matchingDisplayURL: url) {
+            let rawURL = HistoryStore.shared.urlForRecord(record)
+            if FileManager.default.fileExists(atPath: rawURL.path) {
+                return rawURL
+            }
+        }
+
+        // 旧记录兜底：bases/ 与改名前 BetterShot 目录。
         let baseURL = baseImageURL(for: url)
         if FileManager.default.fileExists(atPath: baseURL.path) {
             return baseURL

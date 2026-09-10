@@ -16,6 +16,8 @@ final class PreviewOverlay {
 
     private(set) var currentURL: URL?
     private(set) var currentKind: CaptureKind = .screenshot
+    /// 这张只复制、没写用户文件夹：卡片不提供「在访达中显示」，标题也不说"已保存"。
+    private(set) var isClipboardOnly = false
     private(set) var isVisible = false
     private var panel: NSPanel?
     private var dismissTask: Task<Void, Never>?
@@ -26,11 +28,13 @@ final class PreviewOverlay {
     func show(
         url: URL,
         on screen: NSScreen? = nil,
-        kindOverride: CaptureKind? = nil
+        kindOverride: CaptureKind? = nil,
+        isClipboardOnly: Bool = false
     ) {
         dismissTask?.cancel()
         currentURL = url
         currentKind = kindOverride ?? (isVideo(url) ? .recording : .screenshot)
+        self.isClipboardOnly = isClipboardOnly
         targetScreen = screen
         isVisible = true
 
@@ -51,6 +55,7 @@ final class PreviewOverlay {
         isVisible = false
         currentURL = nil
         currentKind = .screenshot
+        isClipboardOnly = false
     }
 
     func pauseAutoDismiss() {
@@ -82,7 +87,7 @@ final class PreviewOverlay {
     }
 
     func revealInFinder() {
-        guard let url = currentURL else { return }
+        guard let url = currentURL, !isClipboardOnly else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
         dismiss()
     }
@@ -166,6 +171,11 @@ struct PreviewCardView: View {
             && screenshotPixelSize.height / screenshotPixelSize.width >= 3
     }
 
+    private var headerTitle: String {
+        if isVideo { return "录屏已保存" }
+        return overlay.isClipboardOnly ? "已复制到剪贴板" : "截图已保存"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -205,7 +215,7 @@ struct PreviewCardView: View {
                 RuneSelectionMark(isSelected: true, size: 16)
             }
 
-            Text(isVideo ? "录屏已保存" : "截图已保存")
+            Text(headerTitle)
                 .font(RuneFont.swiftUI(size: 12, weight: .semibold))
                 .foregroundStyle(RuneTheme.chromeText)
 
@@ -282,10 +292,11 @@ struct PreviewCardView: View {
         .contentShape(Rectangle())
         .onTapGesture { overlay.openEditor() }
         .onDrag {
-            if let url = overlay.currentURL {
-                return NSItemProvider(object: url as NSURL)
-            }
-            return NSItemProvider()
+            guard let url = overlay.currentURL else { return NSItemProvider() }
+            // 图像数据 + 文件 URL 一起给：拖进聊天窗口是内联图片，
+            // 拖进访达/Markdown 编辑器才落成文件。此前只给 URL，
+            // 拖到微信里会变成"一个文件"而不是图片。
+            return ImageDragSource.itemProvider(for: thumbnail, fileURL: url)
         }
         .help(isVideo ? "打开录屏编辑器，也可以直接拖到其他应用" : "打开截图编辑器，也可以直接拖到其他应用")
     }
@@ -323,8 +334,11 @@ struct PreviewCardView: View {
 
             Spacer(minLength: 4)
 
-            actionButton("folder", help: "在访达中显示") {
-                overlay.revealInFinder()
+            // 仅复制时没有落在用户文件夹里的文件，访达无处可显示。
+            if !overlay.isClipboardOnly {
+                actionButton("folder", help: "在访达中显示") {
+                    overlay.revealInFinder()
+                }
             }
         }
         .padding(.horizontal, 12)

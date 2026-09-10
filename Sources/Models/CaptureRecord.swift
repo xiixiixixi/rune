@@ -10,6 +10,15 @@ struct CaptureSource: Equatable, Sendable {
     let processID: pid_t?
 }
 
+/// 成品的去向。成品（标注 + 美化烘焙后的图）永远只存在一份：
+/// 要么在用户设置的文件夹里，要么留在 Rune 库内的 `rendered/`。
+enum CaptureDisposition: String, Codable, Sendable {
+    /// 已保存到用户文件夹，`beautifiedPath` 指向那一份。
+    case exported
+    /// 仅复制到剪贴板：成品留在 Rune 库内，用户文件夹零写入。
+    case clipboardOnly
+}
+
 /// Represents a captured screenshot or recording in the history.
 struct CaptureRecord: Identifiable, Codable, Equatable {
     let id: UUID
@@ -20,6 +29,8 @@ struct CaptureRecord: Identifiable, Codable, Equatable {
     var kind: CaptureKind
     var hasAnnotations: Bool
     var beautifiedPath: String?
+    /// 成品去向；0.8.x 及更早的记录没有这个字段，解码为 `.exported`。
+    var disposition: CaptureDisposition
     /// 用户在素材库中看到的自定义名称；为空时继续显示文件名。
     var title: String?
     /// 截图中的本地 OCR 文字，用于素材库搜索。不会上传。
@@ -41,6 +52,7 @@ struct CaptureRecord: Identifiable, Codable, Equatable {
         kind: CaptureKind = .screenshot,
         hasAnnotations: Bool = false,
         beautifiedPath: String? = nil,
+        disposition: CaptureDisposition = .exported,
         title: String? = nil,
         ocrText: String? = nil,
         sourceBundleID: String? = nil,
@@ -58,6 +70,7 @@ struct CaptureRecord: Identifiable, Codable, Equatable {
         self.kind = kind
         self.hasAnnotations = hasAnnotations
         self.beautifiedPath = beautifiedPath
+        self.disposition = disposition
         self.title = title
         self.ocrText = ocrText
         self.sourceBundleID = sourceBundleID
@@ -77,7 +90,7 @@ struct CaptureRecord: Identifiable, Codable, Equatable {
         case id, createdAt, filename, pixelWidth, pixelHeight, kind
         case hasAnnotations, beautifiedPath, title, ocrText, isFavorite
         case sourceBundleID, sourceAppName, sourceWindowTitle
-        case lastUsedAt, useCount
+        case lastUsedAt, useCount, disposition
     }
 
     /// 兼容 0.7.3 及更早版本的 history.json；新字段缺失时使用安全默认值。
@@ -91,6 +104,8 @@ struct CaptureRecord: Identifiable, Codable, Equatable {
         kind = try container.decodeIfPresent(CaptureKind.self, forKey: .kind) ?? .screenshot
         hasAnnotations = try container.decodeIfPresent(Bool.self, forKey: .hasAnnotations) ?? false
         beautifiedPath = try container.decodeIfPresent(String.self, forKey: .beautifiedPath)
+        disposition = try container.decodeIfPresent(CaptureDisposition.self, forKey: .disposition)
+            ?? .exported
         title = try container.decodeIfPresent(String.self, forKey: .title)
         ocrText = try container.decodeIfPresent(String.self, forKey: .ocrText)
         sourceBundleID = try container.decodeIfPresent(String.self, forKey: .sourceBundleID)

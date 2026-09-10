@@ -22,6 +22,7 @@
 		39F7F083DE82F98668EB52C5 /* AppPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40724D98137B3C0F4B12D703 /* AppPreferences.swift */; };
 		44FE61218236C918C4BE7A17 /* EditorInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D5C8B4474CA7EA56FA02695 /* EditorInspectorView.swift */; };
 		458778571D85D51B09D8066B /* SettingsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 115684E2C4D24EC0B20540AE /* SettingsWindowController.swift */; };
+		48DCF9677753B03E702AFD65 /* ImageDragSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = C244D744549C05911237A163 /* ImageDragSource.swift */; };
 		50026938651358C32060FAF3 /* PIIRedactor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1B9589FCF1FAFEC9722CE16 /* PIIRedactor.swift */; };
 		50C70048641234A009DE4EE7 /* AnnotationItemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60AE0C7CCD280A0FE5CAA99C /* AnnotationItemView.swift */; };
 		51425E7845A0F8E356F803A0 /* UpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9E9FD45536F24AA0C9FCFCE /* UpdateService.swift */; };
@@ -131,6 +132,7 @@
 		B4685E47145BCA592EB81115 /* ShortcutService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutService.swift; sourceTree = "<group>"; };
 		BA752C566C19DA061089251B /* DebugAuditSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugAuditSnapshot.swift; sourceTree = "<group>"; };
 		BF58A7BCC7583238C7612E34 /* WindowPickerOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowPickerOverlay.swift; sourceTree = "<group>"; };
+		C244D744549C05911237A163 /* ImageDragSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageDragSource.swift; sourceTree = "<group>"; };
 		CA87E0102C158DB43D1D3ED5 /* LICENSE */ = {isa = PBXFileReference; path = LICENSE; sourceTree = "<group>"; };
 		D36E351585CDF38115D98933 /* BeautifierRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeautifierRenderer.swift; sourceTree = "<group>"; };
 		D6CBA344AEA17DB686F5F647 /* ToolbarBackdropAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolbarBackdropAppearance.swift; sourceTree = "<group>"; };
@@ -198,6 +200,7 @@
 			isa = PBXGroup;
 			children = (
 				D36E351585CDF38115D98933 /* BeautifierRenderer.swift */,
+				C244D744549C05911237A163 /* ImageDragSource.swift */,
 				F1B9589FCF1FAFEC9722CE16 /* PIIRedactor.swift */,
 				B4685E47145BCA592EB81115 /* ShortcutService.swift */,
 				D9E9FD45536F24AA0C9FCFCE /* UpdateService.swift */,
@@ -477,6 +480,7 @@
 				0F5FDF9A93743C3DA0D33DE4 /* EditorWindowView.swift in Sources */,
 				A34B0869155CD9610794880B /* ExceptionLogger.swift in Sources */,
 				93854568B44C88EF4D268785 /* HistoryStore.swift in Sources */,
+				48DCF9677753B03E702AFD65 /* ImageDragSource.swift in Sources */,
 				969FB38DBC557C6CD93C75FE /* MenuBarContentView.swift in Sources */,
 				DC38EF3A9B20AFBEFBBBB756 /* MenuBarPopoverController.swift in Sources */,
 				A897099E9E6CA7AA3AAD63FC /* OCRResultPanelController.swift in Sources */,
@@ -525,13 +529,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Resources/Rune.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 43;
 				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 0.8.12;
+				MARKETING_VERSION = 0.8.14;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = com.tc.rune;
 				PRODUCT_NAME = Rune;
@@ -679,13 +683,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Resources/Rune.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 43;
 				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 0.8.12;
+				MARKETING_VERSION = 0.8.14;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = com.tc.rune;
 				PRODUCT_NAME = Rune;

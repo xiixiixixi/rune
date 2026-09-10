@@ -122,6 +122,14 @@ struct MenuBarContentView: View {
                     dismissAndRun(.colorPicker)
                 }
 
+                MenuCommandButton(
+                    title: "贴剪贴板",
+                    icon: "pin",
+                    shortcut: ShortcutService.shared.displayString(for: .pastePin)
+                ) {
+                    dismissAndPinClipboard()
+                }
+
                 MenuCommandButton(title: "素材库", icon: "rectangle.stack") {
                     openLibrary()
                 }
@@ -212,6 +220,16 @@ struct MenuBarContentView: View {
         Task {
             try? await Task.sleep(for: .milliseconds(160))
             await BurstCaptureController.shared.prepareAndBegin(presetMode: mode, on: screen)
+        }
+    }
+
+    /// 贴剪贴板：先把浮层收掉再贴，否则贴图会压在菜单底下。
+    private func dismissAndPinClipboard() {
+        nonisolated(unsafe) let screen = originScreen
+        dismissPopover()
+        Task {
+            try? await Task.sleep(for: .milliseconds(160))
+            PinnedScreenshotController.shared.pinFromClipboard(on: screen)
         }
     }
 
@@ -354,7 +372,6 @@ private struct MenuCommandButton: View {
             MenuCommandLabel(
                 title: title,
                 icon: icon,
-                shortcut: shortcut,
                 isPrimary: isPrimary
             )
         }
@@ -367,7 +384,6 @@ private struct MenuCommandButton: View {
 private struct MenuCommandLabel: View {
     let title: String
     let icon: String
-    var shortcut: String? = nil
     var isPrimary = false
     var showsMenu = false
 
@@ -383,13 +399,11 @@ private struct MenuCommandLabel: View {
                 .foregroundStyle(isHovered || isPrimary ? RuneTheme.textPrimary : RuneTheme.textSecondary)
                 .lineLimit(1)
 
+            // 第三行只留给"这里能展开"的箭头。快捷键不再逐条显示——
+            // 只有三个命令有快捷键，印出来反而让整排看着缺斤少两；
+            // 需要时仍可从 hover 提示和辅助功能标签里读到。
             Group {
-                if let shortcut, !shortcut.isEmpty {
-                    Text(shortcut)
-                        .font(RuneFont.mono(size: 8, weight: .medium))
-                        .foregroundStyle(RuneTheme.textMuted)
-                        .lineLimit(1)
-                } else if showsMenu {
+                if showsMenu {
                     Image(systemName: "chevron.down")
                         .font(RuneFont.swiftUI(size: 7, weight: .semibold))
                         .foregroundStyle(RuneTheme.textMuted)

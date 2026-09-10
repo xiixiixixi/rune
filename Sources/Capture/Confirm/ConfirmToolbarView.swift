@@ -90,7 +90,7 @@ struct ConfirmToolbarView: View {
 
             FreezeToolButton(
                 title: "保存",
-                help: "保存截图到文件夹",
+                help: "保存截图到文件夹（⌘S）",
                 icon: "square.and.arrow.down"
             ) {
                 controller.confirm()
@@ -113,9 +113,12 @@ struct ConfirmToolbarView: View {
             .help("放弃这次截图（Esc 或 X）")
 
             FreezeEndButton(title: "复制", icon: "square.on.square", isPrimary: true) {
-                controller.copyAndConfirm()
+                controller.copyOnlyAndConfirm()
             }
-            .help("复制到剪贴板并保存（Enter）")
+            .onDrag {
+                canvas?.dragItemProvider() ?? NSItemProvider()
+            }
+            .help("点击复制到剪贴板；也可以直接拖进别的应用（或在选区内按住 ⌥ 拖动）")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)

@@ -155,6 +155,11 @@ enum UpdateService {
     // MARK: - 下载
 
     /// 下载更新包到临时目录，返回 zip 文件 URL。progress 主线程回调 0…1。
+    ///
+    /// **不能用 async 的 `session.download(from:)`**：它会给自己装一个内部 task 代理，
+    /// 而 task 级代理的优先级高于 session 代理，结果我们的 `didWriteData` 一次都收不到
+    /// ——进度条永远停在 0（实测 didWrite 回调 0 次）。换成 `downloadTask` + `resume()`，
+    /// 进度、完成、错误全部由 session 代理接住（实测同一份 2MB 慢速流收到 20 次回调）。
     static func download(
         _ update: RuneUpdate,
         progress: @escaping @MainActor (Double) -> Void
@@ -162,27 +167,27 @@ enum UpdateService {
         guard let url = update.downloadURL else {
             throw RuneUpdateError.missingPackage
         }
-        let delegate = DownloadProgressDelegate(onProgress: progress)
+        let delegate = DownloadProgressDelegate()
+        delegate.onProgress = progress
         let session = URLSession(
             configuration: .ephemeral,
             delegate: delegate,
-            delegateQueue: OperationQueue.main
+            delegateQueue: nil
         )
         defer { session.finishTasksAndInvalidate() }
-        let (tmpURL, response) = try await session.download(from: url, delegate: delegate)
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200..<300).contains(httpResponse.statusCode) else {
-            throw RuneUpdateError.unavailable
+
+        return try await withCheckedThrowingContinuation { continuation in
+            delegate.onFinish = { continuation.resume(with: $0) }
+            session.downloadTask(with: url).resume()
         }
-        return tmpURL
     }
 
     private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelegate {
-        let onProgress: @MainActor (Double) -> Void
+        var onProgress: (@MainActor (Double) -> Void)?
+        var onFinish: ((Result<URL, Error>) -> Void)?
 
-        init(onProgress: @escaping @MainActor (Double) -> Void) {
-            self.onProgress = onProgress
-        }
+        /// didFinish 与 didComplete 都会到，只允许 settle 一次。
+        private var didSettle = false
 
         func urlSession(
             _ session: URLSession,
@@ -191,9 +196,10 @@ enum UpdateService {
             totalBytesWritten: Int64,
             totalBytesExpectedToWrite: Int64
         ) {
-            guard totalBytesExpectedToWrite > 0 else { return }
+            guard totalBytesExpectedToWrite > 0, let onProgress else { return }
+            let fraction = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
             Task { @MainActor in
-                self.onProgress(Double(totalBytesWritten) / Double(totalBytesExpectedToWrite))
+                onProgress(fraction)
             }
         }
 
@@ -201,7 +207,41 @@ enum UpdateService {
             _ session: URLSession,
             downloadTask: URLSessionDownloadTask,
             didFinishDownloadingTo location: URL
-        ) {}
+        ) {
+            // 404 之类也会走到这里（下下来的是错误页），必须先验状态码。
+            if let http = downloadTask.response as? HTTPURLResponse,
+               !(200..<300).contains(http.statusCode) {
+                settle(.failure(RuneUpdateError.unavailable))
+                return
+            }
+
+            // location 在回调返回后立刻失效，必须当场搬走。
+            let destination = FileManager.default.temporaryDirectory
+                .appendingPathComponent("rune-update-\(UUID().uuidString).zip")
+            do {
+                try FileManager.default.moveItem(at: location, to: destination)
+                settle(.success(destination))
+            } catch {
+                settle(.failure(error))
+            }
+        }
+
+        func urlSession(
+            _ session: URLSession,
+            task: URLSessionTask,
+            didCompleteWithError error: Error?
+        ) {
+            // 没有 error 时结果已经由 didFinishDownloadingTo 给出。
+            if let error {
+                settle(.failure(error))
+            }
+        }
+
+        private func settle(_ result: Result<URL, Error>) {
+            guard !didSettle else { return }
+            didSettle = true
+            onFinish?(result)
+        }
     }
 
     // MARK: - 安装并重启

@@ -16,6 +16,8 @@ enum AppPreferences {
     private static let recordingShowCursorKey = "bs_recordingShowCursor"
     private static let recordingCaptureAudioKey = "bs_recordingCaptureAudio"
     private static let fileNameFormatKey = "bs_fileNameFormat"
+    private static let confirmReturnActionKey = "rune_confirmReturnAction"
+    private static let captureFlowKey = "rune_captureFlow"
     private static let lastAutomaticUpdateCheckKey = "rune_lastAutomaticUpdateCheck"
     private static let lastPresentedUpdateVersionKey = "rune_lastPresentedUpdateVersion"
     private static let lastUpdatePresentationDateKey = "rune_lastUpdatePresentationDate"
@@ -74,6 +76,27 @@ enum AppPreferences {
     static var copyAfterSave: Bool {
         get { UserDefaults.standard.object(forKey: copyAfterSaveKey) as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: copyAfterSaveKey) }
+    }
+
+    /// 截图确认台按 Enter（或空白处双击）时的收尾动作。
+    /// 出厂为「仅复制」：最常见的用法是直接粘进聊天窗口，不该顺手往桌面丢文件。
+    static var confirmReturnAction: ConfirmReturnAction {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: confirmReturnActionKey),
+                  let action = ConfirmReturnAction(rawValue: raw) else { return .copyOnly }
+            return action
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: confirmReturnActionKey) }
+    }
+
+    /// 框选松手之后的走向。框选时按着 ⌥ 可临时反转（见 RegionSelection.togglesQuickCopy）。
+    static var captureFlow: CaptureFlow {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: captureFlowKey),
+                  let flow = CaptureFlow(rawValue: raw) else { return .confirm }
+            return flow
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: captureFlowKey) }
     }
 
     static var playSound: Bool {
@@ -241,6 +264,69 @@ enum SelfTimerDelay: Int, CaseIterable {
         switch self {
         case .off: return "关闭"
         default: return "\(rawValue) 秒"
+        }
+    }
+}
+
+/// 框选松手后是打开确认台，还是直接进剪贴板。
+enum CaptureFlow: String, CaseIterable {
+    /// 冻结画面 + 工具台，标注/识字/长图之后再生产品（默认，Rune 的招牌流程）。
+    case confirm
+    /// 不打断：框完即进剪贴板与素材库，等同在确认台上点「复制」。
+    case quickCopy
+
+    var label: String {
+        switch self {
+        case .confirm: return "打开确认台"
+        case .quickCopy: return "直接复制"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .confirm: return "冻结画面，可以标注、识字、转长图"
+        case .quickCopy: return "框完即进剪贴板与素材库，不打断手上的事"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .confirm: return "slider.horizontal.3"
+        case .quickCopy: return "doc.on.doc"
+        }
+    }
+}
+
+/// 截图确认台的回车默认动作。
+enum ConfirmReturnAction: String, CaseIterable {
+    /// 只进剪贴板 + Rune 历史（出厂默认）。
+    case copyOnly = "copyOnly"
+    /// 剪贴板 + 保存到文件夹。
+    case copyAndSave = "copyAndSave"
+    /// 只保存到文件夹（是否复制看「保存后复制」）。
+    case save = "save"
+
+    var label: String {
+        switch self {
+        case .copyOnly: return "仅复制"
+        case .copyAndSave: return "复制并保存"
+        case .save: return "仅保存"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .copyOnly: return "doc.on.doc"
+        case .copyAndSave: return "square.on.square"
+        case .save: return "square.and.arrow.down"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .copyOnly: return "进剪贴板和历史，不写保存文件夹"
+        case .copyAndSave: return "剪贴板 + 保存文件夹各一份"
+        case .save: return "只写保存文件夹，是否复制看上面的开关"
         }
     }
 }
