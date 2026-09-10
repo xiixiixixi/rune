@@ -3,6 +3,10 @@
 # 设计依据：M1 设计文档 §6 —— 每次提交时生成 Xcode 工程、编译应用并运行测试；
 # 签名、公证和发布流程留给下一阶段（避免在公共 CI 中泄露/依赖私人凭据）。
 #
+# 必须用 macos-26 runner：RuneTheme 的液态玻璃路径调用 glassEffect / Glass，
+# 这两个是 macOS 26 SDK 才有的符号。`#available(macOS 26.0, *)` 只管运行时，
+# 编译期 SDK 里没有该符号照样直接编译失败——macos-15 上这个任务永远是红的。
+#
 # CaptureKit 为独立 SPM 包（纯逻辑，无 UI / 屏幕权限依赖），
 # 其测试在无 Xcode 环境下也可运行（swift test）。
 
@@ -16,7 +20,7 @@ on:
 jobs:
   capturekit-tests:
     name: CaptureKit 单元测试
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
@@ -26,7 +30,7 @@ jobs:
 
   build:
     name: 编译主应用
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
