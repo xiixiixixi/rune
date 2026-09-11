@@ -16,6 +16,11 @@ struct RegionSelection {
     /// 松手时是否按着 ⌥：反转「框选后」偏好——平时走确认台的人不用改设置
     /// 就能快速复制一次，反之亦然。
     var togglesQuickCopy: Bool = false
+    /// 选区阶段的那张定格帧（已排除 Rune 自身窗口）。
+    /// 它就是用户框选时看到的那一帧，菜单栏下拉、右键菜单、tooltip 这类
+    /// "一离开就消失"的内容只有它还在。nil = 这张帧不可信（共享清单里没找到
+    /// Rune，excludingApplications 可能没生效），调用方必须重新抓。
+    var frozenFrame: CGImage?
 }
 
 /// 区域+窗口合并模式的候选窗口（Sendable：SCWindow 不能直接传出）。
@@ -36,6 +41,8 @@ final class RegionSelectionOverlay {
     private var overlayWindows: [NSWindow] = []
     private var continuation: CheckedContinuation<RegionSelection?, Never>?
     private var frozenFramesByDisplay: [CGDirectDisplayID: CGImage] = [:]
+    /// 定格帧是否可信：只有确认 excludingApplications 生效了，帧里才没有我们的蒙层。
+    private var frozenFramesExcludedSelf = false
     private var frontmostSource: CaptureSource?
 
     /// M1 §3.3：选区前先抓冻结帧。冻结帧作为 overlay 背景，使选区时屏幕内容不变化。
@@ -186,17 +193,46 @@ final class RegionSelectionOverlay {
 
         // 定格帧：逐屏抓（界面已先弹出，此处不阻塞交互；排除自身避免拍进 overlay）。
         // 注：不用 TaskGroup 并行——SCContentFilter 非 Sendable 不能跨任务传。
+        // 定格帧必须用「全新」的共享清单来排除自己。
+        //
+        // shareableContent() 是带 TTL 的保温缓存，而缓存是在浮层建窗之前填的
+        // （prewarm / 每 25s 的保温轮询），那时 Rune 没有窗口，applications 里
+        // 根本没有我们——拿缓存清单做 excludingApplications 等于谁都不排除，
+        // 抓到的帧会带着浮层那层黑蒙版。悬停高亮继续吃缓存（要的是即时响应），
+        // 只有这一步多花一次现查。
+        let freshContent = try? await SCShareableContent.excludingDesktopWindows(
+            false,
+            onScreenWindowsOnly: true
+        )
+        let exclusionContent = freshContent ?? shareableContent
+        let excludedApps = exclusionContent?.applications.filter {
+            $0.bundleIdentifier == myBundleID
+        } ?? []
+        // 兜底：应用没在清单里时，直接点名排除我们自己的窗口。
+        let myWindows = exclusionContent?.windows.filter {
+            $0.owningApplication?.bundleIdentifier == myBundleID
+        } ?? []
+
         var frozenFrames: [CGDirectDisplayID: CGImage] = [:]
-        if let displays = shareableContent?.displays {
-            let excludedApps = shareableContent?.applications.filter {
-                $0.bundleIdentifier == myBundleID
-            } ?? []
+        frozenFramesExcludedSelf = false
+        if let displays = exclusionContent?.displays {
             for display in displays {
-                let filter = SCContentFilter(
-                    display: display,
-                    excludingApplications: excludedApps,
-                    exceptingWindows: []
-                )
+                // 两条排除路径任一可用即可；两条都拿不到就说明这帧不可信
+                // （可能带着蒙版），宁可不给，让编排器退回复抓。
+                let filter: SCContentFilter
+                if !excludedApps.isEmpty {
+                    filter = SCContentFilter(
+                        display: display,
+                        excludingApplications: excludedApps,
+                        exceptingWindows: []
+                    )
+                } else if !myWindows.isEmpty {
+                    filter = SCContentFilter(display: display, excludingWindows: myWindows)
+                } else {
+                    continue
+                }
+                frozenFramesExcludedSelf = true
+
                 let config = SCStreamConfiguration()
                 let scale = CGFloat(filter.pointPixelScale)
                 config.width = Int(filter.contentRect.width * scale)
@@ -212,13 +248,11 @@ final class RegionSelectionOverlay {
         }
         frozenFramesByDisplay = frozenFrames
 
-        // 回填：定格帧 + 本屏局部坐标窗口清单
+        // 先回填窗口清单：它吃的是缓存，必须立刻到位——用户可能马上单击命中
+        // 某个窗口，清单晚到就会退化成全屏。
         let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
         let screenNumberKey = NSDeviceDescriptionKey(rawValue: "NSScreenNumber")
         for (screen, view) in views {
-            let displayID = (screen.deviceDescription[screenNumberKey] as? NSNumber)
-                .map { CGDirectDisplayID($0.uint32Value) } ?? 0
-            view.updateFrozenFrame(frozenFrames[displayID])
             // cgFrame → AppKit 全局（y=主屏高−cgMaxY）→ 减本屏原点
             let localWindows = candidates.compactMap { candidate -> WindowCandidate? in
                 var c = candidate
@@ -236,6 +270,14 @@ final class RegionSelectionOverlay {
                 return c
             }
             view.updateWindowCandidates(localWindows)
+        }
+
+        // 定格帧最后回填：这一步要现查共享清单（见上面的说明），会慢一点。
+        // 到货前浮层画的是较浓的遮罩，到货后换成定格画面。
+        for (screen, view) in views {
+            let displayID = (screen.deviceDescription[screenNumberKey] as? NSNumber)
+                .map { CGDirectDisplayID($0.uint32Value) } ?? 0
+            view.updateFrozenFrame(frozenFrames[displayID])
         }
     }
 
@@ -309,7 +351,8 @@ final class RegionSelectionOverlay {
             displayID: displayID,
             windowID: nil,
             source: source ?? frontmostSource,
-            togglesQuickCopy: NSEvent.modifierFlags.contains(.option)
+            togglesQuickCopy: NSEvent.modifierFlags.contains(.option),
+            frozenFrame: frozenFramesExcludedSelf ? frozenFramesByDisplay[displayID] : nil
         )
 
         completeSelection(
@@ -338,7 +381,8 @@ final class RegionSelectionOverlay {
             displayID: displayID,
             windowID: candidate.id,
             source: candidate.source,
-            togglesQuickCopy: NSEvent.modifierFlags.contains(.option)
+            togglesQuickCopy: NSEvent.modifierFlags.contains(.option),
+            frozenFrame: frozenFramesExcludedSelf ? frozenFramesByDisplay[displayID] : nil
         )
 
         completeSelection(selection, shutterRect: nil, on: screen)

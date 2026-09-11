@@ -1,4 +1,5 @@
 import AppKit
+import CaptureKitSCK
 import ScreenCaptureKit
 import SwiftUI
 
@@ -45,6 +46,101 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
         lines.append("recordFilename=\(latest.filename)")
         lines.append("renderedExists=\(FileManager.default.fileExists(atPath: rendered.path))")
         lines.append("renderedPath=\(rendered.path)")
+        return lines.joined(separator: "\n") + "\n"
+    }
+    #endif
+
+    #if DEBUG
+    /// 定格帧排除验收：把"浮层已建窗 + 缓存清单早于建窗"这个真实时序复现一遍，
+    /// 对比缓存清单 / 全新清单里有没有 Rune 自己，并用同一块屏幕的亮度客观判断
+    /// 抓到的帧有没有把浮层的黑蒙版烤进去。
+    @MainActor
+    private static func runFreezeExclusionAudit() async -> String {
+        let myBundleID = Bundle.main.bundleIdentifier ?? ""
+        let engine = SCKStillCaptureBackend()
+        var lines: [String] = []
+
+        // ① 建窗前先查一次：填满 TTL 缓存（等价于 prewarm / 每 25s 的保温轮询）
+        _ = try? await engine.shareableContent()
+
+        // ② 建一块和真浮层同款的蒙版窗
+        guard let screen = NSScreen.main else { return "no screen\n" }
+        let window = NSWindow(
+            contentRect: screen.frame,
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.maximumWindow)))
+        window.hasShadow = false
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenPrimary]
+        let maskView = NSView(frame: screen.frame)
+        maskView.wantsLayer = true
+        maskView.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.3).cgColor
+        window.contentView = maskView
+        window.orderFrontRegardless()
+        try? await Task.sleep(for: .milliseconds(400))
+
+        // ③ 缓存清单（应当"没有我们"——这正是排除失效的根因）
+        let cached = try? await engine.shareableContent()
+        let cachedApps = cached?.content.applications.filter { $0.bundleIdentifier == myBundleID } ?? []
+        let cachedWins = cached?.content.windows.filter {
+            $0.owningApplication?.bundleIdentifier == myBundleID
+        } ?? []
+        lines.append("cached.apps=\(cachedApps.count) cached.windows=\(cachedWins.count)")
+
+        // ④ 全新清单（修复后走的就是这条）
+        let fresh = try? await SCShareableContent.excludingDesktopWindows(
+            false, onScreenWindowsOnly: true
+        )
+        let freshApps = fresh?.applications.filter { $0.bundleIdentifier == myBundleID } ?? []
+        let freshWins = fresh?.windows.filter {
+            $0.owningApplication?.bundleIdentifier == myBundleID
+        } ?? []
+        lines.append("fresh.apps=\(freshApps.count) fresh.windows=\(freshWins.count)")
+
+        // ⑤ 用两条路径各抓一帧，比亮度
+        func luminance(_ image: CGImage?) -> Double {
+            guard let image,
+                  let ctx = CGContext(
+                    data: nil, width: 64, height: 64, bitsPerComponent: 8,
+                    bytesPerRow: 256, space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                  ) else { return -1 }
+            ctx.draw(image, in: CGRect(x: 0, y: 0, width: 64, height: 64))
+            guard let data = ctx.data else { return -1 }
+            let p = data.bindMemory(to: UInt8.self, capacity: 64 * 64 * 4)
+            var sum = 0.0
+            for i in stride(from: 0, to: 64 * 64 * 4, by: 4) {
+                sum += (Double(p[i]) + Double(p[i+1]) + Double(p[i+2])) / 3
+            }
+            return sum / Double(64 * 64)
+        }
+
+        func grab(excludingApps: [SCRunningApplication], excludingWindows: [SCWindow]) async -> CGImage? {
+            guard let display = fresh?.displays.first else { return nil }
+            let filter = !excludingApps.isEmpty
+                ? SCContentFilter(display: display, excludingApplications: excludingApps, exceptingWindows: [])
+                : SCContentFilter(display: display, excludingWindows: excludingWindows)
+            let config = SCStreamConfiguration()
+            let scale = CGFloat(filter.pointPixelScale)
+            config.width = Int(filter.contentRect.width * scale)
+            config.height = Int(filter.contentRect.height * scale)
+            config.showsCursor = false
+            config.pixelFormat = kCVPixelFormatType_32BGRA
+            return try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+        }
+
+        let noExclusion = await grab(excludingApps: [], excludingWindows: [])
+        let byWindow = await grab(excludingApps: [], excludingWindows: freshWins)
+        let byApp = await grab(excludingApps: freshApps, excludingWindows: [])
+        lines.append("亮度 无排除=\(String(format: "%.1f", luminance(noExclusion)))")
+        lines.append("亮度 按窗口排除=\(String(format: "%.1f", luminance(byWindow)))")
+        lines.append("亮度 按应用排除=\(String(format: "%.1f", luminance(byApp)))")
+
+        window.orderOut(nil)
         return lines.joined(separator: "\n") + "\n"
     }
     #endif
@@ -512,6 +608,18 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                 panel.makeKeyAndOrderFront(nil)
                 self.debugAuditWindow = panel
                 DebugAuditSnapshot.captureAfter("confirm-toolbar.png", delay: 0.9)
+            }
+        } else if ProcessInfo.processInfo.arguments.contains("--audit-freeze-exclusion") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                Task { @MainActor in
+                    let report = await Self.runFreezeExclusionAudit()
+                    try? report.write(
+                        to: URL(fileURLWithPath: "/tmp/rune-freeze-exclusion.txt"),
+                        atomically: true,
+                        encoding: .utf8
+                    )
+                    NSApp.terminate(nil)
+                }
             }
         } else if ProcessInfo.processInfo.arguments.contains("--audit-quick-copy") {
             // 快速模式端到端：不弹确认台，直接走真实保存链。

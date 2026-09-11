@@ -119,16 +119,27 @@ final class CaptureOrchestrator {
         let selection = await RegionSelectionOverlay().selectRegion()
         guard let selection else { return }  // 用户取消（Esc 等）
 
-        // 2. 蒙层退出后重新抓一张干净整屏帧。选区阶段的定格帧只负责交互展示，
-        // 永远不能再进入保存链路——否则 SCK 偶发未排除自身窗口时，灰色遮罩会被
-        // 原样裁进成片；单纯延长 orderOut 等待并不能根治。
+        // 2. 成片优先用选区阶段那张定格帧。
+        //
+        //    它才是用户看到并据以框选的那一帧：菜单栏下拉、右键菜单、tooltip
+        //    这类"一离开就消失"的内容只有它还在。此前的做法是蒙层退出后重抓
+        //    一张，结果用户框的是菜单，落盘的是菜单消失后的画面；确认台里也会
+        //    出现"选区外还留着菜单、选区内已经没了"的割裂。
+        //
+        //    定格帧可信的前提是 excludingApplications 真的排除了 Rune 自己
+        //    （见 frozenFramesExcludedSelf）。没排除成功时帧里会带我们那层
+        //    30% 黑蒙版，那就宁可退回重抓——内容变了总好过把蒙版烤进成片。
         let cleanDisplayFrame: CapturedFrame
-        do {
-            cleanDisplayFrame = try await sckEngine.capture(.display(selection.displayID))
-        } catch {
-            print("区域截图失败：\(error.localizedDescription)")
-            showCaptureError("截图失败", detail: "选区没有保存，请重新截一次")
-            return
+        if let frozen = selection.frozenFrame {
+            cleanDisplayFrame = Self.displayFrame(from: frozen, displayID: selection.displayID)
+        } else {
+            do {
+                cleanDisplayFrame = try await sckEngine.capture(.display(selection.displayID))
+            } catch {
+                print("区域截图失败：\(error.localizedDescription)")
+                showCaptureError("截图失败", detail: "选区没有保存，请重新截一次")
+                return
+            }
         }
 
         guard let cleanRegionFrame = Self.cropDisplayFrame(
@@ -174,6 +185,20 @@ final class CaptureOrchestrator {
     /// （主屏左上原点），整屏帧只覆盖 selection.displayID，先换算到屏内局部点、再乘
     /// 图像实际像素比（图像宽 ÷ 显示器点宽，Retina 下为 2）。
     /// 单击选窗口时 pointsRect 即该窗口全局矩形，同一条路径直接可用。
+    /// 把选区阶段的定格帧包成 CapturedFrame：像素尺寸推到点坐标的比例，
+    /// 与 SCK 实拍帧同构，后续 cropDisplayFrame 走完全相同的路径。
+    private static func displayFrame(
+        from image: CGImage,
+        displayID: CGDirectDisplayID
+    ) -> CapturedFrame {
+        let displayBounds = CGDisplayBounds(displayID)
+        return CapturedFrame(
+            image: image,
+            scaleFactor: CGFloat(image.width) / max(displayBounds.width, 1),
+            displayID: displayID
+        )
+    }
+
     /// 像素换算与钳制见 SelectionGeometry.visiblePixelRect（纯函数，有单测）：
     /// 越界选区裁到图像内而非判死，只有完全不相交才返回 nil。
     private static func cropDisplayFrame(
