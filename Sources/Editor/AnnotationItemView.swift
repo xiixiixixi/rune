@@ -369,7 +369,7 @@ private struct AnnotationTextBoxView: NSViewRepresentable {
             width: 1,
             height: CGFloat.greatestFiniteMagnitude
         )
-        textView.textContainer?.lineBreakMode = .byClipping
+        textView.textContainer?.lineBreakMode = .byWordWrapping
         textView.autoresizingMask = [.width, .height]
         textView.insertionPointColor = NSColor.systemBlue
         textView.backgroundColor = .clear
@@ -377,8 +377,9 @@ private struct AnnotationTextBoxView: NSViewRepresentable {
         applyStyle(to: textView)
 
         let scrollView = NSScrollView(frame: .zero)
-        scrollView.hasVerticalScroller = false
+        scrollView.hasVerticalScroller = isEditing
         scrollView.hasHorizontalScroller = false
+        scrollView.scrollerStyle = .overlay
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
         scrollView.documentView = textView
@@ -388,6 +389,7 @@ private struct AnnotationTextBoxView: NSViewRepresentable {
 
         if isEditing {
             Task { @MainActor in
+                scrollView.layoutSubtreeIfNeeded()
                 self.updateTextViewFrame(textView, in: scrollView)
                 textView.window?.makeFirstResponder(textView)
                 self.reportSize(textView)
@@ -406,6 +408,7 @@ private struct AnnotationTextBoxView: NSViewRepresentable {
 
         textView.isEditable = isEditing
         textView.isSelectable = isEditing
+        scrollView.hasVerticalScroller = isEditing
         updateTextViewFrame(textView, in: scrollView)
 
         let isNativeEditing = isEditing && textView.window?.firstResponder === textView
@@ -434,6 +437,9 @@ private struct AnnotationTextBoxView: NSViewRepresentable {
         }
 
         Task { @MainActor in
+            // 新宽度完成布局后再测一次，旧窄框产生的换行高度才能及时回落。
+            scrollView.layoutSubtreeIfNeeded()
+            self.updateTextViewFrame(textView, in: scrollView)
             self.reportSize(textView)
         }
     }
@@ -443,9 +449,10 @@ private struct AnnotationTextBoxView: NSViewRepresentable {
     }
 
     private func updateTextViewFrame(_ textView: NSTextView, in scrollView: NSScrollView) {
+        let visibleBounds = scrollView.contentView.bounds
         let size = CGSize(
-            width: max(scrollView.bounds.width, 1),
-            height: max(scrollView.bounds.height, 1)
+            width: max(visibleBounds.width, 1),
+            height: max(visibleBounds.height, 1)
         )
         if textView.frame.size != size {
             textView.frame = CGRect(origin: .zero, size: size)
@@ -461,28 +468,34 @@ private struct AnnotationTextBoxView: NSViewRepresentable {
         let lineHeight = ceil(font.ascender - font.descender + font.leading)
         let lineCount = CGFloat(AnnotationTextMetrics.lineCount(for: textView.string))
         let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.alignment = .left
-        paragraphStyle.lineBreakMode = .byClipping
+        paragraphStyle.alignment = textView.alignment
+        paragraphStyle.lineBreakMode = .byWordWrapping
 
         var attributes = textView.typingAttributes
         attributes[.font] = font
         attributes[.paragraphStyle] = paragraphStyle
 
         let measuredString = textView.string.isEmpty ? " " : textView.string
-        let rect = NSAttributedString(string: measuredString, attributes: attributes).boundingRect(
+        let attributedText = NSAttributedString(string: measuredString, attributes: attributes)
+        let naturalRect = attributedText.boundingRect(
             with: CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading]
         )
+        // 宽度按实际内容扩展；靠边放不下时用文字框当前宽度计算换行高度。
+        let wrappedRect = attributedText.boundingRect(
+            with: CGSize(width: max(textView.bounds.width, 1), height: CGFloat.greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        )
         return CGSize(
-            width: ceil(rect.width) + 2,
-            height: max(ceil(rect.height), lineHeight * lineCount)
+            width: ceil(naturalRect.width) + 2,
+            height: max(ceil(wrappedRect.height), lineHeight * lineCount)
         )
     }
 
     private func applyStyle(to textView: NSTextView) {
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = alignment
-        paragraphStyle.lineBreakMode = .byClipping
+        paragraphStyle.lineBreakMode = .byWordWrapping
 
         var attributes: [NSAttributedString.Key: Any] = [
             .font: font,
@@ -497,15 +510,16 @@ private struct AnnotationTextBoxView: NSViewRepresentable {
         let fontChanged = textView.font != font
         let colorChanged = textView.textColor != textColor
         let alignmentChanged = textView.alignment != alignment
+        let wrappingChanged = textView.defaultParagraphStyle?.lineBreakMode != .byWordWrapping
 
         textView.font = font
         textView.textColor = textColor
         textView.alignment = alignment
         textView.defaultParagraphStyle = paragraphStyle
         textView.typingAttributes = attributes
-        textView.textContainer?.lineBreakMode = .byClipping
+        textView.textContainer?.lineBreakMode = .byWordWrapping
 
-        guard !textView.string.isEmpty, fontChanged || colorChanged || alignmentChanged else { return }
+        guard !textView.string.isEmpty, fontChanged || colorChanged || alignmentChanged || wrappingChanged else { return }
 
         let selectedRanges = textView.selectedRanges
         textView.textStorage?.setAttributes(

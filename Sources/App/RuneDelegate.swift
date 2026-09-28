@@ -226,26 +226,53 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // 滚动长图真链路 E2E：锁定前台应用的主内容区，验证首帧、HID 滚动、
-        // 重叠检测与追加是否连通。只写 /tmp 报告，结束时取消，不落历史记录。
-        if ProcessInfo.processInfo.arguments.contains("--audit-scroll-real")
-            || ProcessInfo.processInfo.arguments.contains("--audit-scroll-real-full") {
-            let capturesFullPage = ProcessInfo.processInfo.arguments.contains("--audit-scroll-real-full")
-            let sourceApplication = NSWorkspace.shared.runningApplications.first {
-                $0.bundleIdentifier == "com.google.Chrome"
-            } ?? NSWorkspace.shared.frontmostApplication
+        // 滚动长图真链路 E2E：可指定独立的本地测试进程和精确选区，
+        // 不必占用浏览器。只写 /tmp 报告，结束时取消，不落历史记录。
+        let auditArguments = ProcessInfo.processInfo.arguments
+        let usesScrollFixture = auditArguments.contains("--audit-scroll-fixture")
+        if usesScrollFixture
+            || auditArguments.contains("--audit-scroll-real")
+            || auditArguments.contains("--audit-scroll-real-full") {
+            let capturesFullPage = usesScrollFixture || auditArguments.contains("--audit-scroll-real-full")
+            let sourcePID = auditArguments.first(where: { $0.hasPrefix("--audit-scroll-source-pid=") })
+                .flatMap { pid_t(String($0.dropFirst("--audit-scroll-source-pid=".count))) }
+            let regionNumbers = auditArguments.first(where: { $0.hasPrefix("--audit-scroll-region=") })
+                .map { $0.dropFirst("--audit-scroll-region=".count).split(separator: ",").compactMap { Double($0) } }
+            let specifiedRegion: CGRect? = regionNumbers.flatMap { values in
+                guard values.count == 4, values[2] > 0, values[3] > 0 else { return nil }
+                return CGRect(x: values[0], y: values[1], width: values[2], height: values[3])
+            }
+            let sourceApplication = sourcePID.flatMap(NSRunningApplication.init(processIdentifier:))
+                ?? (usesScrollFixture ? nil : NSWorkspace.shared.runningApplications.first {
+                    $0.bundleIdentifier == "com.google.Chrome"
+                } ?? NSWorkspace.shared.frontmostApplication)
+            let reportPath = usesScrollFixture
+                ? "/tmp/rune-scroll-fixture.txt"
+                : "/tmp/rune-scroll-real.txt"
+            let imagePath = usesScrollFixture
+                ? "/tmp/rune-scroll-fixture.png"
+                : (capturesFullPage ? "/tmp/rune-scroll-real-full.png" : "/tmp/rune-scroll-real.png")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 Task { @MainActor in
-                    guard let screen = NSScreen.main else {
-                        try? "FAIL: 找不到主屏".write(
-                            toFile: "/tmp/rune-scroll-real.txt",
+                    if usesScrollFixture && (sourcePID == nil || sourceApplication == nil || specifiedRegion == nil) {
+                        try? "FAIL: 本地测试需要有效的 --audit-scroll-source-pid 和 --audit-scroll-region\n".write(
+                            toFile: reportPath,
                             atomically: true,
                             encoding: .utf8
                         )
                         NSApp.terminate(nil)
                         return
                     }
-                    let target = capturesFullPage
+                    guard let screen = NSScreen.main else {
+                        try? "FAIL: 找不到主屏".write(
+                            toFile: reportPath,
+                            atomically: true,
+                            encoding: .utf8
+                        )
+                        NSApp.terminate(nil)
+                        return
+                    }
+                    let defaultTarget = capturesFullPage
                         ? CGRect(
                             x: screen.frame.minX + 40,
                             y: 160,
@@ -258,6 +285,7 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                             width: max(320, min(960, screen.frame.width - 300)),
                             height: max(240, min(470, screen.frame.height - 270))
                         )
+                    let target = specifiedRegion ?? defaultTarget
                     let source = sourceApplication.map {
                         CaptureSource(
                             bundleIdentifier: $0.bundleIdentifier,
@@ -267,12 +295,9 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                         )
                     }
                     let controller = ScrollCaptureController.shared
-                    let auditImageURL = URL(
-                        fileURLWithPath: capturesFullPage
-                            ? "/tmp/rune-scroll-real-full.png"
-                            : "/tmp/rune-scroll-real.png"
-                    )
+                    let auditImageURL = URL(fileURLWithPath: imagePath)
                     try? FileManager.default.removeItem(at: auditImageURL)
+                    try? FileManager.default.removeItem(atPath: reportPath)
                     await ScrollCaptureController.shared.start(
                         on: screen,
                         presetRegion: target,
@@ -287,9 +312,11 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                         if controller.mode != .automatic {
                             controller.toggleMode()
                         }
-                        controller.beginCapture()
+                        await controller.beginCapture()
                         if capturesFullPage {
-                            for _ in 0..<150 where controller.isActive {
+                            let maximumChecks = usesScrollFixture ? 360 : 150
+                            for _ in 0..<maximumChecks where controller.isActive {
+                                if usesScrollFixture && controller.mode == .manual { break }
                                 try? await Task.sleep(for: .milliseconds(500))
                             }
                         } else {
@@ -298,11 +325,13 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                     }
                     let wroteAuditImage = FileManager.default.fileExists(atPath: auditImageURL.path)
                         || controller.writeAuditImage(to: auditImageURL)
-                    let report = "mode=\(controller.mode.rawValue) frames=\(controller.capturedFrameCount) "
+                    let completedByController = !controller.isActive
+                        && controller.statusMessage.hasPrefix("验收长图已生成")
+                    let report = "completed=\(completedByController) mode=\(controller.mode.rawValue) frames=\(controller.capturedFrameCount) "
                         + "height=\(controller.stitchedHeight) image=\(wroteAuditImage ? auditImageURL.path : "FAIL") "
                         + "status=\(controller.statusMessage)"
                     try? report.write(
-                        toFile: "/tmp/rune-scroll-real.txt",
+                        toFile: reportPath,
                         atomically: true,
                         encoding: .utf8
                     )

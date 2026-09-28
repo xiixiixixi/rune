@@ -40,6 +40,8 @@ public enum ScrollOverlapDetector {
     ///
     /// `preferredOffset` / `preferredDirection` 是先验提示（自动滚动知道步长、
     /// 上一帧的方向），只在近似并列时用于打破平局，不会压过明显更好的分数。
+    /// `maximumOffset` 是硬上限（灰度行）；自动滚动可用已知滚轮步长排除
+    /// 周期卡片或大面积留白产生的远距离假匹配。nil 保持原来的 95% 帧高范围。
     public static func detectScroll(
         previous: [UInt8],
         current: [UInt8],
@@ -47,7 +49,8 @@ public enum ScrollOverlapDetector {
         height: Int,
         maximumDifference: Double = 18,
         preferredOffset: Int? = nil,
-        preferredDirection: ScrollDirection? = nil
+        preferredDirection: ScrollDirection? = nil,
+        maximumOffset: Int? = nil
     ) -> ScrollMatch? {
         guard width >= 8, height >= 16,
               previous.count == width * height,
@@ -63,7 +66,8 @@ public enum ScrollOverlapDetector {
             width: width,
             height: height,
             maximumDifference: maximumDifference,
-            preferredOffset: preferredOffset
+            preferredOffset: preferredOffset,
+            maximumOffset: maximumOffset
         )
         let up = detectOffset(
             previous: flipped(previous, width: width, height: height),
@@ -71,7 +75,8 @@ public enum ScrollOverlapDetector {
             width: width,
             height: height,
             maximumDifference: maximumDifference,
-            preferredOffset: preferredOffset
+            preferredOffset: preferredOffset,
+            maximumOffset: maximumOffset
         )
 
         switch (down, up) {
@@ -160,13 +165,15 @@ public enum ScrollOverlapDetector {
         width: Int,
         height: Int,
         maximumDifference: Double,
-        preferredOffset: Int?
+        preferredOffset: Int?,
+        maximumOffset: Int?
     ) -> OffsetMatch? {
         let minOffset = max(2, height / 100)
         // Page Down 和较快的触控板滚动通常只保留约 5%–15% 的可见重叠。
         // 保留至少 5% 画面用于校验，既覆盖常见大步滚动，也避免零重叠时瞎猜。
-        let maxOffset = max(minOffset, Int(Double(height) * 0.95))
-        guard maxOffset > minOffset else { return nil }
+        let originalMaxOffset = max(minOffset, Int(Double(height) * 0.95))
+        let maxOffset = min(originalMaxOffset, maximumOffset ?? originalMaxOffset)
+        guard maxOffset >= minOffset else { return nil }
 
         let bandCount = height >= 80 ? 5 : (height >= 40 ? 3 : 1)
         let offsets = Array(minOffset...maxOffset)
@@ -259,7 +266,15 @@ public enum ScrollOverlapDetector {
                 if counted > 0 {
                     let score = total / Double(counted)
                     if score <= maximumDifference {
-                        return OffsetMatch(offset: offset, score: score)
+                        let voted = OffsetMatch(offset: offset, score: score)
+                        guard maximumOffset != nil else { return voted }
+                        return verifyBoundedOffset(
+                            previous: previous, current: current,
+                            width: width, height: height,
+                            minOffset: minOffset, maxOffset: maxOffset,
+                            maximumDifference: maximumDifference,
+                            tentative: voted
+                        )
                     }
                 }
             }
@@ -267,14 +282,57 @@ public enum ScrollOverlapDetector {
 
         // 回退：整帧打分。大面积留白页面判别带不足时，纹理稀疏但真实存在，
         // 整帧截尾均值 + 步长先验仍能可靠定位（v0.8.12 的成熟路径）。
-        return wholeFrameBestOffset(
+        let fallback = wholeFrameBestOffset(
             previous: previous,
             current: current,
             width: width,
             height: height,
             maximumDifference: maximumDifference,
-            preferredOffset: preferredOffset
+            preferredOffset: preferredOffset,
+            maximumOffset: maxOffset
         )
+        guard maximumOffset != nil, let fallback else { return fallback }
+        return verifyBoundedOffset(
+            previous: previous, current: current,
+            width: width, height: height,
+            minOffset: minOffset, maxOffset: maxOffset,
+            maximumDifference: maximumDifference,
+            tentative: fallback
+        )
+    }
+
+    /// 硬上限模式用于自动滚动。五分区和整帧的 72% 截尾分会在大面积留白时
+    /// 把少数真正不同的行丢掉，令上限附近的假位移也拿到零分；这里保留 96%
+    /// 行重新比较所有已限定的候选。证据仍普遍模糊时放弃本帧，不猜位移。
+    private static func verifyBoundedOffset(
+        previous: [UInt8],
+        current: [UInt8],
+        width: Int,
+        height: Int,
+        minOffset: Int,
+        maxOffset: Int,
+        maximumDifference: Double,
+        tentative: OffsetMatch
+    ) -> OffsetMatch? {
+        var candidates: [OffsetMatch] = []
+        candidates.reserveCapacity(maxOffset - minOffset + 1)
+        for offset in minOffset...maxOffset {
+            let score = difference(
+                previous: previous, current: current,
+                width: width, height: height,
+                offset: offset, keptFraction: 0.96
+            )
+            candidates.append(OffsetMatch(offset: offset, score: score))
+        }
+        guard let best = candidates.min(by: { $0.score < $1.score }),
+              best.score <= maximumDifference else { return nil }
+
+        let nearBest = candidates.filter { $0.score <= best.score + 1.5 }
+        guard nearBest.count <= max(3, candidates.count / 3) else { return nil }
+        if let agreed = nearBest.first(where: { $0.offset == tentative.offset }) {
+            return agreed
+        }
+        return best
     }
 
     private static func wholeFrameBestOffset(
@@ -283,11 +341,13 @@ public enum ScrollOverlapDetector {
         width: Int,
         height: Int,
         maximumDifference: Double,
-        preferredOffset: Int?
+        preferredOffset: Int?,
+        maximumOffset: Int
     ) -> OffsetMatch? {
         let minOffset = max(2, height / 100)
-        let maxOffset = max(minOffset, Int(Double(height) * 0.95))
-        guard maxOffset > minOffset else { return nil }
+        let originalMaxOffset = max(minOffset, Int(Double(height) * 0.95))
+        let maxOffset = min(originalMaxOffset, maximumOffset)
+        guard maxOffset >= minOffset else { return nil }
 
         var candidates: [(offset: Int, score: Double)] = []
         var bestScore = Double.greatestFiniteMagnitude

@@ -210,6 +210,11 @@ final class ConfirmCanvasView: NSView {
                 height: abs(bottomRight.y - topLeft.y)
             )
             item.points = item.points.map(mapPoint)
+            if item.tool == .text {
+                // 文本字号存成相对原图高度的比例；裁剪后输出图变矮，
+                // 比例必须同步放大，才能让保存的文字仍是输入时的像素字号。
+                item.textLineHeight *= r.height / crop.height
+            }
             if item.rect.maxX >= 0, item.rect.minX <= 1,
                item.rect.maxY >= 0, item.rect.minY <= 1 {
                 result.append(item)
@@ -363,6 +368,26 @@ final class ConfirmCanvasView: NSView {
         drawFrozenEdge(around: drawRect)
         drawCropHandles(around: drawRect)
 
+        if let anchor = editingTextAnchor {
+            // 输入框可能移到截图外，圆点始终指向最终图片中的落字位置。
+            if let editor = editingTextScrollView,
+               abs(editor.frame.minX + 9 - anchor.x) > 12 {
+                ctx.setStrokeColor(NSColor.systemBlue.withAlphaComponent(0.85).cgColor)
+                ctx.setLineWidth(1)
+                ctx.setLineDash(phase: 0, lengths: [3, 3])
+                ctx.move(to: anchor)
+                ctx.addLine(to: CGPoint(x: editor.frame.maxX, y: editor.frame.midY))
+                ctx.strokePath()
+                ctx.setLineDash(phase: 0, lengths: [])
+            }
+            let marker = CGRect(x: anchor.x - 3, y: anchor.y - 3, width: 6, height: 6)
+            ctx.setFillColor(NSColor.white.cgColor)
+            ctx.fillEllipse(in: marker)
+            ctx.setStrokeColor(NSColor.black.cgColor)
+            ctx.setLineWidth(1)
+            ctx.strokeEllipse(in: marker)
+        }
+
         // 3.5 选字模式：文字块高亮（必须在"无标注提前 return"之前，
         // 否则刚截完图（0 标注）时蓝块永远画不出来）
         if ocrMode {
@@ -388,7 +413,7 @@ final class ConfirmCanvasView: NSView {
         // 否则选区一挪/一缩，画出的框就会偏移到别处。
         // 马赛克草稿特殊处理：AnnotationDrawing 的 blur 需要画布快照（此处没有），
         // 拖拽阶段由本视图直接画棋盘格预览（选中即见"这是打码"），保存烘焙才是真马赛克
-        var items = annotations
+        var items = annotations.filter { $0.id != editingItemID }
         if let draft {
             if draft.tool.isRedactionTool, draft.rect.width > 0.003, draft.rect.height > 0.003 {
                 drawCheckerboardPreview(in: viewRect(for: draft.rect), ctx: ctx)
@@ -420,7 +445,8 @@ final class ConfirmCanvasView: NSView {
                 imageRect: flippedRect,
                 fullCanvasRect: flippedRect,
                 sourceImage: image,
-                flipped: true
+                flipped: true,
+                minimumTextFontSize: 0.5
             )
             ctx.restoreGState()
         }
@@ -1012,11 +1038,10 @@ final class ConfirmCanvasView: NSView {
     /// 双击文字标注 → 原位重新编辑（取回文字预填）。
     private func reEditTextAnnotation(_ item: AnnotationItem) {
         pushUndo()
-        annotations.removeAll { $0.id == item.id }
-        if selectedID == item.id { selectedID = nil }
-        beginTextPlacement(
-            at: viewPoint(fromNormalized: CGPoint(x: item.rect.minX, y: item.rect.minY)),
-            prefill: item.text
+        selectedID = item.id
+        beginTextEditing(
+            item: item,
+            at: viewPoint(fromNormalized: CGPoint(x: item.rect.minX, y: item.rect.minY))
         )
     }
 
@@ -1437,7 +1462,10 @@ final class ConfirmCanvasView: NSView {
 
     private var editingTextView: NSTextView?
     private var editingTextScrollView: NSScrollView?
+    private var editingOverflowLabel: NSTextField?
     private var editingItemID: AnnotationItem.ID?
+    /// 点击锚点独立于输入框的位置；输入框因边缘或换行调整时不移动成品文字。
+    private var editingTextAnchor: CGPoint?
     private var editingTextTopY: CGFloat = 0
     private var editingTextMinimumHeight: CGFloat = 48
 
@@ -1449,21 +1477,33 @@ final class ConfirmCanvasView: NSView {
         endTextEditing(commit: true)
     }
 
-    private func beginTextPlacement(at viewPoint: CGPoint, prefill: String = "") {
+    private func beginTextPlacement(at viewPoint: CGPoint) {
+        let finalPixelWidth = CGFloat(image.width) * effectiveCropRect.width / max(imageDrawRect.width, 1)
+        let fontPixels = AnnotationTextMetrics.defaultCaptureFontSize(imagePixelWidth: finalPixelWidth)
+        let lineHeight = AnnotationTextMetrics.normalizedLineHeight(
+            fontPixelSize: fontPixels,
+            imagePixelHeight: CGFloat(image.height)
+        )
+        // 落字点由原始点击决定。输入框可以在屏幕内避让，但不能反过来改动成品坐标。
         let n = normalizedPoint(viewPoint)
         pushUndo()
         let item = AnnotationItem(
             tool: .text,
-            rect: CGRect(x: n.x, y: max(0, n.y - 0.02), width: 0.3, height: 0.06),
+            rect: CGRect(x: n.x, y: n.y, width: min(0.3, max(0, 1 - n.x)), height: lineHeight),
             points: [],
             swatch: selectedSwatch,
             strokeWidth: strokeWidth,
-            text: prefill
+            text: "",
+            textLineHeight: lineHeight
         )
         annotations.append(item)
         selectedID = item.id
         beginTextEditing(item: item, at: viewPoint)
         needsDisplay = true
+    }
+
+    private func textEditorMinimumHeight(fontSize: CGFloat, in availableRect: CGRect) -> CGFloat {
+        min(max(40, ceil(fontSize * 1.5) + 16), max(1, availableRect.height))
     }
 
     #if DEBUG
@@ -1480,21 +1520,21 @@ final class ConfirmCanvasView: NSView {
     private func beginTextEditing(item: AnnotationItem, at viewPoint: CGPoint) {
         endTextEditing(commit: true)
 
-        let imageRect = imageDrawRect.insetBy(dx: 8, dy: 8)
-        let maximumWidth = max(1, imageRect.width)
-        let minimumWidth = min(280, maximumWidth)
-        let editorWidth = min(max(minimumWidth, imageRect.width * 0.72), min(720, maximumWidth))
-        let editorX = min(max(viewPoint.x, imageRect.minX), max(imageRect.minX, imageRect.maxX - editorWidth))
+        // 长图在确认台可能仅有几十点宽，输入浮层可放在图外的冻结背景上。
+        let availableRect = bounds.insetBy(dx: 12, dy: 12)
+        let maximumWidth = max(1, availableRect.width)
         let fontSize = AnnotationTextMetrics.viewFontSize(
             lineHeight: item.textLineHeight,
             imageFrameHeight: imageDrawRect.height
         )
         let font = item.resolvedFont(size: fontSize)
-        let minimumHeight = min(max(52, ceil(fontSize * 1.8)), max(1, imageRect.height))
-        let topY = min(
-            max(viewPoint.y + fontSize * 0.55, imageRect.minY + minimumHeight),
-            imageRect.maxY
-        )
+        let minimumHeight = textEditorMinimumHeight(fontSize: fontSize, in: availableRect)
+        let idealWidth = min(max(280, maximumWidth * 0.3), min(720, maximumWidth))
+        let rightSpace = availableRect.maxX - (viewPoint.x - 9)
+        let minimumUsefulWidth = min(max(120, fontSize * 6 + 18), maximumWidth)
+        let editorWidth = rightSpace >= minimumUsefulWidth ? min(idealWidth, rightSpace) : idealWidth
+        let editorX = min(max(viewPoint.x - 9, availableRect.minX), availableRect.maxX - editorWidth)
+        let topY = min(max(viewPoint.y + 8, availableRect.minY + minimumHeight), availableRect.maxY)
 
         let scrollView = NSScrollView(frame: NSRect(
             x: editorX,
@@ -1531,6 +1571,7 @@ final class ConfirmCanvasView: NSView {
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.heightTracksTextView = false
         textView.textContainer?.lineBreakMode = .byWordWrapping
+        textView.string = item.text
         textView.placeholderString = "输入文字 · 回车换行 · ⌘↩ 完成"
         textView.onFinish = { [weak self] in self?.finishTextEditing() }
         textView.setAccessibilityLabel("截图文字输入")
@@ -1538,13 +1579,21 @@ final class ConfirmCanvasView: NSView {
 
         scrollView.documentView = textView
         addSubview(scrollView)
+        let overflowLabel = NSTextField(labelWithString: "超出截图的文字保存时会被裁切，请换位置或缩短内容")
+        overflowLabel.font = .systemFont(ofSize: 12)
+        overflowLabel.textColor = .systemRed
+        overflowLabel.isHidden = true
+        addSubview(overflowLabel)
         editingTextView = textView
         editingTextScrollView = scrollView
+        editingOverflowLabel = overflowLabel
         editingItemID = item.id
+        editingTextAnchor = viewPoint
         editingTextTopY = topY
         editingTextMinimumHeight = minimumHeight
         updateEditingTextLayout()
         window?.makeFirstResponder(textView)
+        needsDisplay = true
     }
 
     private func endTextEditing(commit: Bool) {
@@ -1552,13 +1601,15 @@ final class ConfirmCanvasView: NSView {
         let scrollView = editingTextScrollView
         let id = editingItemID
         let rawText = textView.string
-        let contentSize = measuredEditingTextSize(textView)
-        let textOriginX = (scrollView?.frame.minX ?? imageDrawRect.minX) + textView.textContainerInset.width
-        let textTopY = editingTextTopY - textView.textContainerInset.height
+        let textOriginX = editingTextAnchor?.x ?? ((scrollView?.frame.minX ?? imageDrawRect.minX) + textView.textContainerInset.width)
+        let textTopY = editingTextAnchor?.y ?? (editingTextTopY - textView.textContainerInset.height)
 
         editingTextView = nil
         editingTextScrollView = nil
+        editingOverflowLabel?.removeFromSuperview()
+        editingOverflowLabel = nil
         editingItemID = nil
+        editingTextAnchor = nil
 
         if commit, let id,
            let idx = annotations.firstIndex(where: { $0.id == id }) {
@@ -1569,14 +1620,13 @@ final class ConfirmCanvasView: NSView {
             } else {
                 let text = rawText.trimmingCharacters(in: .newlines)
                 let imageRect = imageDrawRect
-                let width = min(max(contentSize.width + 2, 1), max(1, imageRect.maxX - textOriginX))
-                let height = min(max(contentSize.height + 2, 1), max(1, textTopY - imageRect.minY))
+                let outputSize = measuredOutputTextSize(text, item: annotations[idx], input: textView, anchorX: textOriginX)
                 annotations[idx].text = text
                 annotations[idx].rect = CGRect(
                     x: min(max((textOriginX - imageRect.minX) / max(imageRect.width, 1), 0), 1),
                     y: min(max((imageRect.maxY - textTopY) / max(imageRect.height, 1), 0), 1),
-                    width: min(width / max(imageRect.width, 1), 1),
-                    height: min(height / max(imageRect.height, 1), 1)
+                    width: min(outputSize.width / CGFloat(image.width), 1),
+                    height: outputSize.height / CGFloat(image.height)
                 )
                 selectedID = id
             }
@@ -1592,14 +1642,10 @@ final class ConfirmCanvasView: NSView {
 
         let contentSize = measuredEditingTextSize(textView)
         let desiredHeight = max(editingTextMinimumHeight, ceil(contentSize.height + textView.textContainerInset.height * 2))
-        let imageRect = imageDrawRect.insetBy(dx: 8, dy: 8)
-        // 从点击位置先向下长；下方放不下时再把顶部往上推，直到用满整块截图。
-        // 只有内容超过整张截图高度时才出现滚动条，避免“能输入但成品尾部被截断”。
-        let requiredTopY = imageRect.minY + desiredHeight
-        if requiredTopY > editingTextTopY {
-            editingTextTopY = min(requiredTopY, imageRect.maxY)
-        }
-        let maximumHeight = max(editingTextMinimumHeight, editingTextTopY - imageRect.minY)
+        let availableRect = bounds.insetBy(dx: 12, dy: 12)
+        // 输入框只向下展开；多行时不能把首字从点击锚点往上推。
+        // 空间用完后在框内滚动，成品坐标仍由原点击位置决定。
+        let maximumHeight = max(editingTextMinimumHeight, editingTextTopY - availableRect.minY)
         let visibleHeight = min(desiredHeight, maximumHeight)
 
         var frame = scrollView.frame
@@ -1614,6 +1660,72 @@ final class ConfirmCanvasView: NSView {
         )
         scrollView.hasVerticalScroller = desiredHeight > visibleHeight + 1
         textView.scrollRangeToVisible(textView.selectedRange())
+        updateEditingOverflowNotice(textView: textView, scrollView: scrollView)
+    }
+
+    /// 用最终图片的像素字号排版，避免长图输入框的最小可读字号污染导出尺寸。
+    private func measuredOutputTextSize(_ text: String, item: AnnotationItem, input textView: NSTextView, anchorX: CGFloat) -> CGSize {
+        let fontPixels = AnnotationTextMetrics.renderedFontSize(
+            lineHeight: item.textLineHeight,
+            imagePixelHeight: CGFloat(image.height)
+        )
+        let font = item.resolvedFont(size: fontPixels)
+        let inputFontSize = max(textView.font?.pointSize ?? fontPixels, 1)
+        let scale = fontPixels / inputFontSize
+        let inputWidth = measuredEditingTextSize(textView).width
+        let maximumInputWidth = max(1, textView.bounds.width - textView.textContainerInset.width * 2)
+        let desiredPixelWidth = min(
+            max(fontPixels * 0.8, inputWidth * scale + 4),
+            maximumInputWidth * scale + 4
+        )
+        let rightEdge = min(imageDrawRect.maxX, effectiveCropRect.maxX)
+        let availablePixelWidth = max(
+            1,
+            (rightEdge - anchorX) / max(imageDrawRect.width, 1) * CGFloat(image.width)
+        )
+        let width = min(desiredPixelWidth, availablePixelWidth)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = item.textAlignment
+        paragraph.lineBreakMode = .byWordWrapping
+        let attributed = NSAttributedString(string: text, attributes: [
+            .font: font,
+            .paragraphStyle: paragraph
+        ])
+        let measured = attributed.boundingRect(
+            with: CGSize(width: width, height: CGFloat.greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        )
+        let firstLineHeight = ceil(font.ascender - font.descender + font.leading)
+        return CGSize(width: width, height: max(ceil(measured.height) + 4, firstLineHeight + 4))
+    }
+
+    private func updateEditingOverflowNotice(textView: NSTextView, scrollView: NSScrollView) {
+        guard let label = editingOverflowLabel,
+              let id = editingItemID,
+              let item = annotations.first(where: { $0.id == id }) else { return }
+        let text = textView.string.trimmingCharacters(in: .newlines)
+        let anchor = editingTextAnchor ?? imageDrawRect.origin
+        let size = measuredOutputTextSize(text, item: item, input: textView, anchorX: anchor.x)
+        let bottomEdge = max(imageDrawRect.minY, effectiveCropRect.minY)
+        let availableHeight = max(0, (anchor.y - bottomEdge) / max(imageDrawRect.height, 1) * CGFloat(image.height))
+        let fontPixels = AnnotationTextMetrics.renderedFontSize(
+            lineHeight: item.textLineHeight,
+            imagePixelHeight: CGFloat(image.height)
+        )
+        let overflows = !text.isEmpty && (
+            !effectiveCropRect.contains(anchor)
+                || size.height > availableHeight + 1
+                || size.width < fontPixels * 1.1
+        )
+        label.isHidden = !overflows
+        scrollView.layer?.borderColor = (overflows ? NSColor.systemRed : NSColor.black.withAlphaComponent(0.22)).cgColor
+        if overflows {
+            label.sizeToFit()
+            label.frame.origin = CGPoint(
+                x: min(scrollView.frame.minX, max(bounds.minX, bounds.maxX - label.frame.width - 12)),
+                y: max(bounds.minY + 4, scrollView.frame.minY - label.frame.height - 4)
+            )
+        }
     }
 
     private func measuredEditingTextSize(_ textView: NSTextView) -> CGSize {

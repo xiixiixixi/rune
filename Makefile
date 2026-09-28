@@ -98,6 +98,7 @@ dmg: release ## 创建本地安装包 + 自动更新包
 	@mkdir -p $(DMG_DIR)/staging
 	@cp -R "$(APP_RELEASE)" $(DMG_DIR)/staging/
 	@cp LICENSE $(DMG_DIR)/staging/LICENSE
+	@cp THIRD_PARTY_NOTICES.md $(DMG_DIR)/staging/THIRD_PARTY_NOTICES.md
 	@ln -sf /Applications $(DMG_DIR)/staging/Applications
 	@hdiutil create -volname "Rune" \
 		-srcfolder $(DMG_DIR)/staging \

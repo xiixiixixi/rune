@@ -6,9 +6,10 @@ import OSLog
 import SwiftUI
 @preconcurrency import Vision
 
-// 滚动配准核心（滚动条列/吸顶行检测、全帧 Vision 配准、整帧近乎相同拒绝、
+// 滚动配准核心（滚动条列/吸顶行检测、全帧 Vision 配准、
 // 逐字节稳定帧、最少新内容行数校验、帧数预算、收尾补帧）移植自 capcap：
-// https://github.com/realskyrin/capcap （MIT License, Copyright capcap authors）。
+// https://github.com/realskyrin/capcap （MIT License, Copyright 2026 realskyrin）。
+// 完整许可文本见随源码与安装包提供的 THIRD_PARTY_NOTICES.md。
 // 双向拼接、区间跟踪与重复条带闸门为 Rune 自有实现。
 
 enum ScrollCaptureMode: String {
@@ -61,6 +62,12 @@ final class ScrollCaptureController {
     private var targetRect: CGRect?
     private var targetProcessID: pid_t?
     private var previousImage: CGImage?
+    /// 首次确认滚动时锁定的固定栏，只在成片顶部/底部各保留一次。
+    private var fixedBandsLocked = false
+    private var fixedTopPx = 0
+    private var fixedBottomPx = 0
+    private var fixedHeaderImage: CGImage?
+    private var fixedFooterImage: CGImage?
     private var segments: [CGImage] = []
     /// 已捕获内容区间（首帧顶行为 0）：决定追加底部 / 插入顶部 / 回退不拼。
     private var tracker: ScrollRangeTracker?
@@ -93,6 +100,11 @@ final class ScrollCaptureController {
     private var cursorHiddenOnDisplay: CGDirectDisplayID?
     private var lastCaptureFailureDescription: String?
     private var lastSampledScrollRows: Int?
+    /// 自动滚轮从上一张已接受的帧起总共发出多少逻辑像素；等待/重试时
+    /// 不清零，避免把多次滚动误当作单次步长去匹配周期性卡片。
+    private var automaticCommandedPointsSinceAnchor: Int32 = 0
+    private var lastUnchangedWasExact = false
+    private var lastMismatchHadStationaryBody = false
     #if DEBUG
     private var auditOutputURL: URL?
     #endif
@@ -193,6 +205,11 @@ final class ScrollCaptureController {
             // 首帧抓取期间用户仍可按 Esc；若已取消，不得把迟到的帧重新写回状态。
             guard isActive else { return }
             previousImage = first.image
+            fixedBandsLocked = false
+            fixedTopPx = 0
+            fixedBottomPx = 0
+            fixedHeaderImage = nil
+            fixedFooterImage = nil
             segments = [first.image]
             tracker = ScrollRangeTracker(frameHeight: first.image.height)
             let firstRows = Self.grayRowVectors(first.image)
@@ -228,14 +245,53 @@ final class ScrollCaptureController {
 
     /// 飞书式两段确认：选区锁定后先保留边界和首帧预览，用户明确开始才滚动。
     /// 这样误选窗口或滚动容器时可以直接取消，不会一松手就把页面带走。
-    func beginCapture() {
-        guard isActive, isAwaitingStart, previousImage != nil, !isFinishing else { return }
+    func beginCapture() async {
+        guard isActive, isAwaitingStart, !isPreparing,
+              let targetRect, previousImage != nil, !isFinishing else { return }
+        isPreparing = true
+        defer { isPreparing = false }
+        statusMessage = "正在确认滚动起点…"
+        // 用户可以在锁定选区后先滚到内容顶部；真正开始时必须重抓首帧，
+        // 否则旧画面与新位置可能相隔数屏，之后永远找不到重叠。
+        do {
+            let first = try await engine.capture(.region(targetRect))
+            guard isActive, isAwaitingStart, !isFinishing, !Task.isCancelled else { return }
+            previousImage = first.image
+            segments = [first.image]
+            tracker = ScrollRangeTracker(frameHeight: first.image.height)
+            let firstRows = Self.grayRowVectors(first.image)
+            stitchHeadRows = Array(firstRows.prefix(600))
+            stitchTailRows = Array(firstRows.suffix(600))
+            fixedBandsLocked = false
+            fixedTopPx = 0
+            fixedBottomPx = 0
+            fixedHeaderImage = nil
+            fixedFooterImage = nil
+            scrollbarWidthPx = 0
+            scrollbarDetected = false
+            stickyHeaderPx = 0
+            stickyHeaderDetectionDone = false
+            stickyHeaderSamplesTaken = 0
+            lastSampledScrollRows = nil
+            lastScrollDirection = nil
+            scaleFactor = first.scaleFactor
+            displayID = first.displayID
+            capturedFrameCount = 1
+            stitchedHeight = first.image.height
+            updateLivePreview()
+        } catch {
+            Self.logger.error("Failed to refresh scroll starting frame: \(String(describing: error), privacy: .public)")
+            statusMessage = "起始位置抓取失败；请再点一次“开始滚动”"
+            return
+        }
         isAwaitingStart = false
         isPaused = false
         unchangedRounds = 0
         mismatchRounds = 0
         endVerificationAttempted = false
         hasObservedGrowth = false
+        automaticCommandedPointsSinceAnchor = 0
+        lastUnchangedWasExact = false
         if mode == .automatic {
             prepareAutomaticCursor()
             statusMessage = "自动向下滚动中；可随时暂停或完成"
@@ -263,7 +319,7 @@ final class ScrollCaptureController {
         if previousImage != nil {
             let settled = await captureSettledFrame()
             if let settled {
-                _ = await captureNextFrame(stabilized: settled)
+                _ = await captureNextFrame(stabilized: settled, allowWhileFinishing: true)
             }
         }
 
@@ -354,6 +410,10 @@ final class ScrollCaptureController {
         mismatchRounds = 0
         endVerificationAttempted = false
         hasObservedGrowth = false
+        lastSampledScrollRows = nil
+        lastScrollDirection = .down
+        automaticCommandedPointsSinceAnchor = 0
+        lastUnchangedWasExact = false
         activateTargetApplication()
         if isAwaitingStart {
             statusMessage = "已切换自动滚动；点击“开始滚动”"
@@ -373,12 +433,27 @@ final class ScrollCaptureController {
             // 匹配失败通常发生在网页仍在惯性滚动、动画或懒加载时。失败后必须
             // 原地重抓，不能继续发送滚轮事件，否则位移会叠加到彻底失去重叠。
             var retryWithoutScrolling = false
+            var uncertainStationaryRounds = 0
+            var endVerificationStartedAt: Date?
+            var endVerificationProbeCount = 0
+            var wasPaused = false
             while !Task.isCancelled {
                 guard !Task.isCancelled, let self, self.isActive else { break }
 
                 if self.isPaused {
+                    wasPaused = true
                     try? await Task.sleep(for: .milliseconds(180))
                     continue
+                }
+                if wasPaused {
+                    // 暂停期间可能加载了新内容，墙钟时间不能算作
+                    // 已经观察过的“到底确认”。恢复后先原地取证。
+                    wasPaused = false
+                    self.endVerificationAttempted = false
+                    self.unchangedRounds = 0
+                    endVerificationStartedAt = nil
+                    endVerificationProbeCount = 0
+                    retryWithoutScrolling = true
                 }
 
                 let result: FrameCaptureResult
@@ -403,27 +478,77 @@ final class ScrollCaptureController {
                 switch result {
                 case .appended, .prepended:
                     retryWithoutScrolling = false
+                    uncertainStationaryRounds = 0
+                    self.automaticCommandedPointsSinceAnchor = 0
                     self.hasObservedGrowth = true
                     self.unchangedRounds = 0
                     self.mismatchRounds = 0
                     self.endVerificationAttempted = false
+                    endVerificationStartedAt = nil
+                    endVerificationProbeCount = 0
 
                 case .unchanged:
-                    retryWithoutScrolling = false
                     self.mismatchRounds = 0
                     guard self.mode == .automatic else { continue }
+                    guard self.lastUnchangedWasExact else {
+                        // 动图、光标或懒加载会使画面接近静止但字节不同。
+                        // 原地等有限次数；不能无限发滚轮，更不能当作到底。
+                        uncertainStationaryRounds += 1
+                        retryWithoutScrolling = true
+                        self.unchangedRounds = 0
+                        self.endVerificationAttempted = false
+                        endVerificationStartedAt = nil
+                        endVerificationProbeCount = 0
+                        if uncertainStationaryRounds >= 8 {
+                            self.switchToManual(
+                                reason: "页面持续变化，无法确认到底；已切到手动，请检查后完成"
+                            )
+                        } else {
+                            self.statusMessage = "画面还在变化，正在等待稳定…"
+                        }
+                        continue
+                    }
+                    uncertainStationaryRounds = 0
+                    retryWithoutScrolling = false
+                    // 完全相同的画面通常表示之前的滚轮命令没有推进锚点。
+                    // 不能把这些疑似无效命令继续累加，否则稍后内容加载时
+                    // 位移上限会膨胀到整屏，周期卡片又能造成跳页。
+                    self.automaticCommandedPointsSinceAnchor = 0
                     self.unchangedRounds += 1
                     if self.hasObservedGrowth, self.unchangedRounds >= 5 {
                         if !self.endVerificationAttempted {
                             // Snapboard 式到底验证：先补一次更长的滚动再确认，
                             // 避免网页加载慢被误判到底而提前收工。
                             self.endVerificationAttempted = true
+                            endVerificationStartedAt = Date()
+                            endVerificationProbeCount = 0
                             Self.logger.notice("End-of-page verification scroll")
                             self.postAutomaticScroll(multiplier: 2)
+                            // 验证滚轮已经发出；下一轮先观察它的结果，
+                            // 不能再叠加普通滚轮后才抓帧。
+                            retryWithoutScrolling = true
                             self.statusMessage = "正在确认是否已到底部…"
                         } else {
-                            await self.stop()
-                            return
+                            // 懒加载可能在当前视口下方追加内容，画面不会
+                            // 自动跟着滚动。等待期间最多补四次小步探测，
+                            // 每次先观察结果，绝不连发滚轮。
+                            let elapsed = endVerificationStartedAt.map {
+                                Date().timeIntervalSince($0)
+                            } ?? 0
+                            let nextProbeTime = Double(endVerificationProbeCount + 1) * 1.5
+                            if endVerificationProbeCount < 4, elapsed >= nextProbeTime {
+                                self.postAutomaticScroll()
+                                endVerificationProbeCount += 1
+                                retryWithoutScrolling = true
+                                self.statusMessage = "正在检查页面下方是否有新内容…"
+                                continue
+                            }
+                            if endVerificationProbeCount >= 4, elapsed >= 8.0 {
+                                await self.stop()
+                                return
+                            }
+                            retryWithoutScrolling = true
+                            self.statusMessage = "正在等待页面完成加载…"
                         }
                     }
                     if !self.hasObservedGrowth, self.unchangedRounds >= 5 {
@@ -435,16 +560,28 @@ final class ScrollCaptureController {
                 case .rolledBack:
                     // 回退到已捕获区间：不重复拼接，也不计入到底轮数。
                     retryWithoutScrolling = false
+                    uncertainStationaryRounds = 0
+                    self.automaticCommandedPointsSinceAnchor = 0
                     self.mismatchRounds = 0
+                    self.unchangedRounds = 0
+                    self.endVerificationAttempted = false
+                    endVerificationStartedAt = nil
+                    endVerificationProbeCount = 0
                     self.statusMessage = "已回退；滚到新内容后会继续拼接"
 
                 case .duplicateRejected:
                     // 闸门拦截（锚点未推进）：手动模式等用户回滚重新对齐；
-                    // 自动模式停止注入滚轮、原地等画面回到锚点附近。
+                    // 自动模式不再向前滚，以免锚点停在旧内容而页面一路滚到
+                    // 底部，最后导出一张看似完整、实际漏掉后半段的图。
+                    self.unchangedRounds = 0
+                    uncertainStationaryRounds = 0
+                    self.endVerificationAttempted = false
+                    endVerificationStartedAt = nil
+                    endVerificationProbeCount = 0
                     if self.mode == .automatic {
                         self.mismatchRounds += 1
                         retryWithoutScrolling = true
-                        if self.mismatchRounds >= self.maximumAutomaticMismatchRounds {
+                        if self.mismatchRounds >= 3 {
                             self.switchToManual(
                                 reason: "页面内容疑似重复，已切到手动；请稍回滚后慢一点"
                             )
@@ -457,8 +594,32 @@ final class ScrollCaptureController {
                     }
 
                 case .mismatch:
+                    uncertainStationaryRounds = 0
+                    // 在“到底确认”期间，文档可能在视口下方追加内容：
+                    // 底缘露出新卡片或滚动条改变，会使当前帧无法配准。
+                    // 只有正文主体仍静止、变化局限在边缘时，才用剩余
+                    // 的小步探测寻找新增段；正文真动了则不能再滚。
+                    if self.mode == .automatic,
+                       self.endVerificationAttempted,
+                       self.lastMismatchHadStationaryBody,
+                       let endVerificationStartedAt,
+                       endVerificationProbeCount < 4 {
+                        let elapsed = Date().timeIntervalSince(endVerificationStartedAt)
+                        let nextProbeTime = Double(endVerificationProbeCount + 1) * 1.5
+                        if elapsed >= nextProbeTime {
+                            self.postAutomaticScroll()
+                            endVerificationProbeCount += 1
+                        }
+                        retryWithoutScrolling = true
+                        self.mismatchRounds = 0
+                        self.statusMessage = "页面可能新增内容，正在分次向下确认…"
+                        continue
+                    }
                     self.mismatchRounds += 1
+                    self.unchangedRounds = 0
                     self.endVerificationAttempted = false
+                    endVerificationStartedAt = nil
+                    endVerificationProbeCount = 0
                     if self.mismatchRounds == 1 {
                         Self.logger.notice("Frame overlap mismatch")
                     }
@@ -480,7 +641,12 @@ final class ScrollCaptureController {
                     return
 
                 case .failed:
+                    uncertainStationaryRounds = 0
                     retryWithoutScrolling = self.mode == .automatic
+                    self.unchangedRounds = 0
+                    self.endVerificationAttempted = false
+                    endVerificationStartedAt = nil
+                    endVerificationProbeCount = 0
                     if self.mode == .manual {
                         self.statusMessage = "暂时没有抓到画面；可继续滚动或点完成"
                     }
@@ -492,7 +658,7 @@ final class ScrollCaptureController {
     /// capcap 式稳定帧：连续两次抓帧的**字节签名完全相同**才算页面停稳
     /// （12→80ms 几何退避，最多 20 轮 ≈ 1s）。比近似分数严格得多——
     /// 合成器还在画任何东西都瞒不过逐字节比对。超时返回最后一帧，
-    /// 交给"整帧近乎相同"与范围校验兜底。
+    /// 仍须通过两套位移证据和重叠区校验才能拼接。
     private func captureSettledFrame() async -> CGImage? {
         guard let targetRect else { return nil }
         var previousSignature: Data?
@@ -526,28 +692,6 @@ final class ScrollCaptureController {
         image.dataProvider?.data as Data?
     }
 
-    /// capcap 式"整帧近乎相同"：采样网格均差 < 3 → 两帧没有实质变化。
-    private static func framesNearlyIdentical(_ lhs: GrayImage, _ rhs: GrayImage) -> Bool {
-        guard lhs.width == rhs.width, lhs.height == rhs.height,
-              lhs.width > 0, lhs.height > 0 else { return false }
-        let columnCount = min(32, max(16, lhs.width / 6))
-        let rowCount = min(32, max(16, lhs.height / 6))
-        var total = 0
-        var comparisons = 0
-        for rowSample in 0..<rowCount {
-            let y = min(lhs.height - 1, lhs.height * (rowSample * 2 + 1) / (rowCount * 2))
-            for columnSample in 0..<columnCount {
-                let x = min(lhs.width - 1, lhs.width * (columnSample * 2 + 1) / (columnCount * 2))
-                total += abs(
-                    Int(lhs.pixels[y * lhs.width + x]) - Int(rhs.pixels[y * lhs.width + x])
-                )
-                comparisons += 1
-            }
-        }
-        guard comparisons > 0 else { return false }
-        return Double(total) / Double(comparisons) < 3
-    }
-
     /// 右缘 `edgeWidth` 像素、1:1 灰度条带（滚动条检测需要列级分辨率，
     /// 192 宽的缩略图不够）。
     private static func grayEdgeStrip(image: CGImage, edgeWidth: Int) -> GrayImage? {
@@ -576,9 +720,15 @@ final class ScrollCaptureController {
         return created ? GrayImage(width: width, height: height, pixels: pixels) : nil
     }
 
-    /// 条带的灰度行采样向量（每行 24 列），供重复条带闸门比对。
+    /// 同尺寸整帧的灰度行采样向量（每行 24 列），供重复条带闸门比对。
+    /// 不能单独缩小裁下来的新条带：与首帧采用不同的缩放比例/采样起点后，
+    /// 原本同一行也会算出不同亮度，导致重复内容漏拦。
     private static func grayRowVectors(_ image: CGImage) -> [[UInt8]] {
         guard let gray = grayscale(image) else { return [] }
+        return grayRowVectors(gray)
+    }
+
+    private static func grayRowVectors(_ gray: GrayImage) -> [[UInt8]] {
         let sampleCount = 24
         var vectors: [[UInt8]] = []
         vectors.reserveCapacity(gray.height)
@@ -594,8 +744,109 @@ final class ScrollCaptureController {
         return vectors
     }
 
-    private func captureNextFrame(stabilized: CGImage? = nil) async -> FrameCaptureResult {
+    /// 固定栏只决定一次，并把首帧换成相同的内容视口；之后每帧都在这个
+    /// 视口中测位移和裁新内容。固定栏自身留到最终绘图时各放一次。
+    private func establishFixedBands(
+        _ bands: ScrollFixedBands,
+        firstImage: CGImage,
+        grayHeight: Int
+    ) -> Bool {
+        guard grayHeight > 0 else { return false }
+        let top = Int((Double(bands.topRows) / Double(grayHeight)
+            * Double(firstImage.height)).rounded())
+        let bottom = Int((Double(bands.bottomRows) / Double(grayHeight)
+            * Double(firstImage.height)).rounded())
+        guard top >= 0, bottom >= 0,
+              top + bottom < firstImage.height * 2 / 5 else { return false }
+        let contentHeight = firstImage.height - top - bottom
+        guard contentHeight >= 80,
+              let content = firstImage.cropping(to: CGRect(
+                x: 0, y: top, width: firstImage.width, height: contentHeight
+              )) else { return false }
+        let header = top > 0
+            ? firstImage.cropping(to: CGRect(x: 0, y: 0, width: firstImage.width, height: top))
+            : nil
+        let footer = bottom > 0
+            ? firstImage.cropping(to: CGRect(
+                x: 0, y: firstImage.height - bottom, width: firstImage.width, height: bottom
+              ))
+            : nil
+        guard (top == 0 || header != nil), (bottom == 0 || footer != nil) else {
+            return false
+        }
+        fixedHeaderImage = header
+        fixedFooterImage = footer
+        fixedTopPx = top
+        fixedBottomPx = bottom
+        fixedBandsLocked = true
+        segments = [content]
+        tracker = ScrollRangeTracker(frameHeight: contentHeight)
+        let contentRows = Self.grayRowVectors(content)
+        stitchHeadRows = Array(contentRows.prefix(600))
+        stitchTailRows = Array(contentRows.suffix(600))
+
+        // 配准裁切范围改变后，早期未确认帧学到的滚动条/吸顶状态不可复用。
+        scrollbarWidthPx = 0
+        scrollbarDetected = false
+        stickyHeaderPx = 0
+        stickyHeaderDetectionDone = false
+        stickyHeaderSamplesTaken = 0
+        Self.logger.notice(
+            "Locked fixed bands top=\(top, privacy: .public) bottom=\(bottom, privacy: .public)"
+        )
+        updateLivePreview()
+        return true
+    }
+
+    private func discardProvisionalFixedBands(firstImage: CGImage) {
+        fixedBandsLocked = false
+        fixedTopPx = 0
+        fixedBottomPx = 0
+        fixedHeaderImage = nil
+        fixedFooterImage = nil
+        segments = [firstImage]
+        tracker = ScrollRangeTracker(frameHeight: firstImage.height)
+        let rows = Self.grayRowVectors(firstImage)
+        stitchHeadRows = Array(rows.prefix(600))
+        stitchTailRows = Array(rows.suffix(600))
+        scrollbarWidthPx = 0
+        scrollbarDetected = false
+        stickyHeaderPx = 0
+        stickyHeaderDetectionDone = false
+        stickyHeaderSamplesTaken = 0
+        updateLivePreview()
+    }
+
+    private func contentImage(_ image: CGImage) -> CGImage? {
+        guard fixedTopPx > 0 || fixedBottomPx > 0 else { return image }
+        let height = image.height - fixedTopPx - fixedBottomPx
+        guard height > 0 else { return nil }
+        return image.cropping(to: CGRect(
+            x: 0, y: fixedTopPx, width: image.width, height: height
+        ))
+    }
+
+    private var renderedSegments: [CGImage] {
+        var images: [CGImage] = []
+        if let fixedHeaderImage { images.append(fixedHeaderImage) }
+        images.append(contentsOf: segments)
+        if let fixedFooterImage { images.append(fixedFooterImage) }
+        return images
+    }
+
+    private func captureNextFrame(
+        stabilized: CGImage? = nil,
+        allowWhileFinishing: Bool = false
+    ) async -> FrameCaptureResult {
         guard let targetRect, let previousImage, var tracker else { return .failed }
+        lastMismatchHadStationaryBody = false
+        var provisionalFixedBands = false
+        var acceptedFixedBands = false
+        defer {
+            if provisionalFixedBands && !acceptedFixedBands {
+                discardProvisionalFixedBands(firstImage: previousImage)
+            }
+        }
         guard capturedFrameCount < maximumFrames else {
             statusMessage = "已达到 \(maximumFrames) 帧上限，正在生成当前内容"
             return .limitReached
@@ -607,40 +858,157 @@ final class ScrollCaptureController {
             } else {
                 nextImage = try await engine.capture(.region(targetRect)).image
             }
+            // 手动轮询可能在抓帧的 await 期间遇到“完成/取消”。旧轮询
+            // 不得与收尾补帧同时推进同一张图；只有 stop 自己的补帧例外。
+            guard allowWhileFinishing
+                ? isFinishing
+                : (isActive && !isFinishing && !Task.isCancelled) else { return .failed }
             guard nextImage.width == previousImage.width,
                   nextImage.height == previousImage.height else {
                 statusMessage = "画面尺寸发生变化，请保持窗口大小不变"
                 return .mismatch
             }
-            guard let previousGray = Self.grayscale(previousImage),
-                  let currentGray = Self.grayscale(nextImage) else { return .failed }
-
-            // ① capcap：整帧近乎相同（采样网格均差 < 3）→ 画面未动
-            if Self.framesNearlyIdentical(previousGray, currentGray) {
-                return .unchanged
+            guard let previousFullGray = Self.grayscale(previousImage),
+                  let currentFullGray = Self.grayscale(nextImage) else { return .failed }
+            // 文档在视口下方增长时，正文主体没动；可能只有底缘
+            // 露出新卡片的一小条，也可能只有右侧滚动条改变。
+            // 仅这种失配才允许“到底确认”补滚。
+            lastMismatchHadStationaryBody = Self.bodyIsStationaryIgnoringBorders(
+                previous: previousFullGray,
+                current: currentFullGray
+            )
+            if let previousSignature = Self.pixelSignature(previousImage),
+               let currentSignature = Self.pixelSignature(nextImage) {
+                lastUnchangedWasExact = previousSignature == currentSignature
+            } else {
+                lastUnchangedWasExact = false
             }
 
-            // ② 位移测量：capcap 式 Vision 配准为主（裁掉检测出的滚动条列与
-            // 吸顶行，吃几乎整帧的证据）；配准不可用时灰度五分区投票兜底。
-            let displacement: Int
-            if let signedRows = visionNewContentRows(
-                previous: previousImage,
-                current: nextImage
-            ) {
-                // capcap 范围校验：新内容不足一行下限（≥8px 或帧高 0.5%）视为未动
-                let minimumNewRows = max(8, nextImage.height / 200)
-                guard abs(signedRows) >= minimumNewRows,
-                      abs(signedRows) <= Int(CGFloat(nextImage.height) * 0.95) else {
-                    return .unchanged
+            // 只在第一段内容尚未拼入时确定固定栏。一旦改变视口高度，既有
+            // 区间坐标就会失效，所以不能在截到一半后再重新裁切。
+            if !fixedBandsLocked {
+                let candidateBands = ScrollFixedBandDetector.detect(
+                    previous: previousFullGray.pixels,
+                    current: currentFullGray.pixels,
+                    width: previousFullGray.width,
+                    height: previousFullGray.height
+                )
+                // 两帧中的相同卡片标题与真正的固定顶栏可能像素完全同形；
+                // 自动裁顶栏会永久丢掉聊天内容。向下滚动本就不会重复追加
+                // 顶栏，故只处理证据较强、且真实长图已复现问题的底栏。
+                let bands = ScrollFixedBands(topRows: 0, bottomRows: candidateBands.bottomRows)
+                if bands.topRows > 0 || bands.bottomRows > 0 {
+                    guard establishFixedBands(
+                        bands,
+                        firstImage: previousImage,
+                        grayHeight: previousFullGray.height
+                    ), let establishedTracker = self.tracker else { return .failed }
+                    tracker = establishedTracker
+                    provisionalFixedBands = true
                 }
-                displacement = signedRows
-            } else if let resolved = grayscaleFallbackDisplacement(
-                previousGray: previousGray,
-                currentGray: currentGray,
-                fullHeight: nextImage.height
-            ) {
-                displacement = resolved
+            }
+            guard let previousContent = contentImage(previousImage),
+                  let currentContent = contentImage(nextImage) else { return .failed }
+            let previousGray: GrayImage
+            let currentGray: GrayImage
+            if fixedTopPx == 0, fixedBottomPx == 0 {
+                previousGray = previousFullGray
+                currentGray = currentFullGray
             } else {
+                guard let croppedPreviousGray = Self.grayscale(previousContent),
+                      let croppedCurrentGray = Self.grayscale(currentContent) else {
+                    return .failed
+                }
+                previousGray = croppedPreviousGray
+                currentGray = croppedCurrentGray
+            }
+
+            // 两套方法独立测量位移。重复卡片能让图像配准锁到另一个周期，
+            // 所以即便它给出了数字，也要用灰度分区投票及重叠区得分核对。
+            let visionRows = visionNewContentRows(
+                previous: previousContent,
+                current: currentContent
+            )
+            let commandedPoints = automaticCommandedPointsSinceAnchor > 0
+                ? automaticCommandedPointsSinceAnchor : automaticScrollStep
+            let commandedGrayRows = max(2, Int((
+                CGFloat(commandedPoints) * scaleFactor
+                    / CGFloat(currentContent.height)
+                    * CGFloat(currentGray.height)
+            ).rounded()))
+            let preferredOffset = mode == .automatic
+                ? (automaticCommandedPointsSinceAnchor > 0
+                    ? commandedGrayRows : lastSampledScrollRows ?? commandedGrayRows)
+                : nil
+            // 自动滚动有明确的滚轮距离。周期卡片可能让配准算法误选
+            // 远处的另一张相似卡片；这种“大跳跃”必须停下，而非拼接。
+            let maximumAutomaticGrayRows = mode == .automatic
+                ? min(currentGray.height - 1, max(3, Int((Double(commandedGrayRows) * 1.8).rounded(.up))))
+                : nil
+            let grayMatch = ScrollOverlapDetector.detectScroll(
+                previous: previousGray.pixels,
+                current: currentGray.pixels,
+                width: previousGray.width,
+                height: previousGray.height,
+                preferredOffset: preferredOffset,
+                preferredDirection: mode == .automatic ? (lastScrollDirection ?? .down) : nil,
+                maximumOffset: maximumAutomaticGrayRows
+            )
+            let visionScore: Double? = visionRows.flatMap { rows in
+                let grayRows = max(1, Int((
+                    Double(abs(rows)) / Double(currentContent.height)
+                        * Double(currentGray.height)
+                ).rounded()))
+                return ScrollOverlapDetector.scoreOffset(
+                    previous: previousGray.pixels,
+                    current: currentGray.pixels,
+                    width: previousGray.width,
+                    height: previousGray.height,
+                    offsetRows: grayRows,
+                    direction: rows >= 0 ? .down : .up
+                )
+            }
+            guard let displacement = ScrollDisplacementResolver.resolve(
+                visionRows: visionRows,
+                grayMatch: grayMatch,
+                visionHypothesisScore: visionScore,
+                grayHeight: currentGray.height,
+                fullHeight: currentContent.height
+            ) else {
+                Self.logger.notice(
+                    "Conflicting scroll evidence vision=\(visionRows ?? 0, privacy: .public) gray=\(grayMatch?.offsetRows ?? -1, privacy: .public) score=\(visionScore ?? -1, privacy: .public)"
+                )
+                return .mismatch
+            }
+            if let maximumAutomaticGrayRows {
+                let maximumFullRows = Int((
+                    Double(maximumAutomaticGrayRows) / Double(currentGray.height)
+                        * Double(currentContent.height)
+                ).rounded(.up))
+                guard abs(displacement) <= maximumFullRows else {
+                    Self.logger.notice(
+                        "Automatic scroll displacement exceeded commanded range rows=\(displacement, privacy: .public) max=\(maximumFullRows, privacy: .public)"
+                    )
+                    return .mismatch
+                }
+            }
+            guard displacement != 0 else { return .unchanged }
+            let minimumNewRows = max(8, currentContent.height / 200)
+            guard abs(displacement) >= minimumNewRows else { return .unchanged }
+
+            // 无论仲裁最终采用哪一种位移，实际重叠区都必须对得上。
+            let resolvedGrayRows = max(1, Int((
+                Double(abs(displacement)) / Double(currentContent.height)
+                    * Double(currentGray.height)
+            ).rounded()))
+            guard let overlapScore = ScrollOverlapDetector.scoreOffset(
+                previous: previousGray.pixels,
+                current: currentGray.pixels,
+                width: previousGray.width,
+                height: previousGray.height,
+                offsetRows: resolvedGrayRows,
+                direction: displacement > 0 ? .down : .up
+            ), overlapScore <= 18 else {
                 return .mismatch
             }
 
@@ -652,8 +1020,12 @@ final class ScrollCaptureController {
                 return .unchanged
 
             case .rollback:
+                fixedBandsLocked = true
+                acceptedFixedBands = true
                 self.tracker = tracker
                 self.previousImage = nextImage
+                learnStationaryRegions(previous: previousContent, current: currentContent)
+                rememberAcceptedScroll(displacement, grayHeight: currentGray.height, fullHeight: currentContent.height)
                 return .rolledBack
 
             case .lostOverlap:
@@ -670,14 +1042,23 @@ final class ScrollCaptureController {
                     if case .prependTop = plan { return true }
                     return false
                 }()
-                guard let crop = nextImage.cropping(to: CGRect(
+                guard let crop = currentContent.cropping(to: CGRect(
                     x: 0,
                     y: frameRows.lowerBound,
-                    width: nextImage.width,
+                    width: currentContent.width,
                     height: rows
                 )) else { return .failed }
 
-                let newRows = Self.grayRowVectors(crop)
+                let fullFrameRows = Self.grayRowVectors(currentGray)
+                let grayStart = max(0, min(currentGray.height, Int((
+                    Double(frameRows.lowerBound) / Double(currentContent.height)
+                        * Double(currentGray.height)
+                ).rounded(.down))))
+                let grayEnd = max(grayStart, min(currentGray.height, Int((
+                    Double(frameRows.upperBound) / Double(currentContent.height)
+                        * Double(currentGray.height)
+                ).rounded(.up))))
+                let newRows = Array(fullFrameRows[grayStart..<grayEnd])
                 let insertion: ScrollDuplicateGuard.Insertion = isPrepend ? .prepend : .append
                 let boundary = isPrepend ? stitchHeadRows : stitchTailRows
                 if ScrollDuplicateGuard.isDuplicate(
@@ -691,6 +1072,8 @@ final class ScrollCaptureController {
                     return .duplicateRejected
                 }
 
+                fixedBandsLocked = true
+                acceptedFixedBands = true
                 self.tracker = tracker
                 if isPrepend {
                     segments.insert(crop, at: 0)
@@ -706,6 +1089,8 @@ final class ScrollCaptureController {
                     }
                 }
                 self.previousImage = nextImage
+                learnStationaryRegions(previous: previousContent, current: currentContent)
+                rememberAcceptedScroll(displacement, grayHeight: currentGray.height, fullHeight: currentContent.height)
                 lastCaptureFailureDescription = nil
                 capturedFrameCount += 1
                 stitchedHeight += rows
@@ -727,6 +1112,24 @@ final class ScrollCaptureController {
         }
     }
 
+    private func rememberAcceptedScroll(_ rows: Int, grayHeight: Int, fullHeight: Int) {
+        lastScrollDirection = rows > 0 ? .down : .up
+        lastSampledScrollRows = max(1, Int((
+            Double(abs(rows)) / Double(fullHeight) * Double(grayHeight)
+        ).rounded()))
+    }
+
+    /// 只从真正通过重叠校验且进入区间跟踪的帧学习固定区域。若在首帧
+    /// 尚未滚动时就锁定滚动条状态，之后的滚动条永远不会再被识别。
+    private func learnStationaryRegions(previous: CGImage, current: CGImage) {
+        if !scrollbarDetected {
+            detectScrollbar(previous: previous, current: current)
+        }
+        if !stickyHeaderDetectionDone {
+            detectStickyHeader(previous: previous, current: current)
+        }
+    }
+
     // MARK: - 位移测量（配准部分移植自 capcap，MIT）
 
     /// Vision 配准测两帧间的有符号新内容行数（正 = 向下滚动露出底部新内容，
@@ -739,11 +1142,6 @@ final class ScrollCaptureController {
         let width = min(previous.width, current.width)
         let height = min(previous.height, current.height)
         guard width >= 80, height >= 80 else { return nil }
-
-        // 一次性滚动条检测（首个有运动的帧对）
-        if !scrollbarDetected {
-            detectScrollbar(previous: previous, current: current)
-        }
 
         let cropWidth = max(0, width - scrollbarWidthPx)
         let cropY = stickyHeaderDetectionDone ? min(stickyHeaderPx, height / 5) : 0
@@ -768,10 +1166,6 @@ final class ScrollCaptureController {
         guard translation.isFinite else { return nil }
         let rows = Int(translation.rounded())
 
-        // 首次看到真实位移 → 学习吸顶行边界
-        if abs(rows) > 5, !stickyHeaderDetectionDone {
-            detectStickyHeader(previous: previous, current: current)
-        }
         return rows
     }
 
@@ -779,7 +1173,6 @@ final class ScrollCaptureController {
     /// 之外归于安静的列带 = 滚动条滑块。要求"动→静"边界成立才采信，避免
     /// 把右侧恰好是动画的内容当成滚动条。
     private func detectScrollbar(previous: CGImage, current: CGImage) {
-        defer { scrollbarDetected = true }
         let edgeWidth = 64
         guard let previousStrip = Self.grayEdgeStrip(image: previous, edgeWidth: edgeWidth),
               let currentStrip = Self.grayEdgeStrip(image: current, edgeWidth: edgeWidth),
@@ -788,6 +1181,7 @@ final class ScrollCaptureController {
         let width = previousStrip.width
         let height = previousStrip.height
         guard width > 20, height > 40 else { return }
+        scrollbarDetected = true
 
         let maxScan = min(50, width / 2)
         let sampleStart = height / 5
@@ -885,51 +1279,6 @@ final class ScrollCaptureController {
         }
     }
 
-    /// 灰度五分区投票兜底（Vision 不可用时）：Rune 自有实现。
-    /// 手动模式无先验（平局取最小位移），自动模式带步长先验。
-    private func grayscaleFallbackDisplacement(
-        previousGray: GrayImage,
-        currentGray: GrayImage,
-        fullHeight: Int
-    ) -> Int? {
-        let preferredOffset: Int?
-        let preferredDirection: ScrollDirection?
-        if mode == .automatic {
-            if let lastSampledScrollRows {
-                preferredOffset = lastSampledScrollRows
-            } else {
-                preferredOffset = max(2, Int((
-                    CGFloat(automaticScrollStep) / CGFloat(fullHeight)
-                        * CGFloat(currentGray.height)
-                ).rounded()))
-            }
-            preferredDirection = lastScrollDirection ?? .down
-        } else {
-            preferredOffset = nil
-            preferredDirection = nil
-        }
-
-        guard let match = ScrollOverlapDetector.detectScroll(
-            previous: previousGray.pixels,
-            current: currentGray.pixels,
-            width: previousGray.width,
-            height: previousGray.height,
-            preferredOffset: preferredOffset,
-            preferredDirection: preferredDirection
-        ) else { return nil }
-
-        if match.offsetRows == 0 {
-            lastSampledScrollRows = nil
-            return 0
-        }
-        let fullRows = max(1, Int((
-            CGFloat(match.offsetRows) / CGFloat(currentGray.height) * CGFloat(fullHeight)
-        ).rounded()))
-        lastSampledScrollRows = match.offsetRows
-        lastScrollDirection = match.direction
-        return match.direction == .down ? fullRows : -fullRows
-    }
-
     private var targetRectCenter: CGPoint? {
         targetRect.map { CGPoint(x: $0.midX, y: $0.midY) }
     }
@@ -973,14 +1322,14 @@ final class ScrollCaptureController {
         cursorHiddenOnDisplay = nil
     }
 
-    private func postAutomaticScroll(multiplier: Int32 = 1) {
+    private func postAutomaticScroll(multiplier: Int32 = 1, step: Int32? = nil) {
         guard let center = targetRectCenter else { return }
         let source = CGEventSource(stateID: .hidSystemState)
         guard let event = CGEvent(
             scrollWheelEvent2Source: source,
             units: .pixel,
             wheelCount: 1,
-            wheel1: -automaticScrollStep * multiplier,
+            wheel1: -(step ?? automaticScrollStep) * multiplier,
             wheel2: 0,
             wheel3: 0
         ) else { return }
@@ -990,10 +1339,16 @@ final class ScrollCaptureController {
         // 目标应用已在开始和恢复时激活，光标也已锁到选区中心，因此从 HID
         // 事件流投递，和真实触控板/鼠标滚动的命中路径一致。
         event.post(tap: .cghidEventTap)
+        let postedPoints = (step ?? automaticScrollStep) * multiplier
+        automaticCommandedPointsSinceAnchor = min(
+            Int32.max - postedPoints,
+            automaticCommandedPointsSinceAnchor
+        ) + postedPoints
     }
 
     private func switchToManual(reason: String) {
         mode = .manual
+        automaticCommandedPointsSinceAnchor = 0
         unchangedRounds = 0
         mismatchRounds = 0
         restoreAutomaticCursor()
@@ -1005,6 +1360,33 @@ final class ScrollCaptureController {
         let width: Int
         let height: Int
         let pixels: [UInt8]
+    }
+
+    private static func bodyIsStationaryIgnoringBorders(
+        previous: GrayImage,
+        current: GrayImage
+    ) -> Bool {
+        guard previous.width == current.width,
+              previous.height == current.height else { return false }
+        let width = previous.width
+        let contentWidth = width - max(8, width / 16)
+        // 原始帧实测：延迟卡片只在底栏上方 36px 窄带露出，正文没位移。
+        // 跳过底部 8% 与右缘滚动条，同时仍检查约 90% 的主体内容。
+        let contentHeight = previous.height - max(8, previous.height / 12)
+        guard contentWidth > 0, contentHeight > 0 else { return false }
+        let allowedChangedPixels = max(4, contentWidth * contentHeight / 2_000)
+        var changedPixels = 0
+        for row in 0..<contentHeight {
+            let rowOffset = row * width
+            for column in 0..<contentWidth {
+                let index = rowOffset + column
+                if abs(Int(previous.pixels[index]) - Int(current.pixels[index])) > 3 {
+                    changedPixels += 1
+                    if changedPixels > allowedChangedPixels { return false }
+                }
+            }
+        }
+        return true
     }
 
     private static func grayscale(_ image: CGImage) -> GrayImage? {
@@ -1030,8 +1412,9 @@ final class ScrollCaptureController {
     }
 
     private func renderSegments() -> CGImage? {
-        guard let first = segments.first else { return nil }
-        let totalHeight = segments.reduce(0) { $0 + $1.height }
+        let images = renderedSegments
+        guard let first = images.first else { return nil }
+        let totalHeight = images.reduce(0) { $0 + $1.height }
         guard let context = CGContext(
             data: nil,
             width: first.width,
@@ -1044,9 +1427,9 @@ final class ScrollCaptureController {
 
         // 注意：不翻 CTM。实测裸 CGContext 里 draw(image) 本来就是正立的，
         // 先翻再画会把长图上下颠倒（与跨屏拼接器同款 bug）。
-        // segments[0]=第一帧(顶部)，在 y-up 画布里从顶部往下排：
+        // 顶部固定栏、内容段、底部固定栏依次排列，各栏只画一次。
         var yUp: CGFloat = CGFloat(totalHeight)
-        for segment in segments {
+        for segment in images {
             let h = CGFloat(segment.height)
             yUp -= h
             context.draw(segment, in: CGRect(x: 0, y: yUp, width: CGFloat(first.width), height: h))
@@ -1079,11 +1462,12 @@ final class ScrollCaptureController {
 
     /// 实时预览只合成低分辨率缩略图，避免每次追加都重建数万像素高的成片。
     private func updateLivePreview() {
-        guard let first = segments.first else {
+        let images = renderedSegments
+        guard let first = images.first else {
             livePreviewImage = nil
             return
         }
-        let totalHeight = segments.reduce(0) { $0 + $1.height }
+        let totalHeight = images.reduce(0) { $0 + $1.height }
         let maxWidth: CGFloat = 300
         let maxHeight: CGFloat = 860
         let scale = min(
@@ -1110,14 +1494,14 @@ final class ScrollCaptureController {
         var cumulativeRows = 0
         var previousTopRow = 0
         var segmentRows: [(top: Int, bottom: Int)] = []
-        segmentRows.reserveCapacity(segments.count)
-        for segment in segments {
+        segmentRows.reserveCapacity(images.count)
+        for segment in images {
             cumulativeRows += segment.height
             let topRow = min(height, Int((CGFloat(cumulativeRows) * scale).rounded()))
             segmentRows.append((previousTopRow, topRow))
             previousTopRow = topRow
         }
-        for (index, segment) in segments.enumerated() {
+        for (index, segment) in images.enumerated() {
             let rows = segmentRows[index]
             guard rows.bottom > rows.top else { continue }
             context.draw(
@@ -1149,6 +1533,11 @@ final class ScrollCaptureController {
         targetRect = nil
         targetProcessID = nil
         previousImage = nil
+        fixedBandsLocked = false
+        fixedTopPx = 0
+        fixedBottomPx = 0
+        fixedHeaderImage = nil
+        fixedFooterImage = nil
         segments.removeAll()
         tracker = nil
         lastScrollDirection = nil
@@ -1167,6 +1556,9 @@ final class ScrollCaptureController {
         hasObservedGrowth = false
         lastCaptureFailureDescription = nil
         lastSampledScrollRows = nil
+        automaticCommandedPointsSinceAnchor = 0
+        lastUnchangedWasExact = false
+        lastMismatchHadStationaryBody = false
         #if DEBUG
         auditOutputURL = nil
         #endif
@@ -1560,7 +1952,7 @@ private struct ScrollCaptureControlBarView: View {
 
             Button {
                 if controller.isAwaitingStart {
-                    controller.beginCapture()
+                    Task { await controller.beginCapture() }
                 } else {
                     Task { await controller.stop() }
                 }

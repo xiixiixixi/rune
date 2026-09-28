@@ -92,6 +92,19 @@ enum AnnotationTextMetrics {
     static let defaultFontName: String = "SF Pro"
     static let fontScale: CGFloat = 0.72
 
+    static func defaultCaptureFontSize(imagePixelWidth: CGFloat) -> CGFloat {
+        guard imagePixelWidth.isFinite else { return 18 }
+        return min(max((imagePixelWidth * 0.015).rounded(), 18), 44)
+    }
+
+    static func normalizedLineHeight(fontPixelSize: CGFloat, imagePixelHeight: CGFloat) -> CGFloat {
+        guard fontPixelSize.isFinite, fontPixelSize > 0,
+              imagePixelHeight.isFinite, imagePixelHeight > 0 else {
+            return defaultNormalizedLineHeight
+        }
+        return fontPixelSize / (imagePixelHeight * fontScale)
+    }
+
     static var textShadow: NSShadow {
         let shadow = NSShadow()
         shadow.shadowColor = NSColor.black.withAlphaComponent(0.2)

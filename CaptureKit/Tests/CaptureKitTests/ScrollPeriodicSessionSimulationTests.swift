@@ -176,4 +176,106 @@ import Testing
             newRows: tiny, boundaryRows: tail, insertion: .append
         ))
     }
+
+    @Test func guardRejectsLongPartialOverlapAtBottom() {
+        let page = texturedRows(count: 1_400)
+        let tail = Array(page[400..<1_000])
+        // 实际只新增 140 行，位移却高估为 420：条带前 280 行已在尾部。
+        let strip = Array(page[720..<1_140])
+        #expect(ScrollDuplicateGuard.isDuplicate(
+            newRows: strip, boundaryRows: tail, insertion: .append
+        ))
+    }
+
+    @Test func guardRejectsLongPartialOverlapAtTop() {
+        let page = texturedRows(count: 1_400)
+        let head = Array(page[140..<740])
+        // 向上补图时，条带后 280 行与已有长图开头重复。
+        let strip = Array(page[0..<420])
+        #expect(ScrollDuplicateGuard.isDuplicate(
+            newRows: strip, boundaryRows: head, insertion: .prepend
+        ))
+    }
+
+    @Test func guardDoesNotTrustBlankOrShortOverlap() {
+        let blank = [UInt8](repeating: 255, count: 24)
+        #expect(!ScrollDuplicateGuard.isDuplicate(
+            newRows: Array(repeating: blank, count: 420),
+            boundaryRows: Array(repeating: blank, count: 600),
+            insertion: .append
+        ))
+
+        let page = texturedRows(count: 1_400)
+        let tail = Array(page[400..<1_000])
+        let strip = Array(tail.suffix(32)) + Array(page[1_000..<1_388])
+        #expect(!ScrollDuplicateGuard.isDuplicate(
+            newRows: strip, boundaryRows: tail, insertion: .append
+        ))
+    }
+
+    @Test func guardUsesScaledScreenshotRows() {
+        // 1000px 高的画面缩成约 192 行；误判 420px ≈ 81 行，
+        // 其中 280px 的实际重叠仅 ≈ 54 行。
+        let page = texturedRows(count: 300)
+        let tail = Array(page[0..<192])
+        let appended = Array(page[138..<219])
+        #expect(appended.count == 81)
+        #expect(ScrollDuplicateGuard.isDuplicate(
+            newRows: appended, boundaryRows: tail, insertion: .append
+        ))
+
+        let head = Array(page[27..<219])
+        let prepended = Array(page[0..<81])
+        #expect(ScrollDuplicateGuard.isDuplicate(
+            newRows: prepended, boundaryRows: head, insertion: .prepend
+        ))
+
+        let blank = [UInt8](repeating: 255, count: 24)
+        #expect(!ScrollDuplicateGuard.isDuplicate(
+            newRows: Array(repeating: blank, count: 81),
+            boundaryRows: Array(repeating: blank, count: 192),
+            insertion: .append
+        ))
+    }
+
+    @Test func guardDoesNotMistakeScaledPeriodicCardsForOverlap() {
+        let cards = (0..<300).map { row in
+            (0..<24).map { column in
+                UInt8(truncatingIfNeeded: (row % 20) * 37 + column * 13 + (row % 20) * column * 7)
+            }
+        }
+        // 新内容有明显纹理，但每 20 行复现一次；多个长度都能对齐。
+        #expect(!ScrollDuplicateGuard.isDuplicate(
+            newRows: Array(cards[192..<273]),
+            boundaryRows: Array(cards[0..<192]),
+            insertion: .append
+        ))
+    }
+
+    @Test func guardDoesNotRejectAnExactlyPeriodicNewCard() {
+        let period = 20
+        func row(_ index: Int) -> [UInt8] {
+            (0..<24).map { column in
+                UInt8(truncatingIfNeeded: (index % period) * 17 + column * 23)
+            }
+        }
+        let boundary = (0..<192).map(row)
+        let genuinelyNew = (192..<272).map(row)
+        #expect(!ScrollDuplicateGuard.isDuplicate(
+            newRows: genuinelyNew,
+            boundaryRows: boundary,
+            insertion: .append
+        ))
+    }
+
+    private func texturedRows(count: Int) -> [[UInt8]] {
+        (0..<count).map { row in
+            (0..<24).map { column in
+                UInt8(truncatingIfNeeded:
+                    (row * 73 + column * 31 + row * column * 17 + (row / 97) * 59)
+                        ^ ((row / 256) * 137)
+                )
+            }
+        }
+    }
 }

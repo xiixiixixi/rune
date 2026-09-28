@@ -38,7 +38,7 @@ final class EditorModel {
     var redactionDensity: CGFloat = 0.55
 
     var textFontName: String = AnnotationTextMetrics.defaultFontName
-    var textFontSize: CGFloat = 48
+    var textFontSize: CGFloat = 24
     var textIsBold: Bool = true
     var textIsItalic: Bool = false
     var textIsUnderline: Bool = false
@@ -119,12 +119,17 @@ final class EditorModel {
         selectionRect = nil
         interaction = nil
         nextNumberedCircleValue = 1
+        textFontSize = 24
         history.reset()
         RedactionImageProcessor.removeAllCachedPreviewImages()
         statePath = AnnotationToolState.idle.path(for: selectedTool)
 
         // 1. 同步生成 512px 缩略图（ImageIO 降采样，很快），立即显示，避免界面空白/冻结
         guard let source = CGImageSourceCreateWithURL(rawURL as CFURL, nil) else { return }
+        if let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+           let pixelWidth = properties[kCGImagePropertyPixelWidth] as? NSNumber {
+            textFontSize = AnnotationTextMetrics.defaultCaptureFontSize(imagePixelWidth: CGFloat(truncating: pixelWidth))
+        }
         let thumbOptions: [CFString: Any] = [
             kCGImageSourceThumbnailMaxPixelSize: 512,
             kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -220,7 +225,7 @@ final class EditorModel {
             return
         }
 
-        beginDraftItem(at: point, within: annotationBounds(for: imageFrame, boundaryFrame: boundaryFrame))
+        beginDraftItem(at: point, within: annotationBounds(for: imageFrame, boundaryFrame: boundaryFrame), imageFrame: imageFrame)
     }
 
     func updateInteraction(to location: CGPoint, imageFrame: CGRect, boundaryFrame: CGRect) {
@@ -230,7 +235,7 @@ final class EditorModel {
 
         switch interaction {
         case .drawing(let startPoint):
-            updateDraftItem(from: startPoint, to: point, within: allowedBounds, lockAspectRatio: isAspectRatioLocked)
+            updateDraftItem(from: startPoint, to: point, within: allowedBounds, imageFrame: imageFrame, lockAspectRatio: isAspectRatioLocked)
         case .moving(let id, let startPoint, let originalItem):
             let delta = CGPoint(x: point.x - startPoint.x, y: point.y - startPoint.y)
             updateItem(id: id, item: originalItem.offsetBy(clampedDelta(delta, for: originalItem.bounds, within: allowedBounds)))
@@ -259,10 +264,13 @@ final class EditorModel {
 
         switch interaction {
         case .drawing(let startPoint):
-            updateDraftItem(from: startPoint, to: point, within: allowedBounds, lockAspectRatio: isAspectRatioLocked)
+            updateDraftItem(from: startPoint, to: point, within: allowedBounds, imageFrame: imageFrame, lockAspectRatio: isAspectRatioLocked)
 
             guard let item = draftItem,
-                  item.isRenderable(minimumSize: minimumItemSize, allowEmptyText: item.tool == .text) else {
+                  item.isRenderable(
+                    minimumSize: item.tool == .text ? 0.00001 : minimumItemSize,
+                    allowEmptyText: item.tool == .text
+                  ) else {
                 draftItem = nil
                 statePath = AnnotationToolState.idle.path(for: selectedTool)
                 return
@@ -372,22 +380,31 @@ final class EditorModel {
 
     func setTextViewContentSize(_ size: CGSize, for id: AnnotationItem.ID, imageFrame: CGRect, allowedBounds: CGRect) {
         guard interaction == nil else { return }
-        guard imageFrame.width > 0, imageFrame.height > 0 else { return }
+        guard imageFrame.width > 0, imageFrame.height > 0,
+              allowedBounds.width > 0, allowedBounds.height > 0,
+              let item = items.first(where: { $0.id == id && $0.tool == .text }) else { return }
         let normalizedWidth = size.width / imageFrame.width
         let normalizedHeight = size.height / imageFrame.height
-        let minW = AnnotationTextMetrics.minimumNormalizedWidth(lineHeight: items.first(where: { $0.id == id })?.textLineHeight ?? AnnotationTextMetrics.defaultNormalizedLineHeight, imageSize: imageSize)
-        updateItem(id: id) { item in
-            let newWidth = min(max(normalizedWidth, minW), allowedBounds.width)
-            let newHeight = min(max(normalizedHeight, item.textLineHeight), allowedBounds.height)
-            let maxX = max(allowedBounds.minX, allowedBounds.maxX - newWidth)
-            let maxY = max(allowedBounds.minY, allowedBounds.maxY - newHeight)
-            item.rect = CGRect(
-                x: min(max(item.rect.origin.x, allowedBounds.minX), maxX),
-                y: min(max(item.rect.origin.y, allowedBounds.minY), maxY),
-                width: newWidth,
-                height: newHeight
-            )
-        }
+        let minW = minimumTextWidthForOneGlyph(lineHeight: item.textLineHeight, imageFrame: imageFrame)
+        // 输入变长时保留首字锚点，靠边只预留一个字和首行的空间。
+        let minimumWidth = min(minW, allowedBounds.width)
+        let minimumHeight = min(item.textLineHeight, allowedBounds.height)
+        let x = min(max(item.rect.origin.x, allowedBounds.minX), allowedBounds.maxX - minimumWidth)
+        let y = min(max(item.rect.origin.y, allowedBounds.minY), allowedBounds.maxY - minimumHeight)
+        let availableWidth = max(0, allowedBounds.maxX - x)
+        let availableHeight = max(0, allowedBounds.maxY - y)
+        let nextRect = CGRect(
+            x: x,
+            y: y,
+            width: min(max(normalizedWidth, minW), availableWidth),
+            height: min(max(normalizedHeight, item.textLineHeight), availableHeight)
+        )
+        // AppKit 测量结果会在视图刷新后再次上报；同尺寸不写回，避免反复布局。
+        guard abs(nextRect.minX - item.rect.minX) * imageFrame.width > 0.25
+                || abs(nextRect.minY - item.rect.minY) * imageFrame.height > 0.25
+                || abs(nextRect.width - item.rect.width) * imageFrame.width > 0.25
+                || abs(nextRect.height - item.rect.height) * imageFrame.height > 0.25 else { return }
+        updateItem(id: id) { $0.rect = nextRect }
     }
 
     func commitTextEditing() {
@@ -644,14 +661,14 @@ final class EditorModel {
         statePath = AnnotationToolState.idle.path(for: selectedTool)
     }
 
-    private func beginDraftItem(at point: CGPoint, within allowedBounds: CGRect) {
+    private func beginDraftItem(at point: CGPoint, within allowedBounds: CGRect, imageFrame: CGRect) {
         let textLineHeight: CGFloat = imageSize.height > 0
             ? textFontSize / (imageSize.height * AnnotationTextMetrics.fontScale)
             : AnnotationTextMetrics.defaultNormalizedLineHeight
         let itemRect: CGRect
         switch selectedTool {
         case .select: return
-        case .text: itemRect = defaultTextRect(at: point, lineHeight: textLineHeight, within: allowedBounds)
+        case .text: itemRect = defaultTextRect(at: point, lineHeight: textLineHeight, within: allowedBounds, imageFrame: imageFrame)
         case .numberedCircle: itemRect = AnnotationNumberedCircleMetrics.defaultRect(centeredAt: point, imageSize: imageSize, within: allowedBounds)
         case .rectangle, .filledRectangle, .ellipse, .line, .arrow, .freehand, .pixelate, .blur, .spotlight:
             itemRect = CGRect(origin: point, size: .zero)
@@ -668,7 +685,7 @@ final class EditorModel {
         statePath = AnnotationToolState.drawing.path(for: selectedTool)
     }
 
-    private func updateDraftItem(from startPoint: CGPoint, to point: CGPoint, within allowedBounds: CGRect, lockAspectRatio: Bool) {
+    private func updateDraftItem(from startPoint: CGPoint, to point: CGPoint, within allowedBounds: CGRect, imageFrame: CGRect, lockAspectRatio: Bool) {
         guard var draftItem else { return }
         switch selectedTool {
         case .select: break
@@ -687,7 +704,7 @@ final class EditorModel {
             let aspectRatio = selectedTool.supportsAspectLock && lockAspectRatio ? squareAspectRatio : nil
             draftItem.rect = rect(from: startPoint, to: point, aspectRatio: aspectRatio)
         case .text:
-            draftItem.rect = defaultTextRect(at: startPoint, lineHeight: draftItem.textLineHeight, within: allowedBounds)
+            draftItem.rect = defaultTextRect(at: startPoint, lineHeight: draftItem.textLineHeight, within: allowedBounds, imageFrame: imageFrame)
         }
         self.draftItem = draftItem
     }
@@ -869,16 +886,31 @@ final class EditorModel {
         }
     }
 
-    private func defaultTextRect(at point: CGPoint, lineHeight: CGFloat = AnnotationTextMetrics.defaultNormalizedLineHeight, within allowedBounds: CGRect) -> CGRect {
+    private func defaultTextRect(at point: CGPoint, lineHeight: CGFloat, within allowedBounds: CGRect, imageFrame: CGRect) -> CGRect {
         let height = lineHeight
-        let width = AnnotationTextMetrics.minimumNormalizedWidth(lineHeight: height, imageSize: imageSize)
-        let maxX = max(allowedBounds.minX, allowedBounds.maxX - width)
-        let maxY = max(allowedBounds.minY, allowedBounds.maxY - height)
+        let width = minimumTextWidthForOneGlyph(lineHeight: height, imageFrame: imageFrame)
+        // 最多为首字和首行避开边界，不为整段文字框移动点击锚点。
+        let minimumWidth = min(width, allowedBounds.width)
+        let minimumHeight = min(height, allowedBounds.height)
+        let x = min(max(point.x, allowedBounds.minX), allowedBounds.maxX - minimumWidth)
+        let y = min(max(point.y, allowedBounds.minY), allowedBounds.maxY - minimumHeight)
         return CGRect(
-            x: min(max(point.x, allowedBounds.minX), maxX),
-            y: min(max(point.y, allowedBounds.minY), maxY),
-            width: width, height: height
+            x: x,
+            y: y,
+            width: min(width, max(0, allowedBounds.maxX - x)),
+            height: min(height, max(0, allowedBounds.maxY - y))
         )
+    }
+
+    private func minimumTextWidthForOneGlyph(lineHeight: CGFloat, imageFrame: CGRect) -> CGFloat {
+        let baseline = AnnotationTextMetrics.minimumNormalizedWidth(lineHeight: lineHeight, imageSize: imageSize)
+        let outputWidth = imageSize.width > 0
+            ? AnnotationTextMetrics.renderedFontSize(lineHeight: lineHeight, imagePixelHeight: imageSize.height) * 1.2 / imageSize.width
+            : 0
+        let previewWidth = imageFrame.width > 0
+            ? AnnotationTextMetrics.viewFontSize(lineHeight: lineHeight, imageFrameHeight: imageFrame.height) * 1.2 / imageFrame.width
+            : 0
+        return max(baseline, max(outputWidth, previewWidth))
     }
 
     private func clampedDelta(_ delta: CGPoint, for bounds: CGRect, within allowedBounds: CGRect) -> CGPoint {

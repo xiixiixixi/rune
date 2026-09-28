@@ -88,6 +88,46 @@ import Testing
         #expect(result?.offsetRows == offset)
     }
 
+    @Test func maximumOffsetKeepsPeriodicAliasOutsideAutomaticScrollRange() {
+        // 稀疏卡片每 60 行重复，实际只滚 20 行；20 和 80 行都能对上。
+        // 旧步长若恰好接近 80，软先验会偏向远处的重复卡片。
+        let previous = sparsePeriodicImage(period: 60, phase: 0)
+        let current = sparsePeriodicImage(period: 60, phase: 20)
+        let unrestricted = ScrollOverlapDetector.detectScroll(
+            previous: previous, current: current,
+            width: width, height: height,
+            preferredOffset: 80, preferredDirection: .down
+        )
+        #expect(unrestricted?.offsetRows == 80)
+
+        let bounded = ScrollOverlapDetector.detectScroll(
+            previous: previous, current: current,
+            width: width, height: height,
+            preferredOffset: 80, preferredDirection: .down,
+            maximumOffset: 30
+        )
+        #expect(bounded?.direction == .down)
+        #expect(bounded?.offsetRows == 20)
+    }
+
+    @Test func maximumOffsetRejectsFramesWithoutPlausibleOverlap() {
+        let previous = image(startRow: 0)
+        let current = image(startRow: 78)
+        let unrestricted = ScrollOverlapDetector.detectScroll(
+            previous: previous, current: current,
+            width: width, height: height
+        )
+        #expect(unrestricted?.offsetRows == 78)
+
+        let bounded = ScrollOverlapDetector.detectScroll(
+            previous: previous, current: current,
+            width: width, height: height,
+            preferredOffset: 78, preferredDirection: .down,
+            maximumOffset: 25
+        )
+        #expect(bounded == nil)
+    }
+
     // MARK: - 向上（聊天记录补历史）
 
     @Test func detectsRowsAddedBeforeScrollingUp() {
@@ -282,6 +322,17 @@ import Testing
         (0..<height).flatMap { y in
             (0..<width).map { x in
                 UInt8(truncatingIfNeeded: ((y + phase) % period) * 4 + x % 7)
+            }
+        }
+    }
+
+    private func sparsePeriodicImage(period: Int, phase: Int) -> [UInt8] {
+        (0..<height).flatMap { y in
+            (0..<width).map { x in
+                let cardRow = (y + phase) % period
+                return cardRow < 4
+                    ? UInt8(truncatingIfNeeded: cardRow * 41 + x * 17)
+                    : UInt8(236)
             }
         }
     }

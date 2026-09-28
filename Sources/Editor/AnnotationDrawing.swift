@@ -7,7 +7,7 @@ enum AnnotationDrawing {
 
     private static let ciContext = CIContext(options: [.cacheIntermediates: false])
 
-    static func draw(_ items: [AnnotationItem], in ctx: CGContext, imageRect: CGRect, fullCanvasRect: CGRect, sourceImage: CGImage?, flipped: Bool = false) {
+    static func draw(_ items: [AnnotationItem], in ctx: CGContext, imageRect: CGRect, fullCanvasRect: CGRect, sourceImage: CGImage?, flipped: Bool = false, minimumTextFontSize: CGFloat = AnnotationTextMetrics.minimumFontSize) {
         ctx.setLineCap(.round)
         ctx.setLineJoin(.round)
 
@@ -81,7 +81,7 @@ enum AnnotationDrawing {
                     ctx.restoreGState()
 
                 case .text:
-                    drawText(item, in: renderedRect(item.bounds, in: imageRect, flipped: flipped), imageHeight: imageRect.height, context: ctx, flipped: flipped)
+                    drawText(item, in: renderedRect(item.bounds, in: imageRect, flipped: flipped), imageHeight: imageRect.height, context: ctx, flipped: flipped, minimumFontSize: minimumTextFontSize)
 
                 case .line:
                     guard let first = item.points.first,
@@ -229,11 +229,12 @@ enum AnnotationDrawing {
         CGPoint(x: (lhs.x + rhs.x) / 2, y: (lhs.y + rhs.y) / 2)
     }
 
-    private static func drawText(_ item: AnnotationItem, in rect: CGRect, imageHeight: CGFloat, context: CGContext, flipped: Bool = false) {
+    private static func drawText(_ item: AnnotationItem, in rect: CGRect, imageHeight: CGFloat, context: CGContext, flipped: Bool = false, minimumFontSize: CGFloat = AnnotationTextMetrics.minimumFontSize) {
         let text = item.text.trimmingCharacters(in: .newlines)
-        guard !text.isEmpty, rect.width > 1, rect.height > 1 else { return }
+        let minimumExtent: CGFloat = minimumFontSize < 1 ? 0.1 : 1
+        guard !text.isEmpty, rect.width > minimumExtent, rect.height > minimumExtent else { return }
 
-        let fontSize = AnnotationTextMetrics.renderedFontSize(lineHeight: item.textLineHeight, imagePixelHeight: imageHeight)
+        let fontSize = max(item.textLineHeight * imageHeight * AnnotationTextMetrics.fontScale, minimumFontSize)
         let font = item.resolvedFont(size: fontSize)
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = item.textAlignment

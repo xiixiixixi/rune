@@ -20,6 +20,31 @@ import Testing
         #expect(resolved == 146)
     }
 
+    @Test func equallyPlausiblePeriodicAliasDoesNotOverrideRealScroll() {
+        // 卡片每 250 行重复一次：真实滚动 135 行时，配准也可能报 385 行。
+        // 两种配准假设的画面得分同样好，且 385 行低于单帧跳跃上限；
+        // 因而只能靠两路位移是否一致来避免把旧内容当成 385 行新内容。
+        let gray = ScrollMatch(direction: .down, offsetRows: 27, score: 3) // 135 行
+        let periodicAlias = ScrollDisplacementResolver.resolve(
+            visionRows: 385,
+            grayMatch: gray,
+            visionHypothesisScore: 3,
+            grayHeight: grayHeight,
+            fullHeight: fullHeight
+        )
+        #expect(periodicAlias == 135)
+
+        // 在同一帧对上配准若报出接近真实位移的 139 行，应保留其精度。
+        let preciseMatch = ScrollDisplacementResolver.resolve(
+            visionRows: 139,
+            grayMatch: gray,
+            visionHypothesisScore: 3,
+            grayHeight: grayHeight,
+            fullHeight: fullHeight
+        )
+        #expect(preciseMatch == 139)
+    }
+
     @Test func visionLockedToCardPeriodFallsBackToVote() {
         // 回归主场景:真实滚了 140,配准锁到 140+周期 380 = 520;
         // 投票给出 140 → 必须信投票,不信配准
