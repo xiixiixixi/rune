@@ -110,6 +110,11 @@ final class ScrollCaptureController {
     #endif
     /// 动态网页的图片懒加载通常会持续 1–3 秒；这段时间只原地重抓，不继续滚。
     private let maximumAutomaticMismatchRounds = 12
+    /// 自动滚动一步的距离（点）。
+    ///
+    /// 实测：220 点会让区间跟踪判定"这一帧接不上"而回退，整页会丢两千像素；
+    /// 140 点在 700 点视口下仍留 560 点重叠（80%），配准稳定、不丢内容。
+    /// 提速靠"少抓帧 + 更快的到底确认"，不靠加大步长。
     private let automaticScrollStep: Int32 = 140
     /// capcap 同款帧数预算。
     private let maximumFrames = 100
@@ -329,7 +334,7 @@ final class ScrollCaptureController {
 
         // capcap 式收尾补帧：最后一次滚动状态不遗漏（无新增时为无害空转）
         if previousImage != nil {
-            let settled = await captureSettledFrame()
+            let settled = await captureSettledFrame(previous: previousImage)
             if let settled {
                 _ = await captureNextFrame(stabilized: settled, allowWhileFinishing: true)
             }
@@ -484,7 +489,7 @@ final class ScrollCaptureController {
                     }
                     // capcap 式稳定门：连续两次抓帧字节签名完全相同才算停稳
                     // （平滑滚动/懒加载期间只观察不拼接）。
-                    let stabilized = await self.captureSettledFrame()
+                    let stabilized = await self.captureSettledFrame(previous: self.previousImage)
                     guard !Task.isCancelled, self.isActive else { break }
                     result = await self.captureNextFrame(stabilized: stabilized)
                 } else {
@@ -533,7 +538,7 @@ final class ScrollCaptureController {
                     // 位移上限会膨胀到整屏，周期卡片又能造成跳页。
                     self.automaticCommandedPointsSinceAnchor = 0
                     self.unchangedRounds += 1
-                    if self.hasObservedGrowth, self.unchangedRounds >= 5 {
+                    if self.hasObservedGrowth, self.unchangedRounds >= 3 {
                         if !self.endVerificationAttempted {
                             // Snapboard 式到底验证：先补一次更长的滚动再确认，
                             // 避免网页加载慢被误判到底而提前收工。
@@ -553,15 +558,15 @@ final class ScrollCaptureController {
                             let elapsed = endVerificationStartedAt.map {
                                 Date().timeIntervalSince($0)
                             } ?? 0
-                            let nextProbeTime = Double(endVerificationProbeCount + 1) * 1.5
-                            if endVerificationProbeCount < 4, elapsed >= nextProbeTime {
+                            let nextProbeTime = Double(endVerificationProbeCount + 1) * 1.0
+                            if endVerificationProbeCount < 3, elapsed >= nextProbeTime {
                                 self.postAutomaticScroll()
                                 endVerificationProbeCount += 1
                                 retryWithoutScrolling = true
                                 self.statusMessage = "正在检查页面下方是否有新内容…"
                                 continue
                             }
-                            if endVerificationProbeCount >= 4, elapsed >= 8.0 {
+                            if endVerificationProbeCount >= 3, elapsed >= 4.0 {
                                 await self.stop()
                                 return
                             }
@@ -569,7 +574,7 @@ final class ScrollCaptureController {
                             self.statusMessage = "正在等待页面完成加载…"
                         }
                     }
-                    if !self.hasObservedGrowth, self.unchangedRounds >= 5 {
+                    if !self.hasObservedGrowth, self.unchangedRounds >= 4 {
                         self.switchToManual(
                             reason: "目标应用没有响应自动滚动，已切到手动模式"
                         )
@@ -673,41 +678,101 @@ final class ScrollCaptureController {
         }
     }
 
-    /// capcap 式稳定帧：连续两次抓帧的**字节签名完全相同**才算页面停稳
-    /// （12→80ms 几何退避，最多 20 轮 ≈ 1s）。比近似分数严格得多——
-    /// 合成器还在画任何东西都瞒不过逐字节比对。超时返回最后一帧，
-    /// 仍须通过两套位移证据和重叠区校验才能拼接。
-    private func captureSettledFrame() async -> CGImage? {
+    /// 画面变化量阈值：两张图"看起来一样"的最大中位行差（0–255）。
+    ///
+    /// 滚动时整屏内容换位，每一行都变了 → 中位行差很大；
+    /// 停下来之后只剩一小块在动（直播红点、轮播图、光标、懒加载占位），
+    /// 受影响的行只占少数 → 中位行差几乎为 0。
+    /// 用中位数而不是均值/逐字节比对，就是为了让"局部动画"不再冒充"页面在滚"。
+    private static let quietMotionThreshold: Double = 2.0
+    /// 运动探针缩略图宽度。小到可以当帧率工具用，大到足以分辨整屏换位。
+    private static let motionProbeWidth = 96
+
+    /// 两帧之间的"画面变化量"：逐行平均绝对差的中位数（0–255）。
+    ///
+    /// 中位数是这里的关键：均值会被一小块动画拉高（中位数不会），
+    /// 逐字节相等又会被任何一个像素变化否掉。
+    private static func medianRowDifference(_ previous: GrayImage, _ current: GrayImage) -> Double {
+        guard previous.width == current.width,
+              previous.height == current.height,
+              previous.width > 0, previous.height > 0 else { return 255 }
+        var rowDifferences: [Double] = []
+        rowDifferences.reserveCapacity(previous.height)
+        for row in 0..<previous.height {
+            let offset = row * previous.width
+            var total = 0
+            for column in 0..<previous.width {
+                let index = offset + column
+                total += abs(Int(previous.pixels[index]) - Int(current.pixels[index]))
+            }
+            rowDifferences.append(Double(total) / Double(previous.width))
+        }
+        rowDifferences.sort()
+        let middle = rowDifferences.count / 2
+        if rowDifferences.count % 2 == 1 {
+            return rowDifferences[middle]
+        }
+        return (rowDifferences[middle - 1] + rowDifferences[middle]) / 2
+    }
+
+    /// 两张图是否"看起来一样"（只有局部小动画在动）。
+    static func framesLookIdentical(_ lhs: CGImage, _ rhs: CGImage) -> Bool {
+        guard let left = grayscale(lhs, width: motionProbeWidth),
+              let right = grayscale(rhs, width: motionProbeWidth) else { return false }
+        return medianRowDifference(left, right) <= quietMotionThreshold
+    }
+
+    /// 停稳帧：按**画面变化量**判断页面停下没有。
+    ///
+    /// 旧判据是"连续两帧字节完全相同"——比任何真实网页都严格：直播红点、
+    /// 轮播图、光标、懒加载占位，任何一处动画都会让画面永远不"完全相同"，
+    /// 于是每滚一步都要把 20 轮预算全部耗光（实测一步 2–3 秒），最后交出
+    /// 一帧滚到一半的脏画面，而且到底后也认不出"已经到底"，
+    /// 只能甩一句"页面持续变化"让用户自己点完成。
+    ///
+    /// 现在改成和飞书一个思路：滚动时整屏在动（变化量大），停下后只有一小块
+    /// 在闪（变化量极小）。用中位行差当停稳判据，局部动画不再冒充"还在滚"。
+    ///
+    /// 第一帧拿上一段定格帧当基准：画面完全没动（变化量为 0）就直接收工，
+    /// 这是"已经到底"的信号，顺带省掉一次抓帧——底部确认因此快得多。
+    private func captureSettledFrame(previous: CGImage?) async -> CGImage? {
         guard let targetRect else { return nil }
-        var previousSignature: Data?
+        var previousProbe = previous.flatMap { Self.grayscale($0, width: Self.motionProbeWidth) }
         var lastFrame: CGImage?
-        var waitMilliseconds = 12
-        for _ in 0..<20 {
+        var quietRounds = 0
+        var waitMilliseconds = 16
+        // 预算从 20 轮降到 16 轮：真页面停稳只需要 2–3 轮，
+        // 剩下的余量留给"滚不动"的情况去走到底确认流程。
+        for _ in 0..<16 {
             guard !Task.isCancelled else { return lastFrame }
             guard let frame = try? await engine.capture(.region(targetRect)).image else {
                 try? await Task.sleep(for: .milliseconds(30))
                 continue
             }
-            guard let signature = Self.pixelSignature(frame) else {
+            guard let probe = Self.grayscale(frame, width: Self.motionProbeWidth) else {
                 lastFrame = frame
                 try? await Task.sleep(for: .milliseconds(waitMilliseconds))
-                waitMilliseconds = min(waitMilliseconds * 3 / 2, 80)
+                waitMilliseconds = min(waitMilliseconds * 3 / 2, 60)
                 continue
             }
-            if let previousSignature, previousSignature == signature {
-                return frame
+            if let previousProbe {
+                let motion = Self.medianRowDifference(previousProbe, probe)
+                if motion <= Self.quietMotionThreshold {
+                    quietRounds += 1
+                    // 变化量为 0 = 两帧看起来一模一样 = 页面已经停稳
+                    // （只剩个别像素在动，中位行差仍是 0）。
+                    // 差一点安静 = 还在收尾，再等一轮确认。
+                    if quietRounds >= 2 || motion < 0.05 { return frame }
+                } else {
+                    quietRounds = 0
+                }
             }
-            previousSignature = signature
+            previousProbe = probe
             lastFrame = frame
             try? await Task.sleep(for: .milliseconds(waitMilliseconds))
-            waitMilliseconds = min(waitMilliseconds * 3 / 2, 80)
+            waitMilliseconds = min(waitMilliseconds * 3 / 2, 60)
         }
         return lastFrame
-    }
-
-    /// CGImage 原始像素字节——确定性的逐帧签名。
-    private static func pixelSignature(_ image: CGImage) -> Data? {
-        image.dataProvider?.data as Data?
     }
 
     /// 右缘 `edgeWidth` 像素、1:1 灰度条带（滚动条检测需要列级分辨率，
@@ -895,12 +960,10 @@ final class ScrollCaptureController {
                 previous: previousFullGray,
                 current: currentFullGray
             )
-            if let previousSignature = Self.pixelSignature(previousImage),
-               let currentSignature = Self.pixelSignature(nextImage) {
-                lastUnchangedWasExact = previousSignature == currentSignature
-            } else {
-                lastUnchangedWasExact = false
-            }
+            // "画面看起来一样"而不是"逐字节一样"：动画页滚到底时，两帧只有
+            // 红点/轮播在变，用旧的逐字节判据会永远认不出"已经到底"，
+            // 只能甩一句"页面持续变化"让用户自己点完成。
+            lastUnchangedWasExact = Self.framesLookIdentical(previousImage, nextImage)
 
             // 只在第一段内容尚未拼入时确定固定栏。一旦改变视口高度，既有
             // 区间坐标就会失效，所以不能在截到一半后再重新裁切。
@@ -1062,8 +1125,22 @@ final class ScrollCaptureController {
                 }
             }
             guard displacement != 0 else { return .unchanged }
-            let minimumNewRows = max(8, currentContent.height / 200)
+            // "位移小得不像一次滚动"= 页面已经到底，只够橡皮筋回弹一点点。
+            // 自动模式下门槛取指令步长的三分之一：页面回弹 11 像素（≈5 点）
+            // 却按 140 点去滚动时，它不是"滚动了"，而是"到底了"——必须走
+            // 到底确认流程自动收工，而不是当成一次滚动去配准、最后报
+            // "页面变化太快"。旧门槛只有 8 像素（4 点），回弹一下就被误判。
+            let minimumNewRows: Int
+            if mode == .automatic {
+                let commandedFullRows = Int((CGFloat(commandedPoints) * scaleFactor).rounded())
+                minimumNewRows = max(12, commandedFullRows / 3)
+            } else {
+                minimumNewRows = max(8, currentContent.height / 200)
+            }
             guard abs(displacement) >= minimumNewRows else { return .unchanged }
+            Self.logger.debug(
+                "Resolved displacement rows=\(displacement, privacy: .public) vision=\(visionRows ?? 0, privacy: .public) gray=\(grayMatch?.offsetRows ?? -1, privacy: .public) preferred=\(preferredOffset ?? -1, privacy: .public) max=\(maximumAutomaticGrayRows ?? -1, privacy: .public)"
+            )
 
             // 无论仲裁最终采用哪一种位移，实际重叠区都必须对得上。
             func overlapScoreFor(_ candidate: Int) -> Double? {

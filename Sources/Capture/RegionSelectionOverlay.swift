@@ -49,6 +49,23 @@ final class RegionSelectionOverlay {
     private var frontmostSource: CaptureSource?
     /// 模式条当前选中的模式。选区途中可改，松手时生效。
     private var selectedMode: CaptureMode = .region
+    /// 窗口身份表（窗口 ID → 属于哪个 App）。由 ScreenCaptureKit 清单解析。
+    private var windowIdentities: [CGWindowID: WindowIdentity] = [:]
+    /// 窗口清单周期刷新用的定时器。
+    private var windowRefreshTimer: Timer?
+    /// 各屏选区视图（刷新时回填窗口清单）。
+    private var selectionViews: [(screen: NSScreen, view: SelectionView)] = []
+
+    /// 系统层浮层不算候选窗口：控制中心、Dock、通知中心会在唤醒截图时
+    /// 盖在最上面，认成它们等于没认窗口。
+    static let ignoredSystemBundleIDs: Set<String> = [
+        "com.apple.controlcenter",
+        "com.apple.dock",
+        "com.apple.loginwindow",
+        "com.apple.notificationcenterui",
+        "com.apple.systemuiserver",
+        "com.apple.WindowManager",
+    ]
 
     /// M1 §3.3：选区前先抓冻结帧。冻结帧作为 overlay 背景，使选区时屏幕内容不变化。
     private let freezeEngine = SCKStillCaptureBackend()
@@ -123,6 +140,10 @@ final class RegionSelectionOverlay {
         // ② 静帧 + 窗口清单先抓（此刻屏幕状态未被打扰），抓完回填各屏视图
         await fetchOverlayData(for: views)
 
+        // ②' 之后开着窗口清单刷新：唤醒之后新开的窗口/弹出的菜单也要能认。
+        selectionViews = views
+        startWindowRefresh()
+
         // ③ 静帧到手才接管焦点（此刻真菜单即使收起，浮层上显示的仍是
         // 收起前的定格画面）；激活后 Esc 取消也才可用
         NSApp.activate(ignoringOtherApps: true)
@@ -141,6 +162,97 @@ final class RegionSelectionOverlay {
         }
     }
 
+    /// 窗口身份（这个窗口属于哪个 App）。
+    ///
+    /// CGWindowList 只给进程号，自己用 NSRunningApplication 反查会把
+    /// 辅助进程（com.google.Chrome.helper 之类）当成独立 App，
+    /// 标签就写成 "Google Chrome Helper"。ScreenCaptureKit 的清单会
+    /// 把辅助进程归到主应用，所以身份一律由它解析。
+    struct WindowIdentity: Sendable {
+        let bundleID: String
+        let applicationName: String
+        let title: String?
+        let processID: pid_t
+    }
+
+    /// 现查的窗口清单：几何 + 前后顺序 + 是否还活着。
+    ///
+    /// 不用 ScreenCaptureContent 那份保温缓存（最长 30 秒）：用户**刚打开**
+    /// 的窗口、刚弹出的菜单根本不在里面——唤醒截图时高亮会认成后面那层
+    /// 的旧窗口，就是这个原因。
+    ///
+    /// CGWindowList 的返回顺序就是屏幕上从前往后 → 命中时取第一个即可。
+    static func liveWindowCandidates(
+        identities: [CGWindowID: WindowIdentity],
+        myBundleID: String,
+        ignoredBundleIDs: Set<String>
+    ) -> [WindowCandidate] {
+        let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        guard let infos = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
+            return []
+        }
+        var bundleIDByPID: [pid_t: String] = [:]
+        var candidates: [WindowCandidate] = []
+        for info in infos {
+            guard let number = info[kCGWindowNumber as String] as? NSNumber else { continue }
+            let windowID = CGWindowID(number.uint32Value)
+            let layer = (info[kCGWindowLayer as String] as? NSNumber)?.intValue ?? 0
+            guard (0...20).contains(layer) else { continue }
+            let alpha = (info[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 1
+            guard alpha > 0.05 else { continue }
+            guard let boundsDict = info[kCGWindowBounds as String] as? [String: Any],
+                  let bounds = CGRect(dictionaryRepresentation: boundsDict as CFDictionary) else { continue }
+            guard bounds.width >= 60, bounds.height >= 40 else { continue }
+            let pid = (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value ?? 0
+            guard pid > 0 else { continue }
+
+            let identity = identities[windowID]
+            let bundleID: String
+            if let identity {
+                bundleID = identity.bundleID
+            } else {
+                // 身份表里没有的窗口（刚弹出来的）：退到进程号反查。
+                if let cached = bundleIDByPID[pid] {
+                    bundleID = cached
+                } else {
+                    let resolved = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier ?? ""
+                    bundleIDByPID[pid] = resolved
+                    bundleID = resolved
+                }
+            }
+            guard !bundleID.isEmpty,
+                  bundleID != myBundleID,
+                  !ignoredBundleIDs.contains(bundleID) else { continue }
+            let ownerName = (info[kCGWindowOwnerName as String] as? String) ?? ""
+            let source = CaptureSource(
+                bundleIdentifier: bundleID,
+                applicationName: identity?.applicationName ?? ownerName,
+                windowTitle: identity?.title,
+                processID: pid
+            )
+            candidates.append(WindowCandidate(id: windowID, source: source, cgFrame: bounds))
+        }
+        return candidates
+    }
+
+    /// 现查 ScreenCaptureKit 清单，把窗口 ID 解析成应用身份。
+    static func resolveWindowIdentities(
+        from content: SCShareableContent
+    ) -> [CGWindowID: WindowIdentity] {
+        var map: [CGWindowID: WindowIdentity] = [:]
+        for window in content.windows {
+            guard let app = window.owningApplication else { continue }
+            let title = window.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+            map[window.windowID] = WindowIdentity(
+                bundleID: app.bundleIdentifier ?? "",
+                applicationName: app.applicationName,
+                title: (title?.isEmpty == false) ? title : nil,
+                processID: app.processID
+            )
+        }
+        return map
+    }
+
     /// 抓定格帧（每屏并行）+ 窗口清单，抓完回填 SelectionView。
     private func fetchOverlayData(for views: [(screen: NSScreen, view: SelectionView)]) async {
         // 从共享保温缓存取屏幕清单（启动时常驻预热已焐热）：窗口清单和悬停
@@ -149,77 +261,18 @@ final class RegionSelectionOverlay {
         let shareableContent = (try? await freezeEngine.shareableContent())?.content
         let myBundleID = Bundle.main.bundleIdentifier ?? ""
 
-        // SCShareableContent.windows 没有承诺按前后层级排列。真正的窗口层级来自
-        // CGWindowListCopyWindowInfo：返回顺序就是屏幕上从前到后。
-        let cgWindowInfo = CGWindowListCopyWindowInfo(
-            [.optionOnScreenOnly, .excludeDesktopElements],
-            kCGNullWindowID
-        ) as? [[CFString: Any]] ?? []
-        var zOrderByWindowID: [CGWindowID: Int] = [:]
-        var layerByWindowID: [CGWindowID: Int] = [:]
-        var alphaByWindowID: [CGWindowID: CGFloat] = [:]
-        for (index, info) in cgWindowInfo.enumerated() {
-            guard let number = info[kCGWindowNumber] as? NSNumber else { continue }
-            let id = CGWindowID(number.uint32Value)
-            zOrderByWindowID[id] = index
-            layerByWindowID[id] = (info[kCGWindowLayer] as? NSNumber)?.intValue ?? 0
-            alphaByWindowID[id] = (info[kCGWindowAlpha] as? NSNumber).map {
-                CGFloat(truncating: $0)
-            } ?? 1
-        }
+        // 系统层窗口一律不算候选：控制中心、Dock、通知中心这些浮层
+        // 会在唤醒截图时盖在最上面，认成它们等于没认。
+        let ignoredSystemBundleIDs = Self.ignoredSystemBundleIDs
 
-        let ignoredSystemBundleIDs: Set<String> = [
-            "com.apple.controlcenter",
-            "com.apple.dock",
-            "com.apple.loginwindow",
-            "com.apple.notificationcenterui",
-            "com.apple.systemuiserver",
-            "com.apple.WindowManager",
-        ]
-
-        // 窗口候选（SCWindow.frame 为 CG 坐标：主屏左上原点、y 向下）
-        var candidates: [WindowCandidate] = []
-        if let windows = shareableContent?.windows {
-            for window in windows {
-                let bundleID = window.owningApplication?.bundleIdentifier ?? ""
-                let layer = layerByWindowID[window.windowID] ?? window.windowLayer
-                guard (0...20).contains(layer),
-                      (alphaByWindowID[window.windowID] ?? 1) > 0.05,
-                      window.frame.width >= 60, window.frame.height >= 40,
-                      bundleID != myBundleID,
-                      !bundleID.isEmpty,
-                      !ignoredSystemBundleIDs.contains(bundleID) else { continue }
-                let app = window.owningApplication
-                let source = app.map {
-                    CaptureSource(
-                        bundleIdentifier: $0.bundleIdentifier,
-                        applicationName: $0.applicationName,
-                        windowTitle: window.title?.trimmingCharacters(in: .whitespacesAndNewlines),
-                        processID: $0.processID
-                    )
-                }
-                candidates.append(WindowCandidate(
-                    id: window.windowID,
-                    source: source,
-                    cgFrame: window.frame
-                ))
-            }
-        }
-        candidates.sort {
-            let lhs = zOrderByWindowID[$0.id] ?? Int.max
-            let rhs = zOrderByWindowID[$1.id] ?? Int.max
-            return lhs < rhs
-        }
-
-        // 定格帧：逐屏抓（界面已先弹出，此处不阻塞交互；排除自身避免拍进 overlay）。
-        // 注：不用 TaskGroup 并行——SCContentFilter 非 Sendable 不能跨任务传。
         // 定格帧必须用「全新」的共享清单来排除自己。
         //
         // shareableContent() 是带 TTL 的保温缓存，而缓存是在浮层建窗之前填的
         // （prewarm / 每 25s 的保温轮询），那时 Rune 没有窗口，applications 里
         // 根本没有我们——拿缓存清单做 excludingApplications 等于谁都不排除，
-        // 抓到的帧会带着浮层那层黑蒙版。悬停高亮继续吃缓存（要的是即时响应），
-        // 只有这一步多花一次现查。
+        // 抓到的帧会带着浮层那层黑蒙版。这里多花一次现查。
+        //
+        // 同一份现查清单顺带解析窗口身份（辅助进程会被 SCK 归到主应用）。
         let freshContent = try? await SCShareableContent.excludingDesktopWindows(
             false,
             onScreenWindowsOnly: true
@@ -232,6 +285,15 @@ final class RegionSelectionOverlay {
         let myWindows = exclusionContent?.windows.filter {
             $0.owningApplication?.bundleIdentifier == myBundleID
         } ?? []
+
+        // 窗口候选：几何 + 前后顺序一律现查 CGWindowList（活的），
+        // 应用归属用上面那份现查清单解析。
+        windowIdentities = freshContent.map(Self.resolveWindowIdentities(from:)) ?? [:]
+        let candidates = Self.liveWindowCandidates(
+            identities: windowIdentities,
+            myBundleID: myBundleID,
+            ignoredBundleIDs: ignoredSystemBundleIDs
+        )
 
         var frozenFrames: [CGDirectDisplayID: CGImage] = [:]
         frozenFramesExcludedSelf = false
@@ -270,8 +332,24 @@ final class RegionSelectionOverlay {
 
         // 先回填窗口清单：它吃的是缓存，必须立刻到位——用户可能马上单击命中
         // 某个窗口，清单晚到就会退化成全屏。
-        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
         let screenNumberKey = NSDeviceDescriptionKey(rawValue: "NSScreenNumber")
+        applyWindowCandidates(candidates, to: views)
+
+        // 定格帧最后回填：这一步要现查共享清单（见上面的说明），会慢一点。
+        // 到货前浮层画的是较浓的遮罩，到货后换成定格画面。
+        for (screen, view) in views {
+            let displayID = (screen.deviceDescription[screenNumberKey] as? NSNumber)
+                .map { CGDirectDisplayID($0.uint32Value) } ?? 0
+            view.updateFrozenFrame(frozenFrames[displayID])
+        }
+    }
+
+    /// 把窗口候选换算成各屏局部坐标后回填。
+    private func applyWindowCandidates(
+        _ candidates: [WindowCandidate],
+        to views: [(screen: NSScreen, view: SelectionView)]
+    ) {
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
         for (screen, view) in views {
             // cgFrame → AppKit 全局（y=主屏高−cgMaxY）→ 减本屏原点
             let localWindows = candidates.compactMap { candidate -> WindowCandidate? in
@@ -291,14 +369,53 @@ final class RegionSelectionOverlay {
             }
             view.updateWindowCandidates(localWindows)
         }
+    }
 
-        // 定格帧最后回填：这一步要现查共享清单（见上面的说明），会慢一点。
-        // 到货前浮层画的是较浓的遮罩，到货后换成定格画面。
-        for (screen, view) in views {
-            let displayID = (screen.deviceDescription[screenNumberKey] as? NSNumber)
-                .map { CGDirectDisplayID($0.uint32Value) } ?? 0
-            view.updateFrozenFrame(frozenFrames[displayID])
+    // MARK: - 窗口清单周期刷新
+
+    /// 唤醒截图之后，用户完全可能再打开一个窗口、弹一个菜单。
+    /// 清单只抓一次的话，这些新窗口就永远认不出来（会退化成认后面那层旧窗口）。
+    ///
+    /// CGWindowList 现查一次只要一两毫秒，可以一直开着；
+    /// 只有出现「身份表里没见过的新窗口」时，才去动 ScreenCaptureKit
+    /// 那份慢查询来解析它的应用归属。
+    private func startWindowRefresh() {
+        windowRefreshTimer?.invalidate()
+        let timer = Timer(timeInterval: 0.3, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.refreshWindowCandidates()
+            }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        windowRefreshTimer = timer
+    }
+
+    private func refreshWindowCandidates() async {
+        guard !overlayWindows.isEmpty, !selectionViews.isEmpty else { return }
+        let myBundleID = Bundle.main.bundleIdentifier ?? ""
+        var candidates = Self.liveWindowCandidates(
+            identities: windowIdentities,
+            myBundleID: myBundleID,
+            ignoredBundleIDs: Self.ignoredSystemBundleIDs
+        )
+        // 身份对不上（窗口 ID 被系统回收后复用给别的窗口）也要重新解析。
+        let stale = candidates.contains { candidate in
+            guard let known = windowIdentities[candidate.id] else { return true }
+            return known.processID != (candidate.source?.processID ?? known.processID)
+        }
+        if stale {
+            guard let content = try? await SCShareableContent.excludingDesktopWindows(
+                false,
+                onScreenWindowsOnly: true
+            ) else { return }
+            windowIdentities = Self.resolveWindowIdentities(from: content)
+            candidates = Self.liveWindowCandidates(
+                identities: windowIdentities,
+                myBundleID: myBundleID,
+                ignoredBundleIDs: Self.ignoredSystemBundleIDs
+            )
+        }
+        applyWindowCandidates(candidates, to: selectionViews)
     }
 
 
@@ -453,6 +570,9 @@ final class RegionSelectionOverlay {
 
     @discardableResult
     private func closeOverlays() -> Set<CGWindowID> {
+        windowRefreshTimer?.invalidate()
+        windowRefreshTimer = nil
+        selectionViews.removeAll()
         let windowIDs = Set(overlayWindows.map { CGWindowID($0.windowNumber) })
         for window in overlayWindows {
             window.orderOut(nil)
@@ -1176,7 +1296,14 @@ private final class SelectionView: NSView {
 
     /// 命中检测：候选按前到后排序，取第一个包含点的窗口。
     private func hitWindow(at point: NSPoint) -> WindowCandidate? {
-        windows.first { $0.localRect.insetBy(dx: -2, dy: -2).contains(point) }
+        // 列表是从前到后排的 → 第一个命中的就是最上面那个。
+        // 先按精确命中找：否则"前面那块小浮窗"会靠 2pt 的宽容抢走
+        // 本来属于它后面大窗口的鼠标位置，看起来就是认错窗口。
+        if let exact = windows.first(where: { $0.localRect.contains(point) }) {
+            return exact
+        }
+        // 边界抖动（阴影、1–2px 的取整误差）时再放宽一点。
+        return windows.first { $0.localRect.insetBy(dx: -2, dy: -2).contains(point) }
     }
 
     /// Snipaste 同类的界面元素识别：停稳约 70ms 后查询前台应用在该点暴露的

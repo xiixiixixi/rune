@@ -36,7 +36,7 @@ final class ScrollCaptureResultBarController {
         )
         .runeTypography()
 
-        let size = CGSize(width: 360, height: 520)
+        let size = CGSize(width: 404, height: 620)
         let host = NSHostingView(rootView: root)
         host.frame = CGRect(origin: .zero, size: size)
 
@@ -73,8 +73,11 @@ final class ScrollCaptureResultBarController {
     }
 }
 
-/// 结果条本体：上面是长图预览，下面是四个动作。
-/// 预览按可用高度缩放，几千像素的长图也能一眼看全。
+/// 结果条本体：上面是可缩放的长图预览，下面是四个动作。
+///
+/// 预览默认按"铺满预览框宽度"显示——长图有几千像素高，缩到整个塞进框里
+/// 只会剩一条看不清的细缝。往下滚动读内容，想看全貌再点「全览」缩回去。
+/// 放大到 100% 就是原始像素，标注文字看得清。
 private struct ScrollCaptureResultView: View {
     let image: NSImage
     let onEdit: () -> Void
@@ -82,10 +85,52 @@ private struct ScrollCaptureResultView: View {
     let onCancel: () -> Void
     let onCopy: () -> Void
 
-    private let previewBox = CGSize(width: 330, height: 400)
+    private let previewBox = CGSize(width: 376, height: 452)
+
+    /// 缩放倍数：以"铺满预览框宽度"为 1.0。
+    @State private var scale: Double = 1.0
+
+    /// 铺满宽度时的比例。
+    private var fitWidthScale: Double {
+        guard image.size.width > 0 else { return 1 }
+        return previewBox.width / image.size.width
+    }
+
+    /// 缩到最小 = 整张图完整塞进预览框（一眼看全）。
+    private var minScale: Double {
+        guard image.size.width > 0, image.size.height > 0 else { return 0.2 }
+        let fitHeight = previewBox.height / image.size.height
+        return min(1, fitHeight / fitWidthScale)
+    }
+
+    /// 放到最大 = 1:1 原始像素（再放大也没有新信息了）。
+    private var maxScale: Double {
+        guard image.size.width > 0 else { return 8 }
+        return min(8, 1 / fitWidthScale)
+    }
+
+    private var effectiveScale: Double {
+        min(max(scale, minScale), maxScale)
+    }
+
+    private var displayedSize: CGSize {
+        let factor = fitWidthScale * effectiveScale
+        return CGSize(
+            width: image.size.width * factor,
+            height: image.size.height * factor
+        )
+    }
+
+    /// 相对原始像素的百分比（1:1 = 100%）。
+    private var percentText: String {
+        guard image.size.width > 0 else { return "100%" }
+        let ratio = displayedSize.width / image.size.width
+        return "\(Int((ratio * 100).rounded()))%"
+    }
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
+            zoomBar
             preview
             actions
         }
@@ -100,20 +145,96 @@ private struct ScrollCaptureResultView: View {
         )
     }
 
+    // MARK: - 缩放条
+
+    private var zoomBar: some View {
+        HStack(spacing: 6) {
+            zoomButton(
+                systemImage: "minus",
+                label: "缩小",
+                enabled: effectiveScale > minScale + 0.001
+            ) {
+                setScale(effectiveScale / 1.4)
+            }
+            Text(percentText)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.85))
+                .frame(width: 46)
+            zoomButton(
+                systemImage: "plus",
+                label: "放大",
+                enabled: effectiveScale < maxScale - 0.001
+            ) {
+                setScale(effectiveScale * 1.4)
+            }
+            Button(action: { setScale(minScale) }) {
+                Text("全览")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.85))
+                    .padding(.horizontal, 9)
+                    .frame(height: 22)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.white.opacity(0.08))
+                    )
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("缩到能看全整张长图")
+            .accessibilityLabel("全览")
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func zoomButton(
+        systemImage: String,
+        label: String,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(enabled ? Color.white.opacity(0.85) : Color.white.opacity(0.28))
+                .frame(width: 26, height: 22)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.white.opacity(0.08))
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .help(label)
+        .accessibilityLabel(label)
+    }
+
+    private func setScale(_ value: Double) {
+        scale = min(max(value, minScale), maxScale)
+    }
+
+    // MARK: - 预览
+
     private var preview: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(Color.white.opacity(0.06))
+        ScrollView([.vertical, .horizontal]) {
             Image(nsImage: image)
                 .resizable()
                 .interpolation(.high)
-                .scaledToFit()
-                .frame(width: previewBox.width, height: previewBox.height)
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
+                .frame(width: displayedSize.width, height: displayedSize.height)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .shadow(color: .black.opacity(0.35), radius: 5, y: 2)
+                .padding(8)
         }
         .frame(width: previewBox.width, height: previewBox.height)
+        .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(Color.white.opacity(0.06))
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .help("滚轮上下滚动查看长图内容")
     }
+
+    // MARK: - 动作
 
     private var actions: some View {
         HStack(spacing: 8) {

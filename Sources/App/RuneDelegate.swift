@@ -435,11 +435,36 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                     let auditImageURL = URL(fileURLWithPath: imagePath)
                     try? FileManager.default.removeItem(at: auditImageURL)
                     try? FileManager.default.removeItem(atPath: reportPath)
+
+                    // 渐进报告：每轮都把当前进度写进报告文件。
+                    // 只在结束时写的话，跑到一半卡住就只能看到"没有报告"，
+                    // 分不清是根本没启动还是跑到一半卡死。
+                    @MainActor
+                    func writeProgressReport(final: Bool) {
+                        let wroteAuditImage = FileManager.default.fileExists(atPath: auditImageURL.path)
+                        let completedByController = !controller.isActive
+                            && controller.statusMessage.hasPrefix("验收长图已生成")
+                        let report = "completed=\(completedByController) mode=\(controller.mode.rawValue) "
+                            + "frames=\(controller.capturedFrameCount) "
+                            + "height=\(controller.stitchedHeight) "
+                            + "image=\(wroteAuditImage ? auditImageURL.path : "FAIL") "
+                            + "elapsed=\(Int(Date().timeIntervalSince(auditStartedAt)))s "
+                            + "status=\(controller.statusMessage)"
+                        try? report.write(
+                            toFile: reportPath,
+                            atomically: true,
+                            encoding: .utf8
+                        )
+                    }
+                    let auditStartedAt = Date()
+                    writeProgressReport(final: false)
+
                     await ScrollCaptureController.shared.start(
                         on: screen,
                         presetRegion: target,
                         source: source
                     )
+                    writeProgressReport(final: false)
                     if controller.isAwaitingStart {
                         if capturesFullPage {
                             controller.configureAuditImageOutput(to: auditImageURL)
@@ -455,23 +480,17 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                             for _ in 0..<maximumChecks where controller.isActive {
                                 if usesScrollFixture && controller.mode == .manual { break }
                                 try? await Task.sleep(for: .milliseconds(500))
+                                writeProgressReport(final: false)
                             }
                         } else {
                             try? await Task.sleep(for: .seconds(7))
                         }
                     }
-                    let wroteAuditImage = FileManager.default.fileExists(atPath: auditImageURL.path)
-                        || controller.writeAuditImage(to: auditImageURL)
-                    let completedByController = !controller.isActive
-                        && controller.statusMessage.hasPrefix("验收长图已生成")
-                    let report = "completed=\(completedByController) mode=\(controller.mode.rawValue) frames=\(controller.capturedFrameCount) "
-                        + "height=\(controller.stitchedHeight) image=\(wroteAuditImage ? auditImageURL.path : "FAIL") "
-                        + "status=\(controller.statusMessage)"
-                    try? report.write(
-                        toFile: reportPath,
-                        atomically: true,
-                        encoding: .utf8
-                    )
+                    // 兜底：控制器自己没落盘的话，这里再写一次成品长图。
+                    if !FileManager.default.fileExists(atPath: auditImageURL.path) {
+                        _ = controller.writeAuditImage(to: auditImageURL)
+                    }
+                    writeProgressReport(final: true)
                     if controller.isActive {
                         controller.cancel()
                     }
@@ -621,13 +640,22 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         } else if ProcessInfo.processInfo.arguments.contains("--audit-screenshot-real") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            // 可延迟唤起选区浮层：用来验证"唤起之后才打开的窗口"能不能被认出来
+            // （窗口清单缓存过期 → 高亮认错窗口的老毛病）。
+            let delay = ProcessInfo.processInfo.arguments
+                .first(where: { $0.hasPrefix("--audit-screenshot-delay=") })
+                .flatMap { Double($0.dropFirst("--audit-screenshot-delay=".count)) }
+                ?? 0.4
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 Task {
                     await CaptureOrchestrator.shared.performCapture(.main, on: NSScreen.main)
                 }
                 DebugAuditSnapshot.captureWindowLayoutAfter("screenshot-real-layout.txt", delay: 3)
                 DebugAuditSnapshot.captureAfter("screenshot-real.png", delay: 3)
             }
+            // 先把屏幕清单缓存焐热：模拟"应用常驻后台、用户隔一会儿才唤起截图"。
+            // 不焐热的话缓存是冷的，唤起时现查就看不出"清单过期"的问题了。
+            CaptureOrchestrator.shared.prewarm()
         } else if ProcessInfo.processInfo.arguments.contains("--audit-ocr") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 let result = OCRResult(
