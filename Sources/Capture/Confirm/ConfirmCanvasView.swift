@@ -1,4 +1,5 @@
 import AppKit
+import OSLog
 import QuartzCore
 
 extension Notification.Name {
@@ -12,6 +13,10 @@ extension Notification.Name {
 /// 键盘（没有编辑文字时）：Esc=取消、Enter=回车默认动作（出厂仅复制）、
 /// ⇧⌘Enter=复制并保存、⌘S=保存、⌘Z=撤销、Delete=删除选中。
 final class ConfirmCanvasView: NSView {
+    private static let toolLogger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "com.tc.rune",
+        category: "ConfirmCanvas"
+    )
     private let image: CGImage
     private let backgroundImage: CGImage?
     private let capturedRegion: CGRect?
@@ -1200,7 +1205,7 @@ final class ConfirmCanvasView: NSView {
         // capcap 通用规则：点中已有标注 = 选中并拖动它，不管当前是什么工具；
         // 绘图工具只接管空白处的按下。文字标注双击 = 原位重新编辑。
         if !ocrMode, let hit = annotationHit(at: loc) {
-            if event.clickCount >= 2, hit.tool == .text {
+            if event.clickCount >= 2, hit.tool == .text || hit.tool == .watermark || hit.tool == .tag {
                 reEditTextAnnotation(hit)
                 return
             }
@@ -1247,6 +1252,47 @@ final class ConfirmCanvasView: NSView {
             )
             annotations.append(item)
             selectedID = item.id
+            needsDisplay = true
+            return
+        }
+
+        // 水印（飞书同款）：点击整图铺一层斜排文字，双击可改文字
+        if selectedTool == .watermark {
+            pushUndo()
+            let lineHeight = AnnotationWatermarkMetrics.normalizedLineHeight(imagePixelHeight: CGFloat(image.height))
+            let item = AnnotationItem(
+                tool: .watermark,
+                rect: CGRect(x: 0, y: 0, width: 1, height: 1),
+                points: [],
+                swatch: selectedSwatch,
+                strokeWidth: strokeWidth,
+                redactionDensity: AnnotationWatermarkMetrics.opacity,
+                text: AnnotationWatermarkMetrics.defaultText(),
+                textLineHeight: lineHeight
+            )
+            annotations.append(item)
+            selectedID = item.id
+            needsDisplay = true
+            return
+        }
+
+        // 标签（飞书同款）：点击处落红点锚点 + 深色气泡，随即可就地写说明
+        if selectedTool == .tag {
+            Self.toolLogger.notice("TAG branch hit tool=\(self.selectedTool.rawValue, privacy: .public) at=\(loc.x, privacy: .public),\(loc.y, privacy: .public)")
+            pushUndo()
+            let n = normalizedPoint(loc)
+            let item = AnnotationItem(
+                tool: .tag,
+                rect: AnnotationTagMetrics.defaultRect(anchor: n, within: CGRect(x: 0, y: 0, width: 1, height: 1)),
+                points: [n],
+                swatch: selectedSwatch,
+                strokeWidth: strokeWidth,
+                text: "",
+                textLineHeight: AnnotationTagMetrics.normalizedLineHeight()
+            )
+            annotations.append(item)
+            selectedID = item.id
+            beginTextEditing(item: item, at: loc)
             needsDisplay = true
             return
         }
@@ -1432,11 +1478,14 @@ final class ConfirmCanvasView: NSView {
             case "l": switchTool(to: .line)
             case "a": switchTool(to: .arrow)
             case "d": switchTool(to: .freehand)
+            case "h": switchTool(to: .highlight)
             case "t": switchTool(to: .text)
             case "m": switchTool(to: .blur)
             case "e": switchTool(to: .pixelate)
             case "g": switchTool(to: .spotlight)
             case "n": switchTool(to: .numberedCircle)
+            case "w": switchTool(to: .watermark)
+            case "i": switchTool(to: .tag)
             case "z": redo()
             case "p":
                 pinImage()
@@ -1749,7 +1798,7 @@ final class ConfirmCanvasView: NSView {
         let rect = CGRect(x: n.x, y: n.y, width: 0, height: 0)
         let item: AnnotationItem
         switch selectedTool {
-        case .rectangle, .filledRectangle, .ellipse:
+        case .rectangle, .filledRectangle, .ellipse, .highlight:
             item = AnnotationItem(tool: selectedTool, rect: rect, points: [], swatch: selectedSwatch, strokeWidth: strokeWidth)
         case .line:
             item = AnnotationItem(tool: .line, rect: rect, points: [n, n], swatch: selectedSwatch, strokeWidth: strokeWidth)
@@ -1775,7 +1824,7 @@ final class ConfirmCanvasView: NSView {
         guard var d = draft else { return }
         let target = shiftConstrained ? shiftConstrainedPoint(n, for: d.tool) : n
         switch d.tool {
-        case .rectangle, .filledRectangle, .ellipse, .blur, .pixelate, .spotlight, .numberedCircle:
+        case .rectangle, .filledRectangle, .ellipse, .highlight, .blur, .pixelate, .spotlight, .numberedCircle:
             d.rect = rectFrom(dragStart ?? target, target)
         case .arrow, .line:
             d.points = [dragStart ?? target, target]
@@ -1801,7 +1850,7 @@ final class ConfirmCanvasView: NSView {
         let dyView = (n.y - start.y) * r.height
 
         switch tool {
-        case .rectangle, .filledRectangle, .ellipse, .blur, .pixelate, .spotlight, .numberedCircle:
+        case .rectangle, .filledRectangle, .ellipse, .highlight, .blur, .pixelate, .spotlight, .numberedCircle:
             let side = max(abs(dxView), abs(dyView))
             let dx = (dxView >= 0 ? side : -side) / r.width
             let dy = (dyView >= 0 ? side : -side) / r.height

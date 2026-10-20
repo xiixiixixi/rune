@@ -283,13 +283,27 @@ struct MenuBarContentView: View {
 
     @MainActor
     private func startRecording(mode: RecordingMode, on screen: NSScreen?) async {
+        // 先出「录制设置」面板（飞书录屏面板同款）：选输出格式、扬声器、麦克风、
+        // 摄像头、鼠标设置，选完再开录。
+        guard let options = await RecordingOptionsPanelController.shared.present(
+            options: .fromPreferences(),
+            on: screen
+        ) else { return }
+        options.saveToPreferences()
+
         do {
             let started: Bool
             switch mode {
             case .fullScreen:
-                started = try await ScreenRecordingManager.shared.startFullScreenRecording(on: screen)
+                started = try await ScreenRecordingManager.shared.startFullScreenRecording(
+                    on: screen,
+                    options: options
+                )
             case .area:
-                started = try await ScreenRecordingManager.shared.startAreaRecording(on: screen)
+                started = try await ScreenRecordingManager.shared.startAreaRecording(
+                    on: screen,
+                    options: options
+                )
             }
             if started {
                 RecordingStatusBarController.shared.show(on: screen)

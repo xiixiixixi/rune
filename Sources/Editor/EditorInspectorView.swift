@@ -214,7 +214,7 @@ private struct AnnotationInspectorToolGrid: View {
     /// 注意不放"选择"工具：编辑器里无论当前什么工具，直接点击已画好的标注
     /// 就能选中、拖动、删除，专门的"选择"按钮是多余的。
     private let primaryTools: [AnnotationTool] = [
-        .rectangle, .arrow, .text, .blur, .spotlight, .numberedCircle
+        .rectangle, .arrow, .text, .tag, .blur, .spotlight, .numberedCircle
     ]
 
     /// 低频图形工具，收进"更多"一行。

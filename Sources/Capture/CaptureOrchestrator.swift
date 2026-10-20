@@ -119,6 +119,53 @@ final class CaptureOrchestrator {
         let selection = await RegionSelectionOverlay().selectRegion()
         guard let selection else { return }  // 用户取消（Esc 等）
 
+        // 1.5 模式条分流（飞书同款）：选区顶部那条模式条选的是哪一项，
+        // 松手后就按哪条流程走。不用退出当前截图再按另一个热键重来一遍。
+        await route(mode: selection.mode, selection: selection)
+    }
+
+    /// 模式条分流的唯一收口：从「滚动长图」「录屏」等别的入口进来时，
+    /// 用户在模式条上改成了另一项，也从这条路走，行为保持一致。
+    func route(mode: CaptureMode, selection: RegionSelection) async {
+        switch mode {
+        case .region:
+            await processRegionSelection(selection)
+        case .scroll:
+            await ScrollCaptureController.shared.start(
+                on: captureScreen,
+                presetRegion: selection.pointsRect,
+                source: selection.source
+            )
+        case .recording:
+            // 飞书录屏面板同款：开录之前先把「要录什么」摆出来——
+            // 输出格式、扬声器、麦克风、摄像头（画中画）、鼠标设置。
+            // 用户选完再开录，而不是按下去就直接录、想要哪个设置再去偏好里翻。
+            let chosen = await RecordingOptionsPanelController.shared.present(
+                options: .fromPreferences(),
+                on: captureScreen
+            )
+            guard let chosen else { return }
+            chosen.saveToPreferences()
+            do {
+                let started = try await ScreenRecordingManager.shared.startAreaRecording(
+                    selection: selection,
+                    on: captureScreen,
+                    options: chosen
+                )
+                if started {
+                    RecordingStatusBarController.shared.show(on: captureScreen)
+                }
+            } catch {
+                showCaptureError("录屏失败", detail: error.localizedDescription)
+            }
+        case .text:
+            await performOCR(selection: selection)
+        }
+    }
+
+    /// 已经选好区域时的普通截图流程（原 captureRegionViaSCK 的后半段）。
+    private func processRegionSelection(_ selection: RegionSelection) async {
+
         // 2. 成片优先用选区阶段那张定格帧。
         //
         //    它才是用户看到并据以框选的那一帧：菜单栏下拉、右键菜单、tooltip
@@ -373,6 +420,56 @@ final class CaptureOrchestrator {
         await processCapturedFrame(frame)
     }
 
+    /// 滚动长图跑完后的"结果直出"（飞书同款）。
+    ///
+    /// 飞书在长图结束画面上直接给四个动作——编辑 / 下载 / 取消 / 保存到剪贴板，
+    /// 长图预览就贴在旁边。Rune 之前一律把人丢回确认台：多一步不说，几千像素
+    /// 高的长图在确认台里几乎没法标注操作。
+    func presentScrollCaptureResult(_ frame: CapturedFrame, on screen: NSScreen?) {
+        ScrollCaptureResultBarController.shared.show(
+            image: frame.image,
+            on: screen,
+            actions: ScrollCaptureResultBarController.Actions(
+                edit: { [weak self] in
+                    ScrollCaptureResultBarController.shared.dismiss()
+                    Task { @MainActor in
+                        await self?.processCapturedFrame(frame)
+                    }
+                },
+                download: { [weak self] in
+                    ScrollCaptureResultBarController.shared.dismiss()
+                    Task { @MainActor in
+                        self?.downloadScrollCapture(frame)
+                    }
+                },
+                cancel: {
+                    ScrollCaptureResultBarController.shared.dismiss()
+                },
+                copyToClipboard: { [weak self] in
+                    ScrollCaptureResultBarController.shared.dismiss()
+                    Task { @MainActor in
+                        // 走"快速模式"同一条路：进剪贴板 + 素材库，文件夹零写入。
+                        await self?.processCapturedFrame(frame, skipConfirm: true)
+                    }
+                }
+            )
+        )
+    }
+
+    /// 「下载」：按 Rune 的保存位置与导出格式落盘，并告诉用户落在哪。
+    private func downloadScrollCapture(_ frame: CapturedFrame) {
+        guard let url = saveImage(frame.image) else {
+            showCaptureError("保存失败", detail: "请检查保存目录权限后重试")
+            return
+        }
+        ToastWindow.shared.show(
+            title: "长图已保存",
+            message: url.lastPathComponent,
+            systemIcon: "arrow.down.to.line",
+            on: captureScreen
+        )
+    }
+
     #if DEBUG
     /// 用内存测试帧驱动真正的“截图确认 → 长图”生产链路。这个入口不复制
     /// 转场逻辑，UI 自动化点击“长图”后仍由上面的 processCapturedFrame 消费。
@@ -454,11 +551,17 @@ final class CaptureOrchestrator {
 
     /// M3：OCR 取词。走应用自己的 RegionSelectionOverlay 选区 → SCK 截图 → OCRService 识别。
     /// 不再用老的 screencapture 命令 + ScreenCapture.captureAndOCR。
-    private func performOCR() async {
+    private func performOCR(selection existingSelection: RegionSelection? = nil) async {
         guard await ensureScreenCapturePermission(for: .ocr) else { return }
-        // 1. 选区（复用区域截图的选区 overlay）
-        let selection = await RegionSelectionOverlay().selectRegion()
-        guard let selection else { return }  // 用户取消
+        // 1. 选区（复用区域截图的选区 overlay）。
+        //    主入口的模式条已经选好区域时直接拿来用，不再弹第二次。
+        let selection: RegionSelection
+        if let existingSelection {
+            selection = existingSelection
+        } else {
+            guard let picked = await RegionSelectionOverlay().selectRegion(initialMode: .text) else { return }
+            selection = picked
+        }
 
         // 2. SCK 截取该区域为 CGImage
         let frame: CapturedFrame

@@ -670,15 +670,24 @@ final class EditorModel {
         case .select: return
         case .text: itemRect = defaultTextRect(at: point, lineHeight: textLineHeight, within: allowedBounds, imageFrame: imageFrame)
         case .numberedCircle: itemRect = AnnotationNumberedCircleMetrics.defaultRect(centeredAt: point, imageSize: imageSize, within: allowedBounds)
-        case .rectangle, .filledRectangle, .ellipse, .line, .arrow, .freehand, .pixelate, .blur, .spotlight:
+        case .tag: itemRect = AnnotationTagMetrics.defaultRect(anchor: point, within: allowedBounds)
+        case .watermark: itemRect = CGRect(x: 0, y: 0, width: 1, height: 1)
+        case .rectangle, .filledRectangle, .ellipse, .highlight, .line, .arrow, .freehand, .pixelate, .blur, .spotlight:
             itemRect = CGRect(origin: point, size: .zero)
         }
-        let itemText = selectedTool == .numberedCircle ? "\(nextNumberedCircleValue)" : ""
+        let itemText = selectedTool == .numberedCircle
+            ? "\(nextNumberedCircleValue)"
+            : (selectedTool == .watermark ? AnnotationWatermarkMetrics.defaultText() : "")
 
         draftItem = AnnotationItem(
             tool: selectedTool, rect: itemRect, points: initialPoints(for: selectedTool, at: point),
-            swatch: selectedSwatch, strokeWidth: strokeWidth, redactionDensity: redactionDensity,
-            text: itemText, textLineHeight: textLineHeight, fontName: textFontName,
+            swatch: selectedSwatch, strokeWidth: strokeWidth,
+            redactionDensity: selectedTool == .watermark ? AnnotationWatermarkMetrics.opacity : redactionDensity,
+            text: itemText,
+            textLineHeight: selectedTool == .watermark
+                ? AnnotationWatermarkMetrics.normalizedLineHeight(imagePixelHeight: imageSize.height)
+                : textLineHeight,
+            fontName: textFontName,
             isBold: textIsBold, isItalic: textIsItalic, isUnderline: textIsUnderline, textAlignment: textAlignment
         )
         interaction = .drawing(startPoint: point)
@@ -700,7 +709,12 @@ final class EditorModel {
             draftItem.rect = boundingRect(for: draftItem.points)
         case .numberedCircle:
             draftItem.rect = AnnotationNumberedCircleMetrics.defaultRect(centeredAt: startPoint, imageSize: imageSize, within: allowedBounds)
-        case .rectangle, .filledRectangle, .ellipse, .pixelate, .blur, .spotlight:
+        case .tag:
+            draftItem.rect = AnnotationTagMetrics.defaultRect(anchor: startPoint, within: allowedBounds)
+            draftItem.points = [startPoint]
+        case .watermark:
+            break   // 水印铺满整图，点击即成型，不跟随拖拽变化
+        case .rectangle, .filledRectangle, .ellipse, .highlight, .pixelate, .blur, .spotlight:
             let aspectRatio = selectedTool.supportsAspectLock && lockAspectRatio ? squareAspectRatio : nil
             draftItem.rect = rect(from: startPoint, to: point, aspectRatio: aspectRatio)
         case .text:
@@ -882,7 +896,8 @@ final class EditorModel {
         case .line: [point, point]
         case .arrow: [point, point, point]
         case .freehand: [point]
-        case .rectangle, .filledRectangle, .ellipse, .numberedCircle, .pixelate, .blur, .spotlight, .text: []
+        case .rectangle, .filledRectangle, .ellipse, .highlight, .numberedCircle, .pixelate, .blur, .spotlight, .text, .watermark: []
+        case .tag: [point]
         }
     }
 

@@ -66,6 +66,8 @@ struct VideoEditorView: View {
     }
 
     @State var model = VideoEditorModel()
+    /// 默认沿用录制设置面板里选的格式（飞书录屏面板同款：选了就记住）
+    @State private var exportFormat: VideoExportFormat = AppPreferences.recordingFormat
     @State private var confirmsMovingRecordingToTrash = false
     @State private var inspectorTab: InspectorTab = .edit
     let url: URL
@@ -117,6 +119,24 @@ struct VideoEditorView: View {
                     Label("删除", systemImage: "trash")
                         .foregroundStyle(RuneTheme.signal)
                 }
+
+                Menu {
+                    ForEach(VideoExportFormat.allCases) { format in
+                        Button {
+                            exportFormat = format
+                            AppPreferences.recordingFormat = format
+                        } label: {
+                            if exportFormat == format {
+                                Label(format.title, systemImage: "checkmark")
+                            } else {
+                                Text(format.title)
+                            }
+                        }
+                    }
+                } label: {
+                    Label(exportFormat.title, systemImage: "square.and.arrow.down")
+                }
+                .help("选择导出格式")
 
                 Button {
                     Task { await exportRecording() }
@@ -394,7 +414,7 @@ struct VideoEditorView: View {
 
     private func exportRecording() async {
         model.isExporting = true
-        if let exportedURL = await model.exportTrimmed() {
+        if let exportedURL = await model.exportTrimmed(format: exportFormat) {
             _ = await HistoryStore.shared.importCapture(from: exportedURL, deleteSource: false, kind: .recording)
             let appIcon = NSImage(named: "AppIcon") ?? NSApp.applicationIconImage
             ToastWindow.shared.show(message: "录屏已导出！", icon: appIcon)

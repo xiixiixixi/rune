@@ -21,6 +21,9 @@ struct RegionSelection {
     /// "一离开就消失"的内容只有它还在。nil = 这张帧不可信（共享清单里没找到
     /// Rune，excludingApplications 可能没生效），调用方必须重新抓。
     var frozenFrame: CGImage?
+    /// 选区阶段模式条上选中的模式（飞书同款：截图 / 滚动截图 / 录屏 / 提取文字）。
+    /// 选完区就按它决定后续走哪条流程，不用退出再按另一个热键。
+    let mode: CaptureMode
 }
 
 /// 区域+窗口合并模式的候选窗口（Sendable：SCWindow 不能直接传出）。
@@ -44,13 +47,18 @@ final class RegionSelectionOverlay {
     /// 定格帧是否可信：只有确认 excludingApplications 生效了，帧里才没有我们的蒙层。
     private var frozenFramesExcludedSelf = false
     private var frontmostSource: CaptureSource?
+    /// 模式条当前选中的模式。选区途中可改，松手时生效。
+    private var selectedMode: CaptureMode = .region
 
     /// M1 §3.3：选区前先抓冻结帧。冻结帧作为 overlay 背景，使选区时屏幕内容不变化。
     private let freezeEngine = SCKStillCaptureBackend()
 
-    func selectRegion() async -> RegionSelection? {
+    /// - Parameter initialMode: 模式条的初始选中项。
+    ///   从「滚动长图」入口进来时默认高亮滚动截图，从主入口进来默认截图。
+    func selectRegion(initialMode: CaptureMode = .region) async -> RegionSelection? {
         await withCheckedContinuation { cont in
             self.continuation = cont
+            self.selectedMode = initialMode
             Task { await self.showOverlays() }
         }
     }
@@ -119,6 +127,18 @@ final class RegionSelectionOverlay {
         // 收起前的定格画面）；激活后 Esc 取消也才可用
         NSApp.activate(ignoringOtherApps: true)
         overlayWindows.first?.makeKeyAndOrderFront(nil)
+
+        // ④ 模式条：飞书同款，顶部居中一条，框选途中可随时改模式。
+        //    画在主屏那一块浮层视图上，拖框起点落在条上也不会吃掉拖拽。
+        if let host = views.first {
+            let barRect = CaptureModeBar.rect(on: host.screen)
+            host.view.modeBarRect = barRect
+            host.view.selectedMode = selectedMode
+            host.view.onModePick = { [weak self] mode in
+                self?.selectedMode = mode
+            }
+            host.view.needsDisplay = true
+        }
     }
 
     /// 抓定格帧（每屏并行）+ 窗口清单，抓完回填 SelectionView。
@@ -327,6 +347,7 @@ final class RegionSelectionOverlay {
         screen: NSScreen,
         source: CaptureSource?
     ) {
+        defer { selectedMode = .region }
         NSCursor.pop()
 
         let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
@@ -352,7 +373,8 @@ final class RegionSelectionOverlay {
             windowID: nil,
             source: source ?? frontmostSource,
             togglesQuickCopy: NSEvent.modifierFlags.contains(.option),
-            frozenFrame: frozenFramesExcludedSelf ? frozenFramesByDisplay[displayID] : nil
+            frozenFrame: frozenFramesExcludedSelf ? frozenFramesByDisplay[displayID] : nil,
+            mode: selectedMode
         )
 
         completeSelection(
@@ -382,7 +404,8 @@ final class RegionSelectionOverlay {
             windowID: candidate.id,
             source: candidate.source,
             togglesQuickCopy: NSEvent.modifierFlags.contains(.option),
-            frozenFrame: frozenFramesExcludedSelf ? frozenFramesByDisplay[displayID] : nil
+            frozenFrame: frozenFramesExcludedSelf ? frozenFramesByDisplay[displayID] : nil,
+            mode: selectedMode
         )
 
         completeSelection(selection, shutterRect: nil, on: screen)
@@ -538,6 +561,14 @@ private final class SelectionView: NSView {
         let source: CaptureSource
     }
 
+    /// 模式条（飞书同款）：只在一块屏上画，位置与内容由覆盖层下发。
+    /// 画在浮层自己的视图里，拖框起点落在条上时也只切换模式、不吃掉拖拽。
+    var modeBarRect: CGRect?
+    /// 当前选中的模式
+    var selectedMode: CaptureMode = .region
+    /// 点中模式条时的回调
+    var onModePick: ((CaptureMode) -> Void)?
+
     private var dragStart: NSPoint?
     private var dragCurrent: NSPoint?
     private var mouseLocation: NSPoint?
@@ -692,6 +723,185 @@ private final class SelectionView: NSView {
             }
             drawHint()
         }
+
+        // 放大镜（飞书 amplifier 同款）：悬停和拖拽全程跟随，看清单像素并取色
+        if let mouse = mouseLocation {
+            drawMagnifier(at: mouse)
+        }
+
+        // 模式条画在最上层，不被放大镜或选区盖住
+        if let modeBarRect, let ctx = NSGraphicsContext.current?.cgContext {
+            CaptureModeBar(rect: modeBarRect, current: selectedMode).draw(in: ctx)
+        }
+    }
+
+    // MARK: - 放大镜 + 取色
+
+    private static let magnifierSide: CGFloat = 96
+    private static let magnifierZoom: CGFloat = 10
+
+    /// 鼠标附近的像素放大窗：中心十字线 + 当前像素的 RGB 十六进制，
+    /// 按 C 键把颜色复制走。无冻结帧时只显示十字与占位。
+    private func drawMagnifier(at point: NSPoint) {
+        // 没有定格帧就没有可信的像素可放大：整个放大镜不画。
+        // 抓不到帧是有意为之（宁可不给，也不能把浮层自己的蒙版拍进去），
+        // 这时候留一个空灰框、或一个飘在光标旁边的十字线，都像是坏了。
+        guard frozenFrame != nil else { return }
+        let side = Self.magnifierSide
+        let gap: CGFloat = 14
+
+        var origin = NSPoint(x: point.x + gap, y: point.y + gap)
+        if origin.x + side > bounds.maxX {
+            origin.x = point.x - gap - side
+        }
+        if origin.y + side > bounds.maxY {
+            origin.y = point.y - gap - side
+        }
+        let box = CGRect(origin: origin, size: NSSize(width: side, height: side))
+
+        if let ctx = NSGraphicsContext.current?.cgContext {
+            NSColor.black.withAlphaComponent(0.82).setFill()
+            NSBezierPath(roundedRect: box.insetBy(dx: -1.5, dy: -1.5), xRadius: 10, yRadius: 10).fill()
+
+            // 从冻结帧裁出放大区域（interpolation 关掉，像素颗粒清晰可辨）
+            if let frame = frozenFrame {
+                let scale: CGFloat = screen.backingScaleFactor
+                let frameWidth: CGFloat = CGFloat(frame.width)
+                let frameHeight: CGFloat = CGFloat(frame.height)
+                let sampleSide: CGFloat = side / Self.magnifierZoom * scale
+                let centerX: CGFloat = point.x * scale
+                let centerY: CGFloat = point.y * scale
+                let crop = CGRect(
+                    x: centerX - sampleSide / 2,
+                    y: frameHeight - centerY - sampleSide / 2,
+                    width: sampleSide,
+                    height: sampleSide
+                ).intersection(CGRect(x: 0, y: 0, width: frameWidth, height: frameHeight))
+                if !crop.isNull, crop.width > 0, crop.height > 0,
+                   let sampled = frame.cropping(to: crop) {
+                    // 视图 y-up、CGImage y-down：这里**不需要**再翻转。
+                    // CGContext.draw 会把图像的第一行放到矩形顶部，视图里矩形的顶边
+                    // 就是屏幕上方——而裁切区本来就是按屏幕坐标算好的（image y 与
+                    // 屏幕 y 同向），所以直接画就是正的。
+                    // 此前多翻了一次：既把画面上下颠倒，又让这一笔整个画不出来，
+                    // 放大镜只剩一个黑色空框。
+                    ctx.saveGState()
+                    ctx.interpolationQuality = .none
+                    ctx.draw(sampled, in: CGRect(origin: origin, size: box.size))
+                    ctx.restoreGState()
+                }
+            }
+
+            // 中心十字线（中心留 3pt 空隙不遮住取样点）
+            NSColor.white.withAlphaComponent(0.9).setStroke()
+            let cross = NSBezierPath()
+            cross.lineWidth = 1
+            cross.move(to: NSPoint(x: box.midX, y: box.minY + 6))
+            cross.line(to: NSPoint(x: box.midX, y: box.midY - 3))
+            cross.move(to: NSPoint(x: box.midX, y: box.midY + 3))
+            cross.line(to: NSPoint(x: box.midX, y: box.maxY - 6))
+            cross.move(to: NSPoint(x: box.minX + 6, y: box.midY))
+            cross.line(to: NSPoint(x: box.midX - 3, y: box.midY))
+            cross.move(to: NSPoint(x: box.midX + 3, y: box.midY))
+            cross.line(to: NSPoint(x: box.maxX - 6, y: box.midY))
+            cross.stroke()
+        }
+
+        // 取色信息条：坐标 + RGB/HEX + 复制提示
+        // 飞书同款：默认显示 RGB，按住 Shift 切 HEX，⌘⌥ 直接复制色值。
+        let color = colorUnderMagnifier(at: point)
+        let rgb: (r: Int, g: Int, b: Int)? = color.map {
+            (Int($0.redComponent * 255), Int($0.greenComponent * 255), Int($0.blueComponent * 255))
+        }
+        let hex = rgb.map { String(format: "#%02X%02X%02X", $0.r, $0.g, $0.b) } ?? "——"
+        let showsHex = NSEvent.modifierFlags.contains(.shift)
+        let colorText: String = {
+            guard let rgb else { return "——" }
+            if showsHex { return "HEX \(hex)" }
+            return "RGB \(rgb.r),\(rgb.g),\(rgb.b)"
+        }()
+        let displayPoint = globalDisplayPoint(point)
+        let label = "坐标 \(Int(displayPoint.x)), \(Int(displayPoint.y))　\(colorText)　⌘⌥ 复制" as NSString
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: RuneFont.appKit(size: 11, weight: .medium),
+            .foregroundColor: NSColor.white,
+        ]
+        let labelSize = label.size(withAttributes: attrs)
+        var labelRect = CGRect(
+            x: box.midX - labelSize.width / 2 - 8,
+            y: box.minY - labelSize.height - 10,
+            width: labelSize.width + 16,
+            height: labelSize.height + 6
+        )
+        if labelRect.minY < bounds.minY {
+            labelRect.origin.y = box.maxY + 6
+        }
+        NSColor.black.withAlphaComponent(0.75).setFill()
+        NSBezierPath(roundedRect: labelRect, xRadius: 5, yRadius: 5).fill()
+
+        // 色板小方块让“复制的是什么颜色”一目了然
+        if let color {
+            let swatch = CGRect(
+                x: labelRect.minX + 8,
+                y: labelRect.midY - 5,
+                width: 10,
+                height: 10
+            )
+            color.setFill()
+            NSBezierPath(roundedRect: swatch, xRadius: 2, yRadius: 2).fill()
+            NSColor.white.withAlphaComponent(0.6).setStroke()
+            let swatchBorder = NSBezierPath(roundedRect: swatch, xRadius: 2, yRadius: 2)
+            swatchBorder.lineWidth = 1
+            swatchBorder.stroke()
+            label.draw(at: NSPoint(x: labelRect.minX + 24, y: labelRect.minY + 3), withAttributes: attrs)
+        } else {
+            label.draw(at: NSPoint(x: labelRect.minX + 8, y: labelRect.minY + 3), withAttributes: attrs)
+        }
+    }
+
+    /// 屏幕坐标（CG 全局坐标，左上原点）——与 rune 其它地方（选区矩形）同一套口径。
+    /// 浮层窗口铺满整块屏，视图原点即该屏的 AppKit 原点。
+    private func globalDisplayPoint(_ local: NSPoint) -> CGPoint {
+        let globalAppKit = NSPoint(
+            x: screen.frame.origin.x + local.x,
+            y: screen.frame.origin.y + local.y
+        )
+        let primary = NSScreen.screens.first ?? screen
+        return CGPoint(
+            x: globalAppKit.x - primary.frame.origin.x,
+            y: primary.frame.maxY - globalAppKit.y
+        )
+    }
+
+    /// 读取放大镜中心点在冻结帧上的像素颜色（1×1 裁剪 + 位图回读）。
+    private func colorUnderMagnifier(at point: NSPoint) -> NSColor? {
+        guard let frame = frozenFrame else { return nil }
+        let scale: CGFloat = screen.backingScaleFactor
+        let frameWidth: CGFloat = CGFloat(frame.width)
+        let frameHeight: CGFloat = CGFloat(frame.height)
+        let pixelX: CGFloat = min(max(point.x * scale - 0.5, 0), frameWidth - 1)
+        let pixelY: CGFloat = min(max(frameHeight - point.y * scale - 0.5, 0), frameHeight - 1)
+        let crop = CGRect(x: pixelX, y: pixelY, width: 1, height: 1)
+        guard !crop.isNull, let pixel = frame.cropping(to: crop) else { return nil }
+
+        let buffer = UnsafeMutableRawPointer.allocate(byteCount: 4, alignment: 4)
+        defer { buffer.deallocate() }
+        memset(buffer, 0, 4)
+        guard let ctx = CGContext(
+            data: buffer,
+            width: 1, height: 1,
+            bitsPerComponent: 8, bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        ctx.draw(pixel, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        let bytes = buffer.assumingMemoryBound(to: UInt8.self)
+        return NSColor(
+            srgbRed: CGFloat(bytes[0]) / 255,
+            green: CGFloat(bytes[1]) / 255,
+            blue: CGFloat(bytes[2]) / 255,
+            alpha: 1
+        )
     }
 
     /// 悬停高亮：窗口=挖空遮罩+光谱细边；全屏=整屏光谱细边（不用挖空）。
@@ -740,7 +950,7 @@ private final class SelectionView: NSView {
 
     /// 底部操作提示（拖拽开始前显示）：三种用法 + 取消方式。
     private func drawHint() {
-        let hint = "单击窗口＝截整窗　·　点桌面空白＝截全屏　·　拖拽＝自定义区域　·　Esc/右键＝取消" as NSString
+        let hint = "单击窗口＝截整窗　·　点桌面空白＝截全屏　·　拖拽＝自定义区域　·　C / ⌘⌥＝复制颜色　·　Esc/右键＝取消" as NSString
         let attrs: [NSAttributedString.Key: Any] = [
             .font: RuneFont.appKit(size: 12, weight: .medium),
             .foregroundColor: NSColor.white,
@@ -878,6 +1088,14 @@ private final class SelectionView: NSView {
     override func mouseDown(with event: NSEvent) {
         crosshairCursor.set()
         let loc = convert(event.locationInWindow, from: nil)
+        // 模式条优先：点在条上只切换模式，不起拖拽（否则从条上起手会框选失败）
+        if let modeBarRect,
+           let picked = CaptureModeBar(rect: modeBarRect, current: selectedMode).mode(at: loc) {
+            selectedMode = picked
+            onModePick?(picked)
+            needsDisplay = true
+            return
+        }
         pressedElement = hoveredElement
         dragStart = loc
         dragCurrent = loc
@@ -912,6 +1130,8 @@ private final class SelectionView: NSView {
             hoveredWindow = nil
             pressedElement = nil
         }
+        // 拖拽期间放大镜继续跟随（mouseDown 时清过 mouseLocation，这里回填）
+        mouseLocation = loc
         machine.reduce(.selectionChanged)
         needsDisplay = true
     }
@@ -1026,9 +1246,31 @@ private final class SelectionView: NSView {
             nudgeSelection(by: event.keyCode)
         case 36:  // Enter → 确认选区
             confirmSelection()
+        case 8:  // C / ⌘⌥C → 复制放大镜中心的颜色（飞书取色同款）
+            copyMagnifierColor()
         default:
             break
         }
+    }
+
+    /// 把放大镜中心像素以十六进制写入剪贴板。
+    private func copyMagnifierColor() {
+        guard let point = mouseLocation,
+              let color = colorUnderMagnifier(at: point) else { return }
+        let hex = String(
+            format: "#%02X%02X%02X",
+            Int(color.redComponent * 255),
+            Int(color.greenComponent * 255),
+            Int(color.blueComponent * 255)
+        )
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(hex, forType: .string)
+        ToastWindow.shared.show(
+            title: "已复制颜色",
+            message: hex,
+            systemIcon: "eyedropper"
+        )
     }
 
     /// 方向键微调 dragCurrent（每次 1 点）。微调是精细操作，只钳制不做磁吸。

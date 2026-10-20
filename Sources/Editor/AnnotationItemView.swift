@@ -44,6 +44,8 @@ struct AnnotationItemView: View {
                     .fill(fillStyle)
             } else if item.tool == .numberedCircle {
                 NumberedCircleAnnotationView(item: item, viewBounds: viewBounds)
+            } else if item.tool == .tag {
+                TagAnnotationCanvas(item: item, imageFrame: imageFrame)
             } else if item.tool == .text {
                 AnnotationTextItemView(
                     item: item,
@@ -54,6 +56,12 @@ struct AnnotationItemView: View {
                     onCommit: onCommitText,
                     onSizeChange: onTextSizeChange
                 )
+            } else if item.tool == .highlight {
+                itemPath
+                    .fill(item.swatch.color.opacity(AnnotationHighlightMetrics.opacity))
+                    .blendMode(.multiply)
+            } else if item.tool == .watermark {
+                TiledWatermarkView(item: item, imageFrame: imageFrame)
             } else {
                 itemPath
                     .stroke(item.swatch.color, style: StrokeStyle(lineWidth: item.strokeWidth, lineCap: .round, lineJoin: .round))
@@ -90,11 +98,17 @@ struct AnnotationItemView: View {
         case .pixelate, .blur, .spotlight:
             return Path(rect)
 
+        case .highlight, .watermark:
+            return Path(rect)
+
         case .numberedCircle:
             return Path(ellipseIn: rect)
 
         case .text:
             return Path()
+
+        case .tag:
+            return Path()   // 标签由 TagAnnotationCanvas 整体绘制
 
         case .ellipse:
             return Path(ellipseIn: rect)
@@ -713,5 +727,128 @@ private struct SpotlightPreview: View {
         .frame(width: canvasFrame.width, height: canvasFrame.height)
         .position(x: canvasFrame.midX, y: canvasFrame.midY)
         .allowsHitTesting(false)
+    }
+}
+
+/// 编辑器里的斜排水印预览：与保存烘焙（AnnotationDrawing.drawWatermark）
+/// 同一套角度、间距、隔行错位参数，保证所见即所得。
+private struct TiledWatermarkView: View {
+    let item: AnnotationItem
+    let imageFrame: CGRect
+
+    var body: some View {
+        Canvas { context, _ in
+            let text = item.text.trimmingCharacters(in: .newlines)
+            guard !text.isEmpty else { return }
+
+            let fontSize = max(
+                item.textLineHeight * imageFrame.height * AnnotationTextMetrics.fontScale,
+                9
+            )
+            let font = RuneFont.swiftUI(size: fontSize, weight: item.isBold ? .semibold : .regular)
+            let color = item.swatch.color.opacity(Double(item.redactionDensity))
+            let resolved = context.resolve(Text(text).font(font).foregroundColor(color))
+            let measured = resolved.measure(in: CGSize(width: .greatestFiniteMagnitude, height: fontSize * 2))
+            guard measured.width > 1, measured.height > 1 else { return }
+
+            let stepX = measured.width + fontSize * AnnotationWatermarkMetrics.spacingScaleX
+            let stepY = measured.height + fontSize * AnnotationWatermarkMetrics.spacingScaleY
+            guard stepX > 1, stepY > 1 else { return }
+
+            let diagonal = hypot(imageFrame.width, imageFrame.height) + stepX
+            let columns = Int(ceil(diagonal / stepX))
+            let rows = Int(ceil((imageFrame.height + diagonal) / stepY))
+            guard columns > 0, columns < 512, rows > 0, rows < 512 else { return }
+
+            context.drawLayer { layer in
+                layer.clip(to: Path(CGRect(origin: .zero, size: CGSize(width: imageFrame.width, height: imageFrame.height))))
+                layer.translateBy(x: imageFrame.width / 2, y: imageFrame.height / 2)
+                layer.rotate(by: Angle(radians: AnnotationWatermarkMetrics.tiltAngle))
+
+                let startY = -CGFloat(rows - 1) * stepY / 2
+                let startX = -CGFloat(columns) * stepX / 2
+                for row in 0..<rows {
+                    let rowOffset = (row % 2 == 1) ? stepX / 2 : 0
+                    for column in 0...columns {
+                        layer.draw(
+                            resolved,
+                            at: CGPoint(
+                                x: startX + CGFloat(column) * stepX + rowOffset + measured.width / 2,
+                                y: startY + CGFloat(row) * stepY + measured.height / 2
+                            )
+                        )
+                    }
+                }
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+
+/// 指向性标注气泡（飞书「标签」同款）：锚点红点 + 深色圆角气泡 + 指向锚点的三角尖。
+/// 与 AnnotationDrawing 的成品烘焙保持同一套几何，编辑器里看到的就是导出后的样子。
+private struct TagAnnotationCanvas: View {
+    let item: AnnotationItem
+    let imageFrame: CGRect
+
+    var body: some View {
+        Canvas { context, _ in
+            let bubble = CGRect(
+                x: imageFrame.minX + item.rect.minX * imageFrame.width,
+                y: imageFrame.minY + item.rect.minY * imageFrame.height,
+                width: item.rect.width * imageFrame.width,
+                height: item.rect.height * imageFrame.height
+            )
+            let anchor = item.points.first.map { point in
+                CGPoint(
+                    x: imageFrame.minX + point.x * imageFrame.width,
+                    y: imageFrame.minY + point.y * imageFrame.height
+                )
+            } ?? CGPoint(x: bubble.minX, y: bubble.midY)
+            guard bubble.width > 0.5, bubble.height > 0.5 else { return }
+
+            var tail = Path()
+            let towardsAnchor = anchor.x < bubble.midX
+            let baseX = towardsAnchor ? bubble.minX : bubble.maxX
+            let tipX = towardsAnchor ? baseX - bubble.width * 0.16 : baseX + bubble.width * 0.16
+            let halfHeight = bubble.height * 0.22
+            tail.move(to: CGPoint(x: baseX, y: bubble.midY - halfHeight))
+            tail.addLine(to: CGPoint(x: tipX, y: anchor.y))
+            tail.addLine(to: CGPoint(x: baseX, y: bubble.midY + halfHeight))
+            tail.closeSubpath()
+            context.fill(tail, with: .color(Color(nsColor: AnnotationTagMetrics.bubbleColor)))
+
+            let corner = min(bubble.height * 0.24, 14)
+            var body = Path()
+            body.addRoundedRect(in: bubble, cornerSize: CGSize(width: corner, height: corner))
+            context.fill(body, with: .color(Color(nsColor: AnnotationTagMetrics.bubbleColor)))
+
+            let dotRadius = imageFrame.height * AnnotationTagMetrics.normalizedDotDiameter / 2
+            if dotRadius > 0.4 {
+                let dot = Path(ellipseIn: CGRect(
+                    x: anchor.x - dotRadius,
+                    y: anchor.y - dotRadius,
+                    width: dotRadius * 2,
+                    height: dotRadius * 2
+                ))
+                context.fill(dot, with: .color(Color(nsColor: AnnotationTagMetrics.dotColor)))
+            }
+
+            let text = item.text.trimmingCharacters(in: .newlines)
+            guard !text.isEmpty else { return }
+            let inset = bubble.height * 0.15
+            let textRect = bubble.insetBy(dx: inset, dy: inset * 0.7)
+            guard textRect.width > 1, textRect.height > 1 else { return }
+            let fontSize = max(item.textLineHeight * imageFrame.height * AnnotationTextMetrics.fontScale, 9)
+            var attributed = AttributedString(text)
+            attributed.font = item.resolvedFont(size: fontSize)
+            attributed.foregroundColor = Color(nsColor: AnnotationTagMetrics.textColor)
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .center
+            paragraph.lineBreakMode = .byWordWrapping
+            attributed.paragraphStyle = paragraph
+            context.draw(context.resolve(Text(attributed)), in: textRect)
+        }
     }
 }

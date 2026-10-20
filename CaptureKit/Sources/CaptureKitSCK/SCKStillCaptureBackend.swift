@@ -74,7 +74,7 @@ public final class SCKStillCaptureBackend: StillCaptureBackend, @unchecked Senda
             }
         }
 
-        let (filter, displayID) = try buildFilter(for: target, in: content)
+        let (filter, displayID, coveredPointsWidth) = try buildFilter(for: target, in: content)
         let config = SCStreamConfiguration()
         configure(config: config, filter: filter, target: target, content: content)
 
@@ -89,8 +89,13 @@ public final class SCKStillCaptureBackend: StillCaptureBackend, @unchecked Senda
         }
 
         let scaleFactor: CGFloat
-        if filter.contentRect.width > 0 {
-            scaleFactor = CGFloat(image.width) / filter.contentRect.width
+        if coveredPointsWidth > 0 {
+            // 缩放倍率 = 实际像素宽 ÷ 这一帧覆盖的**点**宽。
+            // 区域截图时覆盖的是选区（点），不是整块显示器——早前这里错用
+            // filter.contentRect（显示器宽）去除，得到的是「选区宽 ÷ 屏宽」，
+            // 滚动截图拿它换算滚轮步长时会把步长缩到实际值的几分之一，
+            // 于是正常滚动被判成「超出指令位移范围」而被拒。
+            scaleFactor = CGFloat(image.width) / coveredPointsWidth
         } else {
             scaleFactor = await Self.mainScreenScaleFactor()
         }
@@ -188,10 +193,13 @@ public final class SCKStillCaptureBackend: StillCaptureBackend, @unchecked Senda
         try await store.fetch().content
     }
 
+    /// - Returns: (过滤器, 显示器 ID, 本帧覆盖的**点**宽度)。
+    ///   第三项用于算缩放倍率：必须是这一帧真正拍到的点宽（区域截图是选区
+    ///   宽，显示器/窗口截图才是 filter.contentRect 的宽）。
     private func buildFilter(
         for target: CaptureTarget,
         in content: SCShareableContent
-    ) throws -> (SCContentFilter, CGDirectDisplayID?) {
+    ) throws -> (filter: SCContentFilter, displayID: CGDirectDisplayID?, coveredPointsWidth: CGFloat) {
         let excludedApps = content.applications.filter {
             excludingBundleIDs.contains($0.bundleIdentifier)
         }
@@ -206,7 +214,7 @@ public final class SCKStillCaptureBackend: StillCaptureBackend, @unchecked Senda
                 excludingApplications: excludedApps,
                 exceptingWindows: []
             )
-            return (filter, display.displayID)
+            return (filter, display.displayID, filter.contentRect.width)
 
         case .display(let displayID):
             guard let display = content.displays.first(where: { $0.displayID == displayID }) else {
@@ -217,11 +225,11 @@ public final class SCKStillCaptureBackend: StillCaptureBackend, @unchecked Senda
                 excludingApplications: excludedApps,
                 exceptingWindows: []
             )
-            return (filter, displayID)
+            return (filter, displayID, filter.contentRect.width)
 
         case .region(let globalRect):
-            // 选区是全局 AppKit 点坐标。用选区中心点判断所属显示器（修正
-            // ScreenRecordingManager 写死主屏的 bug）。
+            // 选区是全局 CG 点坐标（主屏左上原点）。用选区中心点判断所属
+            // 显示器（修正 ScreenRecordingManager 写死主屏的 bug）。
             let center = CGPoint(x: globalRect.midX, y: globalRect.midY)
             guard let display = displayContaining(point: center, in: content.displays) else {
                 throw CaptureError.captureFailed
@@ -231,7 +239,10 @@ public final class SCKStillCaptureBackend: StillCaptureBackend, @unchecked Senda
                 excludingApplications: excludedApps,
                 exceptingWindows: []
             )
-            return (filter, display.displayID)
+            // 选区限制在该 display 内（clamp 防越界）——与 configure() 用的是
+            // 同一个矩形，保证这里量到的点宽就是实际拍到的宽度。
+            let clamped = globalRect.intersection(display.frame)
+            return (filter, display.displayID, clamped.width)
 
         case .window(let windowID):
             // 从可共享内容的窗口列表里按 windowID 匹配到 SCWindow。
@@ -239,7 +250,7 @@ public final class SCKStillCaptureBackend: StillCaptureBackend, @unchecked Senda
                 throw CaptureError.captureFailed
             }
             let filter = SCContentFilter(desktopIndependentWindow: window)
-            return (filter, nil)
+            return (filter, nil, filter.contentRect.width)
         }
     }
 

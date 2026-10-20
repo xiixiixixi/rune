@@ -168,6 +168,15 @@ private struct OCRResultCardView: View {
             Spacer()
 
             Button {
+                TranslationPanelController.shared.show(text: text)
+            } label: {
+                RuneTheme.secondaryButtonLabel("翻译", systemImage: "character.book.closed")
+            }
+            .buttonStyle(RuneTheme.RunePressStyle())
+            .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .help("把识别结果交给系统翻译（飞书截图翻译同款）")
+
+            Button {
                 onClose()
             } label: {
                 RuneTheme.secondaryButtonLabel("关闭")

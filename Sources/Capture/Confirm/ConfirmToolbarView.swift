@@ -6,14 +6,36 @@ import SwiftUI
 struct ConfirmToolbarView: View {
     let controller: CaptureConfirmController
 
+    // 飞书同款“记住上次设置”（draw_color / 画笔粗细）：上次选过什么，
+    // 这次截图默认就是什么，不用每张图都重选。
     @State private var activeTool: AnnotationTool = .select
-    @State private var swatch: AnnotationSwatch = .mustard
-    @State private var widthRaw = 1
+    @State private var swatch: AnnotationSwatch
+    @State private var widthRaw: Int
     @State private var canUndo = false
     @State private var canRedo = false
     @State private var ocrActive = false
     @State private var contentAnalysisState: CaptureContentAnalysisState = .analyzing
+    @State private var showsQRPanel = false
     @State private var plateTool: AnnotationTool = .select
+
+    init(controller: CaptureConfirmController) {
+        self.controller = controller
+        _swatch = State(initialValue: Self.storedSwatch)
+        _widthRaw = State(initialValue: Self.storedWidthIndex)
+    }
+
+    private static var storedSwatch: AnnotationSwatch {
+        let id = UserDefaults.standard.string(forKey: Self.swatchKey)
+        return AnnotationSwatch.allCases.first { $0.id == id } ?? .mustard
+    }
+
+    private static var storedWidthIndex: Int {
+        let index = UserDefaults.standard.integer(forKey: Self.widthKey)
+        return (0...2).contains(index) ? index : 1
+    }
+
+    private static let swatchKey = "bs_annotation_swatch_id"
+    private static let widthKey = "bs_annotation_width_index"
 
     @Namespace private var toolSelectionNamespace
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -23,7 +45,7 @@ struct ConfirmToolbarView: View {
     private let widths: [CGFloat] = [2, 4, 8]
 
     private var showsColorOptions: Bool {
-        [.rectangle, .filledRectangle, .ellipse, .line, .arrow, .freehand, .text, .numberedCircle].contains(activeTool)
+        [.rectangle, .filledRectangle, .ellipse, .line, .arrow, .freehand, .text, .numberedCircle, .highlight, .watermark].contains(activeTool)
     }
 
     private var showsWidthOptions: Bool {
@@ -32,6 +54,10 @@ struct ConfirmToolbarView: View {
 
     var body: some View {
         HStack(spacing: 4) {
+            // 拖动把手（飞书同款）：工具条最左边这一小片可以拖着走。
+            // 整屏截图时工具条自动只能落在屏幕左下角、正压着画面，挪不动很碍事。
+            FreezeToolbarGrip()
+
             annotationTools
 
             if showsColorOptions || showsWidthOptions {
@@ -68,6 +94,39 @@ struct ConfirmToolbarView: View {
             FreezeSeparator()
 
             captureContentMenu
+
+            // 提取文字 / 翻译：飞书工具条上这是一级图标，
+            // 之前埋在「截图内容」菜单里，等于藏了一层。
+            FreezeToolButton(
+                title: "提取文字",
+                help: detectedText == nil
+                    ? "这张截图里没识别到文字"
+                    : "在截图上框选要提取的文字（OCR）",
+                icon: "selection.pin.in.out",
+                isActive: ocrActive,
+                isEnabled: detectedText != nil,
+                isCompact: true,
+                selectionNamespace: toolSelectionNamespace
+            ) {
+                canvas?.finishTextEditing()
+                toggleTextSelection()
+            }
+
+            FreezeToolButton(
+                title: "翻译",
+                help: detectedText == nil
+                    ? "这张截图里没识别到文字，没法翻译"
+                    : "把识别到的文字交给系统翻译",
+                icon: "character.book.closed",
+                isEnabled: detectedText != nil && TranslationPanelController.shared.isAvailable,
+                isCompact: true,
+                selectionNamespace: toolSelectionNamespace
+            ) {
+                canvas?.finishTextEditing()
+                guard let text = detectedText else { return }
+                TranslationPanelController.shared.show(text: text)
+            }
+
             FreezeToolButton(
                 title: "长图",
                 help: "沿用当前选区开始滚动截图",
@@ -138,6 +197,15 @@ struct ConfirmToolbarView: View {
             canUndo = canvas?.canUndo ?? false
             ocrActive = canvas?.ocrMode ?? false
             contentAnalysisState = canvas?.contentAnalysisState ?? .analyzing
+            // 恢复上次会话的标注默认值（颜色/粗细），画布与工具栏同步
+            canvas?.selectedSwatch = swatch
+            canvas?.strokeWidth = widths[widthRaw]
+        }
+        .onChange(of: swatch) { _, newSwatch in
+            UserDefaults.standard.set(newSwatch.id, forKey: Self.swatchKey)
+        }
+        .onChange(of: widthRaw) { _, newIndex in
+            UserDefaults.standard.set(newIndex, forKey: Self.widthKey)
         }
         .onReceive(NotificationCenter.default.publisher(for: .confirmCanvasStateDidChange)) { note in
             guard note.object as? ConfirmCanvasView === canvas else { return }
@@ -190,6 +258,11 @@ struct ConfirmToolbarView: View {
                     systemImage: "doc.on.doc"
                 ) {
                     copyString(text, message: "已复制全部文字")
+                }
+                if TranslationPanelController.shared.isAvailable {
+                    Button("翻译截图文字", systemImage: "character.book.closed") {
+                        TranslationPanelController.shared.show(text: text)
+                    }
                 }
                 Button(
                     ocrActive ? "退出选字模式" : "选取部分文字",
@@ -317,6 +390,75 @@ struct ConfirmToolbarView: View {
         return "\(value.prefix(limit))…"
     }
 
+    private var isAnalyzingContent: Bool {
+        if case .analyzing = contentAnalysisState { return true }
+        return false
+    }
+
+    /// 这张截图里识别到的文字（没有就 nil）
+    private var detectedText: String? {
+        guard case let .ready(analysis) = contentAnalysisState else { return nil }
+        guard let text = analysis.text, !text.isEmpty else { return nil }
+        return text
+    }
+
+    /// 画布后台一直在识别条码，这里直接把结果摆出来（飞书同款：工具条一等公民）
+    private var qrCodes: [String] {
+        guard case let .ready(analysis) = contentAnalysisState else { return [] }
+        return analysis.barcodes
+    }
+
+    private var qrPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text("二维码 / 条码")
+                    .font(RuneFont.swiftUI(size: 12, weight: .semibold))
+                Spacer()
+                if qrCodes.isEmpty {
+                    Text(isAnalyzingContent ? "识别中…" : "没有识别到")
+                        .font(RuneFont.swiftUI(size: 10.5))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if qrCodes.isEmpty {
+                Text("这张截图里没有二维码或条码。换一张带码的图再试。")
+                    .font(RuneFont.swiftUI(size: 11))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(Array(qrCodes.prefix(8)), id: \.self) { value in
+                    HStack(spacing: 8) {
+                        Text(value)
+                            .font(RuneFont.mono(size: 10.5))
+                            .lineLimit(2)
+                            .textSelection(.enabled)
+                        Spacer(minLength: 8)
+                        Button {
+                            copyString(value, message: "二维码内容已复制")
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("复制")
+                        if let url = URL(string: value), url.scheme != nil {
+                            Button {
+                                NSWorkspace.shared.open(url)
+                            } label: {
+                                Image(systemName: "safari")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("打开链接")
+                        }
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .frame(width: 420)
+    }
+
+    /// 标注工具组。分组跟飞书一致：**绘制 | 效果/内容**，
+    /// 中间一条分隔线。之前 15 个图标是混着排的（高亮夹在画笔和文字中间、
+    /// 编号和标签夹在效果工具中间），要找一个工具得把整排扫过去。
     private var annotationTools: some View {
         HStack(spacing: 1) {
             FreezeToolButton(
@@ -329,6 +471,9 @@ struct ConfirmToolbarView: View {
                 selectionNamespace: toolSelectionNamespace
             ) { activate(.select) }
 
+            FreezeSeparator()
+
+            // ── 绘制
             FreezeToolButton(
                 title: "方框",
                 help: "拖拽画出一个醒目的矩形框；Shift = 正方形（R）",
@@ -390,6 +535,39 @@ struct ConfirmToolbarView: View {
             ) { activate(.text) }
 
             FreezeToolButton(
+                title: "编号",
+                help: "依次放置 1、2、3…编号圆点（N）",
+                icon: "number.circle",
+                isActive: activeTool == .numberedCircle,
+                showsSelectionPlate: plateTool == .numberedCircle,
+                isCompact: true,
+                selectionNamespace: toolSelectionNamespace
+            ) { activate(.numberedCircle) }
+
+            FreezeToolButton(
+                title: "标签",
+                help: "点击落一个指向性气泡，可写说明文字（I）",
+                icon: "tag.fill",
+                isActive: activeTool == .tag,
+                showsSelectionPlate: plateTool == .tag,
+                isCompact: true,
+                selectionNamespace: toolSelectionNamespace
+            ) { activate(.tag) }
+
+            FreezeSeparator()
+
+            // ── 效果 / 内容
+            FreezeToolButton(
+                title: "高亮",
+                help: "拖拽铺一层荧光色，底下文字仍可读（H）",
+                icon: "highlighter",
+                isActive: activeTool == .highlight,
+                showsSelectionPlate: plateTool == .highlight,
+                isCompact: true,
+                selectionNamespace: toolSelectionNamespace
+            ) { activate(.highlight) }
+
+            FreezeToolButton(
                 title: "打码",
                 help: "拖拽框住需要隐藏的隐私内容（M）",
                 icon: "square.grid.3x3.fill",
@@ -420,14 +598,25 @@ struct ConfirmToolbarView: View {
             ) { activate(.spotlight) }
 
             FreezeToolButton(
-                title: "编号",
-                help: "依次放置 1、2、3…编号圆点（N）",
-                icon: "number.circle",
-                isActive: activeTool == .numberedCircle,
-                showsSelectionPlate: plateTool == .numberedCircle,
+                title: "水印",
+                help: "点击铺一层斜排文字水印，双击水印可修改文字（W）",
+                icon: "seal",
+                isActive: activeTool == .watermark,
+                showsSelectionPlate: plateTool == .watermark,
                 isCompact: true,
                 selectionNamespace: toolSelectionNamespace
-            ) { activate(.numberedCircle) }
+            ) { activate(.watermark) }
+
+            FreezeToolButton(
+                title: "识别二维码",
+                help: "识别这张截图里的二维码与条码，可复制或直接打开链接",
+                icon: "qrcode.viewfinder",
+                isActive: showsQRPanel,
+                showsSelectionPlate: false,
+                isCompact: true,
+                selectionNamespace: toolSelectionNamespace
+            ) { showsQRPanel = true }
+            .popover(isPresented: $showsQRPanel, arrowEdge: .bottom) { qrPanel }
         }
         .padding(4)
         .background(
@@ -724,6 +913,27 @@ private struct FreezeSwatch: View {
         .onHover { isHovered = $0 }
         .help("标注颜色：\(swatch.title)")
         .accessibilityLabel("标注颜色：\(swatch.title)")
+    }
+}
+
+/// 工具条拖动把手：六点抓手（飞书同款）。
+private struct FreezeToolbarGrip: View {
+    var body: some View {
+        VStack(spacing: 2.5) {
+            ForEach(0..<3, id: \.self) { _ in
+                HStack(spacing: 2.5) {
+                    ForEach(0..<2, id: \.self) { _ in
+                        Circle()
+                            .fill(Color.white.opacity(0.34))
+                            .frame(width: 2.4, height: 2.4)
+                    }
+                }
+            }
+        }
+        .frame(width: CaptureConfirmController.toolbarGripWidth, height: 38)
+        .contentShape(Rectangle())
+        .help("拖动工具条")
+        .accessibilityLabel("拖动工具条")
     }
 }
 

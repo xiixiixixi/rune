@@ -349,4 +349,134 @@ import Testing
             }
         }
     }
+    // MARK: - 长图尾部锚定（失配自愈）
+
+    @Test func tailAnchorLocatesContinuingFrame() {
+        // 长图尾部 0..300；上一锚帧占 180..300，当前帧从 245 继续向下。
+        let tail = tallImage(rows: 300)
+        let previous = frameImage(startRow: 180)
+        let current = frameImage(startRow: 245)
+
+        let previousAnchor = ScrollOverlapDetector.detectTailAnchor(
+            tail: tail, tailHeight: 300,
+            current: previous, width: width, height: height,
+            minimumOverlap: 16
+        )
+        let currentAnchor = ScrollOverlapDetector.detectTailAnchor(
+            tail: tail, tailHeight: 300,
+            current: current, width: width, height: height,
+            minimumOverlap: 16
+        )
+
+        #expect(previousAnchor?.anchorRow == 180)
+        #expect(currentAnchor?.anchorRow == 245)
+        // 两锚点之差就是恢复出的位移（灰度行）
+        #expect((currentAnchor?.anchorRow ?? 0) - (previousAnchor?.anchorRow ?? 0) == 65)
+    }
+
+    @Test func tailAnchorRejectsFrameBeyondTail() {
+        // 当前帧顶行已越过长图末尾（漏了一段内容），重叠不足必须拒绝。
+        let tail = tallImage(rows: 300)
+        let current = frameImage(startRow: 300)
+        let result = ScrollOverlapDetector.detectTailAnchor(
+            tail: tail, tailHeight: 300,
+            current: current, width: width, height: height,
+            minimumOverlap: 16
+        )
+        #expect(result == nil)
+    }
+
+    @Test func tailAnchorRejectsUnrelatedFrame() {
+        // 与长图毫无关系的帧（内容错位 + 灰度翻转）不得被错接。
+        let tail = tallImage(rows: 300)
+        let current = frameImage(startRow: 80).map { ~$0 }
+        let result = ScrollOverlapDetector.detectTailAnchor(
+            tail: tail, tailHeight: 300,
+            current: current, width: width, height: height,
+            minimumOverlap: 16
+        )
+        #expect(result == nil)
+    }
+
+    @Test func tailAnchorRejectsAmbiguousPeriodicTail() {
+        // 尾部为周期内容时远处会出现同分假锚点，必须因歧义而放弃。
+        let tail = periodicTallImage(period: 12, rows: 300)
+        let current = periodicFrameImage(period: 12, phase: 180)
+        let result = ScrollOverlapDetector.detectTailAnchor(
+            tail: tail, tailHeight: 300,
+            current: current, width: width, height: height,
+            minimumOverlap: 16
+        )
+        #expect(result == nil)
+    }
+
+    @Test func tailAnchorRequiresMinimumOverlap() {
+        // 重叠低于 minimumOverlap 的锚点不存在（尾部只剩 10 行可用）。
+        let tail = tallImage(rows: 40)
+        let current = frameImage(startRow: 34)
+        let result = ScrollOverlapDetector.detectTailAnchor(
+            tail: tail, tailHeight: 40,
+            current: current, width: width, height: height,
+            minimumOverlap: 16
+        )
+        #expect(result == nil)
+    }
+
+    /// 行哈希（splitmix 常数）避免合成内容以 256 行周期自重复——
+    /// 否则远处行会逐字节相同，制造出算法必须拒绝的假锚点。
+    private func hashedRow(_ row: Int) -> UInt8 {
+        // splitmix64 终结器：乘 golden 常数后再三轮 xorshift 搅拌，
+        // 消除小行号下"近似线性"导致的行间近碰撞。
+        var x: UInt64 = UInt64(bitPattern: Int64(row)) &+ 0x9E3779B97F4A7C15
+        x ^= x >> 30
+        x &*= 0xBF58476D1CE4E5B9
+        x ^= x >> 27
+        x &*= 0x94D049BB133111EB
+        x ^= x >> 31
+        return UInt8(truncatingIfNeeded: x >> 56)
+    }
+
+    private func syntheticPixel(row: Int, column: Int) -> UInt8 {
+        let base: Int = Int(hashedRow(row))
+        let mix: Int = (row + column) % 7
+        return UInt8(truncatingIfNeeded: base + column * 13 + mix)
+    }
+
+    private func frameImage(startRow: Int) -> [UInt8] {
+        var pixels = [UInt8]()
+        pixels.reserveCapacity(width * height)
+        for y in 0..<height {
+            for x in 0..<width {
+                pixels.append(syntheticPixel(row: startRow + y, column: x))
+            }
+        }
+        return pixels
+    }
+
+    private func tallImage(rows: Int) -> [UInt8] {
+        var pixels = [UInt8]()
+        pixels.reserveCapacity(width * rows)
+        for y in 0..<rows {
+            for x in 0..<width {
+                pixels.append(syntheticPixel(row: y, column: x))
+            }
+        }
+        return pixels
+    }
+
+    private func periodicTallImage(period: Int, rows: Int) -> [UInt8] {
+        (0..<rows).flatMap { y in
+            (0..<width).map { x in
+                UInt8(truncatingIfNeeded: (y % period) * 53 + x * 11)
+            }
+        }
+    }
+
+    private func periodicFrameImage(period: Int, phase: Int) -> [UInt8] {
+        (0..<height).flatMap { y in
+            (0..<width).map { x in
+                UInt8(truncatingIfNeeded: ((phase + y) % period) * 53 + x * 11)
+            }
+        }
+    }
 }

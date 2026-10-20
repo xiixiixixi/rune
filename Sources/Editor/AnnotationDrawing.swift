@@ -39,6 +39,14 @@ enum AnnotationDrawing {
                     ))
                     ctx.fillPath()
 
+                case .highlight:
+                    // 荧光笔：multiply 混合保留底图文字可读性（飞书 draw_highlight 同款）
+                    ctx.saveGState()
+                    ctx.setBlendMode(.multiply)
+                    ctx.setFillColor(AnnotationHighlightMetrics.highlightColor(for: item.swatch).cgColor)
+                    ctx.fill(renderedRect(item.bounds, in: imageRect, flipped: flipped))
+                    ctx.restoreGState()
+
                 case .ellipse:
                     ctx.strokeEllipse(in: renderedRect(item.bounds, in: imageRect, flipped: flipped))
 
@@ -82,6 +90,20 @@ enum AnnotationDrawing {
 
                 case .text:
                     drawText(item, in: renderedRect(item.bounds, in: imageRect, flipped: flipped), imageHeight: imageRect.height, context: ctx, flipped: flipped, minimumFontSize: minimumTextFontSize)
+
+                case .watermark:
+                    drawWatermark(item, in: imageRect, context: ctx, flipped: flipped)
+
+                case .tag:
+                    guard let anchorPoint = item.points.first else { return }
+                    drawTag(
+                        item,
+                        in: renderedRect(item.bounds, in: imageRect, flipped: flipped),
+                        anchor: renderedPoint(anchorPoint, in: imageRect, flipped: flipped),
+                        imageHeight: imageRect.height,
+                        context: ctx,
+                        flipped: flipped
+                    )
 
                 case .line:
                     guard let first = item.points.first,
@@ -255,6 +277,129 @@ enum AnnotationDrawing {
         NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: flipped)
         attributedText.draw(with: rect, options: [.usesLineFragmentOrigin, .usesFontLeading])
         NSGraphicsContext.restoreGraphicsState()
+    }
+
+    /// 指向性标注气泡（飞书「标签」同款）：锚点红点 + 深色圆角气泡 + 指向锚点的三角尖。
+    /// 气泡里的文字始终是白色（底色固定为深色），不跟随标注色点。
+    private static func drawTag(
+        _ item: AnnotationItem,
+        in rect: CGRect,
+        anchor: CGPoint,
+        imageHeight: CGFloat,
+        context ctx: CGContext,
+        flipped: Bool
+    ) {
+        guard rect.width > 0.5, rect.height > 0.5 else { return }
+
+        ctx.setFillColor(AnnotationTagMetrics.bubbleColor.cgColor)
+        // 三角尖先画、气泡后盖：两者同色，接缝不会露出底图
+        ctx.addPath(AnnotationTagMetrics.tailPath(
+            bubble: rect,
+            anchor: anchor,
+            tailLength: rect.width * 0.16
+        ))
+        ctx.fillPath()
+
+        let corner = min(rect.height * 0.24, 14)
+        ctx.addPath(CGPath(
+            roundedRect: rect,
+            cornerWidth: corner,
+            cornerHeight: corner,
+            transform: nil
+        ))
+        ctx.fillPath()
+
+        let dotRadius = imageHeight * AnnotationTagMetrics.normalizedDotDiameter / 2
+        if dotRadius > 0.4 {
+            ctx.setFillColor(AnnotationTagMetrics.dotColor.cgColor)
+            ctx.fillEllipse(in: CGRect(
+                x: anchor.x - dotRadius,
+                y: anchor.y - dotRadius,
+                width: dotRadius * 2,
+                height: dotRadius * 2
+            ))
+        }
+
+        let text = item.text.trimmingCharacters(in: .newlines)
+        guard !text.isEmpty else { return }
+        let inset = rect.height * 0.15
+        let textRect = rect.insetBy(dx: inset, dy: inset * 0.7)
+        guard textRect.width > 1, textRect.height > 1 else { return }
+        let fontSize = max(item.textLineHeight * imageHeight * AnnotationTextMetrics.fontScale, 9)
+        let font = item.resolvedFont(size: fontSize)
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        paragraphStyle.lineBreakMode = .byWordWrapping
+        let attributedText = NSAttributedString(string: text, attributes: [
+            .font: font,
+            .foregroundColor: AnnotationTagMetrics.textColor,
+            .paragraphStyle: paragraphStyle
+        ])
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: flipped)
+        attributedText.draw(with: textRect, options: [.usesLineFragmentOrigin, .usesFontLeading])
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
+    /// 全图斜排水印（飞书水印工具同款）：文字按 30° 倾斜、等距平铺、隔行错位，
+    /// 不透明度走 redactionDensity（默认 0.34），颜色跟随标注色点。
+    private static func drawWatermark(_ item: AnnotationItem, in imageRect: CGRect, context ctx: CGContext, flipped: Bool = false) {
+        let text = item.text.trimmingCharacters(in: .newlines)
+        guard !text.isEmpty else { return }
+
+        let fontSize = max(item.textLineHeight * imageRect.height * AnnotationTextMetrics.fontScale, 9)
+        let font = item.resolvedFont(size: fontSize)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: item.swatch.nsColor.withAlphaComponent(item.redactionDensity),
+        ]
+        let measured = (text as NSString).size(withAttributes: attributes)
+        guard measured.width > 1, measured.height > 1 else { return }
+
+        let stepX = measured.width + fontSize * AnnotationWatermarkMetrics.spacingScaleX
+        let stepY = measured.height + fontSize * AnnotationWatermarkMetrics.spacingScaleY
+        guard stepX > 1, stepY > 1 else { return }
+
+        ctx.saveGState()
+        // 1) 裁剪在设备空间做：水印只落在图片范围内
+        ctx.clip(to: [imageRect])
+
+        // 2) 坐标系挪到图中心并归一成 Y-down，再旋转出斜排角度。
+        //    Y-down 里正角=顺时针，文字呈现左上→右下的「\」方向。
+        ctx.translateBy(x: imageRect.midX, y: imageRect.midY)
+        if !flipped {
+            ctx.scaleBy(x: 1, y: -1)
+        }
+        ctx.rotate(by: AnnotationWatermarkMetrics.tiltAngle)
+
+        // 3) 旋转后的网格要盖住原矩形的对角外接范围，四角才不空
+        let diagonal = hypot(imageRect.width, imageRect.height) + stepX
+        let columns = Int(ceil(diagonal / stepX))
+        let rows = Int(ceil((imageRect.height + diagonal) / stepY))
+        guard columns > 0, columns < 512, rows > 0, rows < 512 else {
+            ctx.restoreGState()
+            return
+        }
+
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
+
+        let string = text as NSString
+        let startY = -CGFloat(rows - 1) * stepY / 2
+        let startX = -CGFloat(columns) * stepX / 2
+        for row in 0..<rows {
+            // 隔行错开半个间距，避免长文字排成呆板的矩阵
+            let rowOffset = (row % 2 == 1) ? stepX / 2 : 0
+            for column in 0...columns {
+                string.draw(
+                    at: CGPoint(x: startX + CGFloat(column) * stepX + rowOffset, y: startY + CGFloat(row) * stepY),
+                    withAttributes: attributes
+                )
+            }
+        }
+
+        NSGraphicsContext.restoreGraphicsState()
+        ctx.restoreGState()
     }
 
     private static func applyPixelation(

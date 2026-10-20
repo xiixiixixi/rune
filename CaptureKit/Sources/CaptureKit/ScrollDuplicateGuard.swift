@@ -16,6 +16,80 @@ public enum ScrollDuplicateGuard {
         case prepend
     }
 
+    /// 重复程度的测量结果。判定"真重复"还是"仅仅是周期性内容长得像"要靠它：
+    /// 真重复是**逐行几乎完全一致**（同一张卡片原样再现），而周期性内容
+    /// 前进时只是**整体相似**（同一套版式，宽度/序号不同）。
+    public struct RepetitionEvidence: Sendable {
+        /// 整体（可比较长度）上的平均绝对差（0–255 灰度）。
+        public let meanDifference: Double
+        /// 可比较的行数。
+        public let comparableRows: Int
+        /// 逐行完全一致（差值 ≤ 1）的行占可比较行数的比例。
+        /// 真重复接近 1；只是版式相同则明显更低。
+        public let verbatimRowRatio: Double
+        /// 是否存在"更短的匹配长度"（周期性内容的典型特征）。
+        public let hasShorterMatch: Bool
+        /// 更短匹配长度上的逐行一致率（最接近 1 的那个）。
+        public let shorterMatchVerbatimRowRatio: Double
+    }
+
+    /// 测量新条带与拼接边界的重复程度（不判定，仅取证）。
+    /// 供调用方在拦截时记录证据并区分真重复与准周期内容。
+    public static func measureRepetition(
+        newRows: [[UInt8]],
+        boundaryRows: [[UInt8]],
+        insertion: Insertion,
+        minimumComparableRows: Int = 8
+    ) -> RepetitionEvidence? {
+        let comparable = min(newRows.count, boundaryRows.count)
+        guard comparable >= minimumComparableRows else { return nil }
+        guard !isUniform(newRows), !isUniform(boundaryRows) else { return nil }
+        let mean = meanDifference(
+            newRows: newRows,
+            boundaryRows: boundaryRows,
+            length: comparable,
+            insertion: insertion
+        )
+        let verbatim = verbatimRowRatio(
+            newRows: newRows,
+            boundaryRows: boundaryRows,
+            length: comparable,
+            insertion: insertion
+        )
+        let tolerance = max(8, newRows.count / 20)
+        var hasShorterMatch = false
+        var shorterVerbatim = 0.0
+        if comparable > minimumComparableRows {
+            for length in stride(from: comparable - 1,
+                                 through: minimumComparableRows, by: -1)
+            where comparable - length > tolerance {
+                let shorterMean = meanDifference(
+                    newRows: newRows,
+                    boundaryRows: boundaryRows,
+                    length: length,
+                    insertion: insertion
+                )
+                let ratio = verbatimRowRatio(
+                    newRows: newRows,
+                    boundaryRows: boundaryRows,
+                    length: length,
+                    insertion: insertion
+                )
+                if shorterMean <= 4 {
+                    hasShorterMatch = true
+                    shorterVerbatim = max(shorterVerbatim, ratio)
+                }
+            }
+        }
+        return RepetitionEvidence(
+            meanDifference: mean,
+            comparableRows: comparable,
+            verbatimRowRatio: verbatim,
+            hasShorterMatch: hasShorterMatch,
+            shorterMatchVerbatimRowRatio: shorterVerbatim
+        )
+    }
+
     /// - newRows: 新条带每行的采样亮度向量（自上而下）
     /// - boundaryRows: 拼接边界的最近行缓存（自上而下）
     /// - 返回 true = 判定重复，调用方应放弃本次拼接（不推进锚点）
@@ -24,7 +98,8 @@ public enum ScrollDuplicateGuard {
         boundaryRows: [[UInt8]],
         insertion: Insertion,
         maximumMeanDifference: Double = 4,
-        minimumComparableRows: Int = 8
+        minimumComparableRows: Int = 8,
+        minimumVerbatimRowRatio: Double = 0.8
     ) -> Bool {
         let comparable = min(newRows.count, boundaryRows.count)
         guard comparable >= minimumComparableRows else { return false }
@@ -35,7 +110,8 @@ public enum ScrollDuplicateGuard {
             boundaryRows: boundaryRows,
             length: comparable,
             insertion: insertion,
-            maximumMeanDifference: maximumMeanDifference
+            maximumMeanDifference: maximumMeanDifference,
+            minimumVerbatimRowRatio: minimumVerbatimRowRatio
         )
         if wholeStripMatches {
             // 完整相同也可能只是多张外观完全一致的正常卡片。
@@ -51,7 +127,8 @@ public enum ScrollDuplicateGuard {
                         boundaryRows: boundaryRows,
                         length: length,
                         insertion: insertion,
-                        maximumMeanDifference: maximumMeanDifference
+                        maximumMeanDifference: maximumMeanDifference,
+                        minimumVerbatimRowRatio: minimumVerbatimRowRatio
                     ) {
                         return false
                     }
@@ -73,7 +150,8 @@ public enum ScrollDuplicateGuard {
                 boundaryRows: boundaryRows,
                 length: length,
                 insertion: insertion,
-                maximumMeanDifference: maximumMeanDifference
+                maximumMeanDifference: maximumMeanDifference,
+                minimumVerbatimRowRatio: minimumVerbatimRowRatio
             ) {
                 // 周期性卡片可在相隔一个周期的多个长度上同时匹配；无法证明
                 // 哪个位置是真正的接缝时保留内容，避免误拦正常的新卡片。
@@ -91,7 +169,8 @@ public enum ScrollDuplicateGuard {
         boundaryRows: [[UInt8]],
         length: Int,
         insertion: Insertion,
-        maximumMeanDifference: Double
+        maximumMeanDifference: Double,
+        minimumVerbatimRowRatio: Double
     ) -> Bool {
         let strip: ArraySlice<[UInt8]>
         let boundary: ArraySlice<[UInt8]>
@@ -120,6 +199,44 @@ public enum ScrollDuplicateGuard {
               Double(probeTotal) / Double(probeCount) <= max(12, maximumMeanDifference * 3)
         else { return false }
 
+        let mean = meanDifference(
+            newRows: newRows,
+            boundaryRows: boundaryRows,
+            length: length,
+            insertion: insertion
+        )
+        guard mean <= maximumMeanDifference else { return false }
+        // 均差小还不够：准周期内容（同一套版式、宽度/序号不同）整体均差
+        // 也很小，但它是**新内容**。真正的重复是同一批像素原样再现——必须
+        // 逐行几乎完全一致。只看均差会把"长得像"误判成"重复"，导致正常
+        // 的新卡片被永久卡住、长图停在半路。
+        let verbatim = verbatimRowRatio(
+            newRows: newRows,
+            boundaryRows: boundaryRows,
+            length: length,
+            insertion: insertion
+        )
+        guard verbatim >= minimumVerbatimRowRatio else { return false }
+        return hasTexture(strip) && hasTexture(boundary)
+    }
+
+    /// 指定长度上的平均绝对差（0–255 灰度）。
+    private static func meanDifference(
+        newRows: [[UInt8]],
+        boundaryRows: [[UInt8]],
+        length: Int,
+        insertion: Insertion
+    ) -> Double {
+        let strip: ArraySlice<[UInt8]>
+        let boundary: ArraySlice<[UInt8]>
+        switch insertion {
+        case .append:
+            strip = newRows.prefix(length)
+            boundary = boundaryRows.suffix(length)
+        case .prepend:
+            strip = newRows.suffix(length)
+            boundary = boundaryRows.prefix(length)
+        }
         var total = 0
         var count = 0
         for (newRow, oldRow) in zip(strip, boundary) {
@@ -130,9 +247,43 @@ public enum ScrollDuplicateGuard {
                 count += 1
             }
         }
-        guard count > 0 else { return false }
-        guard Double(total) / Double(count) <= maximumMeanDifference else { return false }
-        return hasTexture(strip) && hasTexture(boundary)
+        guard count > 0 else { return .greatestFiniteMagnitude }
+        return Double(total) / Double(count)
+    }
+
+    /// 逐行完全一致（所有采样列差值 ≤ 1）的行占比。
+    /// 真正的"原样重复"接近 1；仅仅是同一套版式的不同卡片明显更低。
+    private static func verbatimRowRatio(
+        newRows: [[UInt8]],
+        boundaryRows: [[UInt8]],
+        length: Int,
+        insertion: Insertion
+    ) -> Double {
+        let strip: ArraySlice<[UInt8]>
+        let boundary: ArraySlice<[UInt8]>
+        switch insertion {
+        case .append:
+            strip = newRows.prefix(length)
+            boundary = boundaryRows.suffix(length)
+        case .prepend:
+            strip = newRows.suffix(length)
+            boundary = boundaryRows.prefix(length)
+        }
+        var identicalRows = 0
+        var totalRows = 0
+        for (newRow, oldRow) in zip(strip, boundary) {
+            let width = min(newRow.count, oldRow.count)
+            guard width > 0 else { continue }
+            totalRows += 1
+            var identical = true
+            for x in 0..<width where abs(Int(newRow[x]) - Int(oldRow[x])) > 1 {
+                identical = false
+                break
+            }
+            if identical { identicalRows += 1 }
+        }
+        guard totalRows > 0 else { return 0 }
+        return Double(identicalRows) / Double(totalRows)
     }
 
     private static func isUniform(_ rows: [[UInt8]]) -> Bool {

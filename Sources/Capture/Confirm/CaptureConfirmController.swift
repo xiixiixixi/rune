@@ -45,10 +45,21 @@ final class CaptureConfirmController: NSObject {
     /// nil = 用原始截图选区锚定（默认行为）。
     private var toolbarAnchorOverride: CGRect?
 
+    /// 用户自己把工具条拖到哪儿了（AppKit 全局坐标）。
+    /// nil = 仍按选区自动定位。
+    private var toolbarUserOrigin: NSPoint?
+    /// 拖拽过程中的起点（面板原点 + 鼠标按下位置）
+    private var toolbarDragStartOrigin: NSPoint = .zero
+    private var toolbarDragStartMouse: NSPoint = .zero
+
     /// 画布视图（弱引用供工具栏驱动）
     private(set) weak var canvas: ConfirmCanvasView?
 
     private override init() { super.init() }
+
+    /// 工具条最左侧「把手」的可拖动宽度（点）。
+    /// 把手就画在这一小片上，命中区和视觉完全对齐。
+    static let toolbarGripWidth: CGFloat = 26
 
     // MARK: - 入口
 
@@ -157,6 +168,12 @@ final class CaptureConfirmController: NSObject {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.contentView = NSHostingView(rootView: toolbar)
 
+        // 工具条可拖动（飞书同款：最左边一个把手，拖着走）。
+        // 整屏截图时工具条只能塞在屏幕左下角、正压着画面，挪不动很碍事。
+        let pan = NSPanGestureRecognizer(target: self, action: #selector(handleToolbarPan(_:)))
+        pan.delegate = self
+        panel.contentView?.addGestureRecognizer(pan)
+
         toolbarPanel = panel
         layoutToolbarInitial()
         panel.orderFrontRegardless()
@@ -198,18 +215,28 @@ final class CaptureConfirmController: NSObject {
         let finalWidth = min(size.width, sf.width - 32)
         let finalHeight = min(size.height, sf.height - 24)
         let captureFrame = toolbarAnchorOverride ?? capturedRegion.flatMap { appKitFrame(for: $0) }
-        let x = min(
-            max((captureFrame?.midX ?? sf.midX) - finalWidth / 2, sf.minX + 16),
-            sf.maxX - finalWidth - 16
-        )
-        let y: CGFloat = {
-            guard let captureFrame else { return sf.minY + 20 }
-            let below = captureFrame.minY - finalHeight - 14
-            if below >= sf.minY + 12 { return below }
-            let above = captureFrame.maxY + 14
-            if above + finalHeight <= sf.maxY - 12 { return above }
-            return sf.minY + 20
-        }()
+        let x: CGFloat
+        let y: CGFloat
+        if let userOrigin = toolbarUserOrigin {
+            // 用户自己拖过位置：保留他放的地方，只更新尺寸。
+            // （整屏截图时自动定位只能塞到屏幕左下角、压着画面，挪不动很碍事。）
+            let clamped = clampToScreen(origin: userOrigin, size: CGSize(width: finalWidth, height: finalHeight), in: sf)
+            x = clamped.x
+            y = clamped.y
+        } else {
+            x = min(
+                max((captureFrame?.midX ?? sf.midX) - finalWidth / 2, sf.minX + 16),
+                sf.maxX - finalWidth - 16
+            )
+            y = {
+                guard let captureFrame else { return sf.minY + 20 }
+                let below = captureFrame.minY - finalHeight - 14
+                if below >= sf.minY + 12 { return below }
+                let above = captureFrame.maxY + 14
+                if above + finalHeight <= sf.maxY - 12 { return above }
+                return sf.minY + 20
+            }()
+        }
         let newFrame = NSRect(
             x: x,
             y: y,
@@ -228,6 +255,42 @@ final class CaptureConfirmController: NSObject {
             panel.setFrame(newFrame, display: true)
         }
         updateToolbarAppearance(for: newFrame)
+    }
+
+    /// 把工具条落点夹在屏幕内（留 16 边距，别拖到屏幕外找不着）。
+    private func clampToScreen(origin: NSPoint, size: CGSize, in screen: NSRect) -> NSPoint {
+        NSPoint(
+            x: min(max(origin.x, screen.minX + 16), max(screen.minX + 16, screen.maxX - size.width - 16)),
+            y: min(max(origin.y, screen.minY + 12), max(screen.minY + 12, screen.maxY - size.height - 12))
+        )
+    }
+
+    /// 拖动工具条：只认最左边把手那一小片（见 gestureRecognizerShouldBegin）。
+    ///
+    /// 关键：用 **全局** 鼠标位置（NSEvent.mouseLocation），不能用手势的
+    /// `location(in: nil)`——那是窗口自身坐标系，窗口正跟着鼠标动，
+    /// 拿它算差值会形成反馈回路，面板只走一半距离。
+    @objc private func handleToolbarPan(_ gesture: NSPanGestureRecognizer) {
+        guard let panel = toolbarPanel else { return }
+        switch gesture.state {
+        case .began:
+            toolbarDragStartOrigin = panel.frame.origin
+            toolbarDragStartMouse = NSEvent.mouseLocation
+        case .changed:
+            let mouse = NSEvent.mouseLocation
+            let origin = NSPoint(
+                x: toolbarDragStartOrigin.x + (mouse.x - toolbarDragStartMouse.x),
+                y: toolbarDragStartOrigin.y + (mouse.y - toolbarDragStartMouse.y)
+            )
+            let screen = targetScreen?.visibleFrame ?? NSScreen.main?.visibleFrame
+                ?? NSScreen.screens.first?.visibleFrame
+                ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+            let clamped = clampToScreen(origin: origin, size: panel.frame.size, in: screen)
+            panel.setFrameOrigin(clamped)
+            toolbarUserOrigin = clamped
+        default:
+            break
+        }
     }
 
     /// 悬浮条底是 Liquid Glass：亮度跟随背后画面，文字颜色跟随窗口外观。
@@ -414,6 +477,19 @@ final class CaptureConfirmController: NSObject {
         freezeImage = nil
         capturedSource = nil
         targetScreen = nil
+        toolbarUserOrigin = nil
+    }
+}
+
+// MARK: - 工具条拖动
+
+extension CaptureConfirmController: NSGestureRecognizerDelegate {
+    /// 只有把手那一小片能拖动工具条；别的地方（按钮、颜色块）还是正常点击。
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: NSGestureRecognizer) -> Bool {
+        guard let pan = gestureRecognizer as? NSPanGestureRecognizer,
+              let view = pan.view else { return false }
+        let location = pan.location(in: view)
+        return location.x <= Self.toolbarGripWidth
     }
 }
 

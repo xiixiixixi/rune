@@ -154,6 +154,73 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
         MenuBarPopoverController.shared.setup()
 
         #if DEBUG
+        // 录屏 GIF 导出验收（飞书录屏同款）：用一段真实录屏走真实导出路径，
+        // 检查 GIF 的帧数与尺寸。
+        if ProcessInfo.processInfo.arguments.contains("--audit-gif-export") {
+            Task { @MainActor in
+                @MainActor func report(_ text: String) {
+                    try? text.write(
+                        toFile: "/tmp/rune-gif-audit.txt",
+                        atomically: true,
+                        encoding: .utf8
+                    )
+                    NSApp.terminate(nil)
+                }
+                let source = URL(fileURLWithPath: "/tmp/rune-gif-source.mp4")
+                guard FileManager.default.fileExists(atPath: source.path) else {
+                    report("FAIL: 缺少 /tmp/rune-gif-source.mp4")
+                    return
+                }
+                let model = VideoEditorModel()
+                // 走真实加载路径：时长与裁剪区间都是异步加载出来的，
+                // 直接塞 sourceURL 会让 trimEnd 停在 0，导出必然失败。
+                model.loadVideo(from: source)
+                for _ in 0..<80 {
+                    try? await Task.sleep(for: .milliseconds(100))
+                    if model.duration > 0 { break }
+                }
+                guard model.duration > 0 else {
+                    report("FAIL: 视频时长加载失败")
+                    return
+                }
+                // 分步定位：先看 MP4 管线通不通，再看 GIF 编码
+                let mp4URL = await model.exportTrimmed(format: .mp4)
+                let mp4Info = mp4URL.map { url -> String in
+                    let bytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+                    return "\(url.lastPathComponent) bytes=\(bytes ?? 0)"
+                } ?? "nil"
+                guard let gifURL = await model.exportTrimmed(format: .gif) else {
+                    report("FAIL: GIF 导出返回 nil｜MP4=\(mp4Info)")
+                    return
+                }
+                guard let imageSource = CGImageSourceCreateWithURL(gifURL as CFURL, nil),
+                      let frameCount = CGImageSourceGetCount(imageSource) as Int?,
+                      frameCount > 0 else {
+                    report("FAIL: GIF 读不出来或没有帧")
+                    return
+                }
+                let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any]
+                let width = properties?[kCGImagePropertyPixelWidth] as? Int ?? 0
+                let height = properties?[kCGImagePropertyPixelHeight] as? Int ?? 0
+                let bytes = (try? FileManager.default.attributesOfItem(atPath: gifURL.path)[.size] as? Int) ?? 0
+                report(
+                    "PASS: GIF=\(gifURL.lastPathComponent) frames=\(frameCount) "
+                    + "size=\(width)x\(height) bytes=\(bytes ?? 0)"
+                )
+            }
+            return
+        }
+
+        // 录屏管线真机验收：真录一段，回头检查文件里的轨道结构。
+        let recordingAuditFlags = ProcessInfo.processInfo.arguments
+        if recordingAuditFlags.contains("--audit-recording")
+            || recordingAuditFlags.contains("--audit-recording-panel") {
+            Task { @MainActor in
+                await RecordingPipelineAudit.run()
+            }
+            return
+        }
+
         // 屏幕权限取证：对比 TCC 判定与 SCK 实际可见内容（签名失效时两者会分叉）
         if ProcessInfo.processInfo.arguments.contains("--audit-sck-content") {
             Task { @MainActor in
@@ -211,6 +278,72 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+
+        // 标签（飞书同款指向气泡）渲染验收：造一张测试图 + 落一个标签，
+        // 走成品烘焙同一条路径（AnnotationDrawing），把结果写盘人工检查。
+        if ProcessInfo.processInfo.arguments.contains("--audit-tag") {
+            Task { @MainActor in
+                @MainActor func report(_ text: String) {
+                    try? text.write(
+                        toFile: "/tmp/rune-tag-audit.txt",
+                        atomically: true,
+                        encoding: .utf8
+                    )
+                    NSApp.terminate(nil)
+                }
+                guard let imageURL = Bundle.main.url(
+                    forResource: "mac-asset-3",
+                    withExtension: "jpg",
+                    subdirectory: "Backgrounds/mac"
+                ), let image = NSImage(contentsOf: imageURL),
+                      let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+                    report("FAIL: 找不到测试图")
+                    return
+                }
+                let size = CGSize(width: cg.width, height: cg.height)
+                let anchor = CGPoint(x: 0.3, y: 0.55)
+                let item = AnnotationItem(
+                    tool: .tag,
+                    rect: AnnotationTagMetrics.defaultRect(
+                        anchor: anchor,
+                        within: CGRect(x: 0, y: 0, width: 1, height: 1)
+                    ),
+                    points: [anchor],
+                    swatch: .coral,
+                    strokeWidth: 2,
+                    text: "这里有问题",
+                    textLineHeight: AnnotationTagMetrics.normalizedLineHeight()
+                )
+                guard let ctx = CGContext(
+                    data: nil,
+                    width: cg.width,
+                    height: cg.height,
+                    bitsPerComponent: 8,
+                    bytesPerRow: 0,
+                    space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
+                ) else {
+                    report("FAIL: 建不了画布")
+                    return
+                }
+                ctx.draw(cg, in: CGRect(origin: .zero, size: size))
+                AnnotationDrawing.draw([item], in: ctx, canvasSize: size, sourceImage: cg)
+                guard let out = ctx.makeImage(),
+                      let dest = CGImageDestinationCreateWithURL(
+                        URL(fileURLWithPath: "/tmp/rune-tag-audit.png") as CFURL,
+                        "public.png" as CFString,
+                        1,
+                        nil
+                      ) else {
+                    report("FAIL: 出不了图")
+                    return
+                }
+                CGImageDestinationAddImage(dest, out, nil)
+                _ = CGImageDestinationFinalize(dest)
+                report("PASS: 标签已渲染 → /tmp/rune-tag-audit.png")
+            }
+            return
+        }
 #endif
 
         #if DEBUG
@@ -234,6 +367,10 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
             || auditArguments.contains("--audit-scroll-real")
             || auditArguments.contains("--audit-scroll-real-full") {
             let capturesFullPage = usesScrollFixture || auditArguments.contains("--audit-scroll-real-full")
+            // 必须在捕获开始前设置：stop() 里的验收早返回分支靠它决定
+            // 是"写完图就退出"还是"继续把结果条留在屏幕上"。
+            let keepOpen = auditArguments.contains("--audit-scroll-keep-open")
+            ScrollCaptureController.keepsAuditResultBarOpen = keepOpen
             let sourcePID = auditArguments.first(where: { $0.hasPrefix("--audit-scroll-source-pid=") })
                 .flatMap { pid_t(String($0.dropFirst("--audit-scroll-source-pid=".count))) }
             let regionNumbers = auditArguments.first(where: { $0.hasPrefix("--audit-scroll-region=") })
@@ -338,7 +475,9 @@ final class RuneDelegate: NSObject, NSApplicationDelegate {
                     if controller.isActive {
                         controller.cancel()
                     }
-                    NSApp.terminate(nil)
+                    if !ScrollCaptureController.keepsAuditResultBarOpen {
+                        NSApp.terminate(nil)
+                    }
                 }
             }
             return

@@ -47,6 +47,17 @@ struct RecordingStatusBarView: View {
                 .fill(RuneTheme.chromeLine)
                 .frame(width: 1, height: 24)
 
+            // 正在录的声音/画面来源（飞书录制界面同款：一眼看出麦克风和摄像头在不在录）
+            if recorder.activeOptions.captureSystemAudio {
+                sourceIndicator(systemImage: "speaker.wave.2", label: "正在录制扬声器")
+            }
+            if recorder.activeOptions.captureMicrophone {
+                sourceIndicator(systemImage: "mic", label: "正在录制麦克风")
+            }
+            if recorder.activeOptions.captureCamera {
+                sourceIndicator(systemImage: "video", label: "正在录制摄像头画中画")
+            }
+
             Button {
                 recorder.togglePause()
             } label: {
@@ -116,6 +127,16 @@ struct RecordingStatusBarView: View {
             return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
         }
         return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    /// 录制来源指示灯
+    private func sourceIndicator(systemImage: String, label: String) -> some View {
+        Image(systemName: systemImage)
+            .font(RuneFont.swiftUI(size: 11, weight: .medium))
+            .foregroundStyle(RuneTheme.cyan)
+            .frame(width: 16, height: 16)
+            .help(label)
+            .accessibilityLabel(label)
     }
 }
 

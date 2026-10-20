@@ -87,9 +87,27 @@ final class VideoEditorModel {
                     videoHeight = Int(abs(transformed.height))
                 }
             }
+            // 扬声器与麦克风是两条独立音轨，播放器要把它们混在一起听，
+            // 否则只会听到其中一路。
+            if let mix = await Self.makeAudioMix(for: asset) {
+                item.audioMix = mix
+            }
             generateThumbnails()
             setupTimeObserver()
         }
+    }
+
+    /// 把一个素材里的所有音轨混成一路。返回 nil 表示只有一条音轨（本来就不需要混）。
+    private static func makeAudioMix(for asset: AVAsset) async -> AVMutableAudioMix? {
+        let tracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
+        guard tracks.count > 1 else { return nil }
+        let mix = AVMutableAudioMix()
+        mix.inputParameters = tracks.map { track in
+            let parameters = AVMutableAudioMixInputParameters(track: track)
+            parameters.setVolume(1.0, at: .zero)
+            return parameters
+        }
+        return mix
     }
 
     func togglePlayback() {
@@ -132,14 +150,36 @@ final class VideoEditorModel {
         if currentTime > trimEnd { seekTo(trimEnd) }
     }
 
-    func exportTrimmed() async -> URL? {
+    /// 导出录屏。格式可选 MP4 或 GIF（飞书录屏同款）。
+    func exportTrimmed(format: VideoExportFormat = .mp4) async -> URL? {
         guard let sourceURL else { return nil }
-        let asset = AVURLAsset(url: sourceURL)
 
         let dir = AppPreferences.saveDirectory
         let stamp = Int(Date().timeIntervalSince1970 * 1000)
-        let outputPath = "\(dir)/Rune_\(stamp).mp4"
-        let outputURL = URL(fileURLWithPath: outputPath)
+        let fileName = "Rune_" + String(stamp) + "." + format.fileExtension
+        let outputURL = URL(fileURLWithPath: dir).appendingPathComponent(fileName)
+
+        if format == .gif {
+            // 先按视频管线导出一份带特效/裁剪的 MP4，再从它转 GIF——
+            // 这样背景、圆角、阴影、裁剪这些效果在 GIF 里同样成立；
+            // 直接从原视频抽帧会把效果全丢掉。
+            let temporaryURL = URL(fileURLWithPath: NSTemporaryDirectory())
+                .appendingPathComponent("Rune_gif_src_" + String(stamp) + ".mp4")
+            guard let intermediate = await exportMP4(to: temporaryURL) else { return nil }
+            defer { try? FileManager.default.removeItem(at: intermediate) }
+            let box = GIFExportBox(asset: AVURLAsset(url: intermediate))
+            return await Task.detached(priority: .userInitiated) {
+                GIFExporter.export(asset: box.asset, to: outputURL)
+            }.value
+        }
+
+        return await exportMP4(to: outputURL)
+    }
+
+    /// 走视频管线导出 MP4（带特效与裁剪）。
+    private func exportMP4(to outputURL: URL) async -> URL? {
+        guard let sourceURL else { return nil }
+        let asset = AVURLAsset(url: sourceURL)
 
         var exportConfig = config
         if exportConfig.style != .none && exportConfig.padding <= 0 {
@@ -162,6 +202,11 @@ final class VideoEditorModel {
             start: CMTime(seconds: trimStart, preferredTimescale: 600),
             end: CMTime(seconds: trimEnd, preferredTimescale: 600)
         )
+        // 两路声音（扬声器 + 麦克风）各自独立成轨时，导出要显式混音，
+        // 否则只会在成片里保留其中一路。
+        if let mix = await Self.makeAudioMix(for: asset) {
+            session.audioMix = mix
+        }
 
         await session.export()
 
@@ -204,9 +249,16 @@ final class VideoEditorModel {
             return nil
         }
 
-        if let audioTrack = try? await asset.loadTracks(withMediaType: .audio).first,
-           let compAudioTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
+        // 所有音轨都进合成（扬声器、麦克风各一条），最后统一混音。
+        var compositionAudioTracks: [AVMutableCompositionTrack] = []
+        let sourceAudioTracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
+        for audioTrack in sourceAudioTracks {
+            guard let compAudioTrack = composition.addMutableTrack(
+                withMediaType: .audio,
+                preferredTrackID: kCMPersistentTrackID_Invalid
+            ) else { continue }
             try? compAudioTrack.insertTimeRange(timeRange, of: audioTrack, at: .zero)
+            compositionAudioTracks.append(compAudioTrack)
         }
 
         let videoComposition = AVMutableVideoComposition()
@@ -286,6 +338,15 @@ final class VideoEditorModel {
         session.outputURL = outputURL
         session.outputFileType = .mp4
         session.videoComposition = videoComposition
+        if compositionAudioTracks.count > 1 {
+            let mix = AVMutableAudioMix()
+            mix.inputParameters = compositionAudioTracks.map { track in
+                let parameters = AVMutableAudioMixInputParameters(track: track)
+                parameters.setVolume(1.0, at: .zero)
+                return parameters
+            }
+            session.audioMix = mix
+        }
 
         await session.export()
 

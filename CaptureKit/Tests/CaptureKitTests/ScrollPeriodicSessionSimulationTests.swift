@@ -153,6 +153,69 @@ import Testing
 
     // MARK: - 闸门单元行为
 
+    @Test func guardAcceptsContentThatOnlyResemblesTheBoundary() {
+        // 真实事故复刻（2026-10-20 实测，Safari 消息卡片流）：
+        // 修复前长图只拼到第 2 段就停住，报"页面内容疑似重复"。
+        // 现场取证：新条带与拼接边界的平均差很小，但**没有一行完全相同**
+        // （逐行一致率 0），只有"更短的匹配长度"均差达标。
+        //
+        // 旧判据只看平均差 → 把"版式相同、内容在推进"的新卡片当成重复；
+        // 新判据要求逐行原样一致才算重复 → 新内容得以拼接。
+        //
+        // 构造：条带前 100 行与边界后 100 行共用同一套版式，但每行差 2 个
+        // 灰阶（均值几乎看不出，逐行比对却能分辨）；其余部分完全不同。
+        // 底纹必须是**无周期**的：内容自带周期会让"更短的匹配长度"逃生通道
+        // 把重复当成巧合放过，测不出真实判据。
+        let width = 24
+        func base(_ index: Int) -> Int {
+            var x = UInt64(index) &* 6364136223846793005 &+ 1442695040888963407
+            x ^= x >> 33
+            x = x &* 0xff51afd7ed558ccd
+            x ^= x >> 33
+            return 100 + Int(x % 60)
+        }
+        func plate(_ index: Int, salt: Int) -> [UInt8] {
+            let jitter = ((index + salt) % 2) * 2
+            return (0..<width).map { x in
+                UInt8(truncatingIfNeeded: base(index) + jitter + x * 2)
+            }
+        }
+        let boundary = (0..<192).map { plate($0, salt: 0) }
+        let advancing = (0..<100).map { plate(92 + $0, salt: 1) }
+            + (0..<41).map { plate(3000 + $0, salt: 3) }
+
+        // 取证：整体不是原样重复，只有短的匹配长度均差达标
+        let evidence = ScrollDuplicateGuard.measureRepetition(
+            newRows: advancing,
+            boundaryRows: boundary,
+            insertion: .append
+        )
+        #expect(evidence != nil)
+        #expect(evidence?.verbatimRowRatio ?? 1.0 < 0.8)
+        #expect(evidence?.hasShorterMatch == true)
+
+        // 结果：不得判成重复
+        #expect(!ScrollDuplicateGuard.isDuplicate(
+            newRows: advancing,
+            boundaryRows: boundary,
+            insertion: .append
+        ))
+    }
+
+    @Test func guardStillRejectsAVerbatimRepeatOfTheBoundary() {
+        // 收紧判据后，真正的重复（原样再现）仍必须被拦下。
+        // 用无周期纹理：若内容本身有周期，"更短的匹配长度"逃生通道会把
+        // 重复当成巧合放过，这里必须用不会自对齐的内容来验证。
+        let page = texturedRows(count: 400)
+        let boundary = Array(page[0..<192])
+        let verbatimRepeat = Array(page[92..<192])   // 尾部 100 行原样再现
+        #expect(ScrollDuplicateGuard.isDuplicate(
+            newRows: verbatimRepeat,
+            boundaryRows: boundary,
+            insertion: .append
+        ))
+    }
+
     @Test func guardAcceptsGenuinelyNewContent() {
         let tail = (0..<40).map { y in [UInt8](repeating: UInt8(y * 3 % 200), count: 24) }
         let fresh = (40..<80).map { y in [UInt8](repeating: UInt8(y * 3 % 200), count: 24) }

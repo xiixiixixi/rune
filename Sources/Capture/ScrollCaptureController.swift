@@ -164,7 +164,13 @@ final class ScrollCaptureController {
         var captureSource = source
         if pointsRect == nil {
             statusMessage = "请框选需要滚动的内容"
-            guard let selection = await RegionSelectionOverlay().selectRegion() else { return }
+            guard let selection = await RegionSelectionOverlay().selectRegion(initialMode: .scroll) else { return }
+            // 模式条被改成了别的项：交给编排器按新模式走（飞书同款——
+            // 框选途中改主意不用退出重来）。
+            if selection.mode != .scroll {
+                await CaptureOrchestrator.shared.route(mode: selection.mode, selection: selection)
+                return
+            }
             pointsRect = selection.pointsRect
             captureSource = selection.source
         }
@@ -212,7 +218,11 @@ final class ScrollCaptureController {
             fixedFooterImage = nil
             segments = [first.image]
             tracker = ScrollRangeTracker(frameHeight: first.image.height)
-            let firstRows = Self.grayRowVectors(first.image)
+            // 头尾缓存必须与后续追加时用同一套采样网格，否则同一段内容
+            // 在头尾与新增段上是两套采样点，均差会带系统性偏移。
+            let firstRows = Self.grayRowVectors(
+                Self.grayscale(first.image, width: Self.fineGrayWidth) ?? GrayImage(width: 0, height: 0, pixels: [])
+            )
             stitchHeadRows = Array(firstRows.prefix(600))
             stitchTailRows = Array(firstRows.suffix(600))
             scaleFactor = first.scaleFactor
@@ -259,7 +269,9 @@ final class ScrollCaptureController {
             previousImage = first.image
             segments = [first.image]
             tracker = ScrollRangeTracker(frameHeight: first.image.height)
-            let firstRows = Self.grayRowVectors(first.image)
+            let firstRows = Self.grayRowVectors(
+                Self.grayscale(first.image, width: Self.fineGrayWidth) ?? GrayImage(width: 0, height: 0, pixels: [])
+            )
             stitchHeadRows = Array(firstRows.prefix(600))
             stitchTailRows = Array(firstRows.suffix(600))
             fixedBandsLocked = false
@@ -334,7 +346,7 @@ final class ScrollCaptureController {
             return
         }
         #if DEBUG
-        if let auditOutputURL {
+        if let auditOutputURL, !Self.keepsAuditResultBarOpen {
             let frameCount = capturedFrameCount
             let wroteImage = writeAuditImage(image, to: auditOutputURL)
             reset(keepStatus: true)
@@ -354,7 +366,13 @@ final class ScrollCaptureController {
         )
         reset(keepStatus: true)
         ScreenCapture.shared.playShutterSound()
-        await CaptureOrchestrator.shared.processExternalFrame(frame)
+        // 结果直出（飞书同款）：长图预览 + 编辑/下载/取消/保存到剪贴板，
+        // 不再把用户丢回确认台。
+        ScrollCaptureStatusBarController.shared.dismiss()
+        await CaptureOrchestrator.shared.presentScrollCaptureResult(
+            frame,
+            on: NSScreen.main
+        )
     }
 
     func cancel() {
@@ -911,17 +929,25 @@ final class ScrollCaptureController {
                   let currentContent = contentImage(nextImage) else { return .failed }
             let previousGray: GrayImage
             let currentGray: GrayImage
-            if fixedTopPx == 0, fixedBottomPx == 0 {
-                previousGray = previousFullGray
-                currentGray = currentFullGray
-            } else {
-                guard let croppedPreviousGray = Self.grayscale(previousContent),
-                      let croppedCurrentGray = Self.grayscale(currentContent) else {
-                    return .failed
-                }
-                previousGray = croppedPreviousGray
-                currentGray = croppedCurrentGray
+            // 粗尺度（192 宽）覆盖面大、速度快；细尺度（480 宽）量化误差小。
+            // 两级配合用：粗解找不到重叠时由细尺度整体重找，粗解有解时由细尺度
+            // 窄窗精修。位移一律以**细尺度行**表达，下游换算统一用细尺度行高。
+            guard let previousCoarseGray = Self.grayscale(
+                    previousContent, width: Self.coarseGrayWidth
+                ),
+                  let currentCoarseGray = Self.grayscale(
+                    currentContent, width: Self.coarseGrayWidth
+                ),
+                  let previousFineGray = Self.grayscale(
+                    previousContent, width: Self.fineGrayWidth
+                ),
+                  let currentFineGray = Self.grayscale(
+                    currentContent, width: Self.fineGrayWidth
+                ) else {
+                return .failed
             }
+            previousGray = previousFineGray
+            currentGray = currentFineGray
 
             // 两套方法独立测量位移。重复卡片能让图像配准锁到另一个周期，
             // 所以即便它给出了数字，也要用灰度分区投票及重叠区得分核对。
@@ -934,7 +960,7 @@ final class ScrollCaptureController {
             let commandedGrayRows = max(2, Int((
                 CGFloat(commandedPoints) * scaleFactor
                     / CGFloat(currentContent.height)
-                    * CGFloat(currentGray.height)
+                    * CGFloat(currentCoarseGray.height)
             ).rounded()))
             let preferredOffset = mode == .automatic
                 ? (automaticCommandedPointsSinceAnchor > 0
@@ -945,11 +971,27 @@ final class ScrollCaptureController {
             let maximumAutomaticGrayRows = mode == .automatic
                 ? min(currentGray.height - 1, max(3, Int((Double(commandedGrayRows) * 1.8).rounded(.up))))
                 : nil
-            let grayMatch = ScrollOverlapDetector.detectScroll(
-                previous: previousGray.pixels,
-                current: currentGray.pixels,
-                width: previousGray.width,
-                height: previousGray.height,
+            let grayMatch = ScrollOverlapDetector.detectScrollTwoScale(
+                coarsePrevious: ScrollGrayFrame(
+                    pixels: previousCoarseGray.pixels,
+                    width: previousCoarseGray.width,
+                    height: previousCoarseGray.height
+                ),
+                coarseCurrent: ScrollGrayFrame(
+                    pixels: currentCoarseGray.pixels,
+                    width: currentCoarseGray.width,
+                    height: currentCoarseGray.height
+                ),
+                finePrevious: ScrollGrayFrame(
+                    pixels: previousFineGray.pixels,
+                    width: previousFineGray.width,
+                    height: previousFineGray.height
+                ),
+                fineCurrent: ScrollGrayFrame(
+                    pixels: currentFineGray.pixels,
+                    width: currentFineGray.width,
+                    height: currentFineGray.height
+                ),
                 preferredOffset: preferredOffset,
                 preferredDirection: mode == .automatic ? (lastScrollDirection ?? .down) : nil,
                 maximumOffset: maximumAutomaticGrayRows
@@ -968,21 +1010,48 @@ final class ScrollCaptureController {
                     direction: rows >= 0 ? .down : .up
                 )
             }
-            guard let displacement = ScrollDisplacementResolver.resolve(
+            var recoveredFromTail = false
+            let resolvedDisplacement = ScrollDisplacementResolver.resolve(
                 visionRows: visionRows,
                 grayMatch: grayMatch,
                 visionHypothesisScore: visionScore,
                 grayHeight: currentGray.height,
                 fullHeight: currentContent.height
-            ) else {
+            )
+            var displacement: Int
+            if let resolvedDisplacement {
+                displacement = resolvedDisplacement
+            } else if let recovered = recoverDisplacementFromStitchedTail(
+                previousGray: previousGray,
+                currentGray: currentGray,
+                currentContent: currentContent
+            ) {
+                // 相邻帧证据冲突：先试长图尾部重锚（上一帧可能只是被
+                // 动画/惯性弄脏），救得回来就不进入失配流程。
+                Self.logger.notice(
+                    "Recovered displacement from stitched tail rows=\(recovered, privacy: .public)"
+                )
+                if recovered == 0 {
+                    // 画面其实没动，只是上一锚帧脏了：换上干净帧再走未变流程。
+                    self.previousImage = nextImage
+                    return .unchanged
+                }
+                recoveredFromTail = true
+                displacement = recovered
+            } else {
                 Self.logger.notice(
                     "Conflicting scroll evidence vision=\(visionRows ?? 0, privacy: .public) gray=\(grayMatch?.offsetRows ?? -1, privacy: .public) score=\(visionScore ?? -1, privacy: .public)"
                 )
                 return .mismatch
             }
-            if let maximumAutomaticGrayRows {
+            // 尾部重锚得到的位移不经过“指令步长上限”：该上限防的是相邻帧
+            // 配准在周期卡片上跳周期，而尾部锚定自带无歧义校验，直接信分数。
+            if let maximumAutomaticGrayRows, !recoveredFromTail {
+                // 上限是**粗尺度行**（两级检测的输入口径），换算回全分辨率
+                // 必须用粗尺度行高；误用细尺度行高会把上限压掉一半，
+                // 正常的滚动位移反而被判成"超出滚动距离"。
                 let maximumFullRows = Int((
-                    Double(maximumAutomaticGrayRows) / Double(currentGray.height)
+                    Double(maximumAutomaticGrayRows) / Double(currentCoarseGray.height)
                         * Double(currentContent.height)
                 ).rounded(.up))
                 guard abs(displacement) <= maximumFullRows else {
@@ -997,19 +1066,38 @@ final class ScrollCaptureController {
             guard abs(displacement) >= minimumNewRows else { return .unchanged }
 
             // 无论仲裁最终采用哪一种位移，实际重叠区都必须对得上。
-            let resolvedGrayRows = max(1, Int((
-                Double(abs(displacement)) / Double(currentContent.height)
-                    * Double(currentGray.height)
-            ).rounded()))
-            guard let overlapScore = ScrollOverlapDetector.scoreOffset(
-                previous: previousGray.pixels,
-                current: currentGray.pixels,
-                width: previousGray.width,
-                height: previousGray.height,
-                offsetRows: resolvedGrayRows,
-                direction: displacement > 0 ? .down : .up
-            ), overlapScore <= 18 else {
-                return .mismatch
+            func overlapScoreFor(_ candidate: Int) -> Double? {
+                let rows = max(1, Int((
+                    Double(abs(candidate)) / Double(currentContent.height)
+                        * Double(currentGray.height)
+                ).rounded()))
+                return ScrollOverlapDetector.scoreOffset(
+                    previous: previousGray.pixels,
+                    current: currentGray.pixels,
+                    width: previousGray.width,
+                    height: previousGray.height,
+                    offsetRows: rows,
+                    direction: candidate > 0 ? .down : .up
+                )
+            }
+            if overlapScoreFor(displacement).map({ $0 > 18 }) ?? true {
+                // 相邻帧重叠区对不上：上一帧被弄脏时这是主要症状，
+                // 先试长图尾部重锚，再用同样的 18 分门槛复核。
+                guard let recovered = recoverDisplacementFromStitchedTail(
+                        previousGray: previousGray,
+                        currentGray: currentGray,
+                        currentContent: currentContent
+                      ),
+                      abs(recovered) >= minimumNewRows,
+                      abs(recovered) < currentContent.height,
+                      overlapScoreFor(recovered).map({ $0 <= 18 }) ?? false else {
+                    return .mismatch
+                }
+                Self.logger.notice(
+                    "Recovered displacement from stitched tail rows=\(recovered, privacy: .public)"
+                )
+                recoveredFromTail = true
+                displacement = recovered
             }
 
             // ③ 区间跟踪 + 重复条带闸门（Rune 自有：双向拼接、回退不重、
@@ -1025,7 +1113,11 @@ final class ScrollCaptureController {
                 self.tracker = tracker
                 self.previousImage = nextImage
                 learnStationaryRegions(previous: previousContent, current: currentContent)
-                rememberAcceptedScroll(displacement, grayHeight: currentGray.height, fullHeight: currentContent.height)
+                rememberAcceptedScroll(
+                    displacement,
+                    grayHeight: currentCoarseGray.height,
+                    fullHeight: currentContent.height
+                )
                 return .rolledBack
 
             case .lostOverlap:
@@ -1061,13 +1153,25 @@ final class ScrollCaptureController {
                 let newRows = Array(fullFrameRows[grayStart..<grayEnd])
                 let insertion: ScrollDuplicateGuard.Insertion = isPrepend ? .prepend : .append
                 let boundary = isPrepend ? stitchHeadRows : stitchTailRows
+                let evidence = ScrollDuplicateGuard.measureRepetition(
+                    newRows: newRows,
+                    boundaryRows: boundary,
+                    insertion: insertion
+                )
+                let mean: Double = evidence?.meanDifference ?? -1
+                let verbatim: Double = evidence?.verbatimRowRatio ?? -1
+                let shorter: Bool = evidence?.hasShorterMatch ?? false
+                let shorterVerbatim: Double = evidence?.shorterMatchVerbatimRowRatio ?? -1
+                Self.logger.debug(
+                    "Strip repetition rows=\(rows, privacy: .public) prepend=\(isPrepend, privacy: .public) mean=\(mean, privacy: .public) verbatim=\(verbatim, privacy: .public) shorterMatch=\(shorter, privacy: .public) shorterVerbatim=\(shorterVerbatim, privacy: .public)"
+                )
                 if ScrollDuplicateGuard.isDuplicate(
                     newRows: newRows,
                     boundaryRows: boundary,
                     insertion: insertion
                 ) {
                     Self.logger.notice(
-                        "Duplicate strip rejected rows=\(rows, privacy: .public) prepend=\(isPrepend, privacy: .public)"
+                        "Duplicate strip rejected rows=\(rows, privacy: .public) prepend=\(isPrepend, privacy: .public) mean=\(mean, privacy: .public) verbatim=\(verbatim, privacy: .public) shorterMatch=\(shorter, privacy: .public) shorterVerbatim=\(shorterVerbatim, privacy: .public)"
                     )
                     return .duplicateRejected
                 }
@@ -1090,7 +1194,11 @@ final class ScrollCaptureController {
                 }
                 self.previousImage = nextImage
                 learnStationaryRegions(previous: previousContent, current: currentContent)
-                rememberAcceptedScroll(displacement, grayHeight: currentGray.height, fullHeight: currentContent.height)
+                rememberAcceptedScroll(
+                    displacement,
+                    grayHeight: currentCoarseGray.height,
+                    fullHeight: currentContent.height
+                )
                 lastCaptureFailureDescription = nil
                 capturedFrameCount += 1
                 stitchedHeight += rows
@@ -1128,6 +1236,56 @@ final class ScrollCaptureController {
         if !stickyHeaderDetectionDone {
             detectStickyHeader(previous: previous, current: current)
         }
+    }
+
+    // MARK: - 失配自愈（长图尾部重锚，思想源自 ShareX 与成品比对的公开思路）
+
+    /// 相邻帧配准失败时的兜底：把「上一锚帧」和「当前帧」分别对齐到已拼接
+    /// 长图的尾部，取两个锚点之差作为位移。
+    ///
+    /// 原理：尾部像素来自已通过校验的拼接结果，干净且稳定。若当前帧顶部仍
+    /// 与尾部强重叠，说明两帧之间的内容并没有漏——只是上一帧被动画/惯性/
+    /// 懒加载弄脏而无法配准。此时以尾部为中介重新测位移，可零损失续接；
+    /// 若真的跳过了内容，当前帧顶行对不上尾部，锚定自然失败、维持原失配
+    /// 流程，不会错接。返回 nil 表示救不回来。
+    private func recoverDisplacementFromStitchedTail(
+        previousGray: GrayImage,
+        currentGray: GrayImage,
+        currentContent: CGImage
+    ) -> Int? {
+        guard stitchTailRows.count >= 24,
+              previousGray.width == currentGray.width,
+              previousGray.width > 0 else { return nil }
+
+        // 尾部缓存是"每行 24 个采样"的行向量，当前帧也必须用同一套采样口径
+        // 才能直接比对——早前这里拿行向量去比原始像素行，长度校验直接失败，
+        // 整条自愈路径静默失效。
+        let tailHeight = stitchTailRows.count
+        let previousRows = Self.grayRowVectors(previousGray)
+        let currentRows = Self.grayRowVectors(currentGray)
+        guard tailHeight >= 24, !previousRows.isEmpty, !currentRows.isEmpty else { return nil }
+
+        let minimumOverlap = max(16, currentGray.height / 6)
+        // 上一锚帧按构造就是长图末尾几行的来源，锚点必须又准又稳；
+        // 当前帧用与常规拼接一致的 18 分门槛。
+        guard let previousAnchor = ScrollOverlapDetector.detectTailAnchor(
+            tailRows: stitchTailRows,
+            currentRows: previousRows,
+            minimumOverlap: minimumOverlap,
+            maximumDifference: 10
+        ), let currentAnchor = ScrollOverlapDetector.detectTailAnchor(
+            tailRows: stitchTailRows,
+            currentRows: currentRows,
+            minimumOverlap: minimumOverlap,
+            maximumDifference: 18
+        ) else { return nil }
+
+        // 灰度行差 → 全分辨率内容行差（与常规位移同一量纲，
+        // tracker.advance 的语义保持不变）。
+        let grayToFull = CGFloat(currentContent.height) / CGFloat(max(currentGray.height, 1))
+        let displacement = Int((CGFloat(currentAnchor.anchorRow - previousAnchor.anchorRow) * grayToFull).rounded())
+        guard abs(displacement) < currentContent.height else { return nil }
+        return displacement
     }
 
     // MARK: - 位移测量（配准部分移植自 capcap，MIT）
@@ -1389,8 +1547,13 @@ final class ScrollCaptureController {
         return true
     }
 
-    private static func grayscale(_ image: CGImage) -> GrayImage? {
-        let width = min(192, image.width)
+    /// 灰度缩略图的宽度上限。粗尺度（192）覆盖的位移范围大、速度快；
+    /// 细尺度（480）量化误差小，用来在粗解附近做窄窗精修。
+    private static let coarseGrayWidth = 192
+    private static let fineGrayWidth = 480
+
+    private static func grayscale(_ image: CGImage, width targetWidth: Int = 192) -> GrayImage? {
+        let width = min(targetWidth, image.width)
         let height = max(16, Int(CGFloat(image.height) * CGFloat(width) / CGFloat(image.width)))
         var pixels = [UInt8](repeating: 0, count: width * height)
         let created = pixels.withUnsafeMutableBytes { bytes -> Bool in
@@ -1438,6 +1601,9 @@ final class ScrollCaptureController {
     }
 
     #if DEBUG
+    /// 验收模式：写完验收图后不退出，把结果条留在屏幕上供人工/自动化检查。
+    static var keepsAuditResultBarOpen = false
+
     /// 将真实滚动截图验收产生的完整拼接结果写到临时目录，便于人工检查原图。
     func writeAuditImage(to url: URL) -> Bool {
         guard let image = renderSegments() else { return false }
@@ -1620,7 +1786,6 @@ final class ScrollCaptureStatusBarController {
         showDimmingPanels(around: targetRect, in: screenFrame)
         showTargetOutline(targetRect)
         showLivePreview(anchoredTo: targetRect, in: screenFrame)
-        showInstruction(anchoredTo: targetRect, in: screenFrame)
         showControls(anchoredTo: targetRect, in: screenFrame)
         installEscapeMonitors()
     }
@@ -1709,22 +1874,8 @@ final class ScrollCaptureStatusBarController {
         _ = makePanel(frame: frame, contentView: host, ignoresMouseEvents: true)
     }
 
-    private func showInstruction(anchoredTo target: CGRect, in screen: CGRect) {
-        let size = NSSize(width: min(560, max(300, target.width - 32)), height: 44)
-        let frame = CGRect(
-            x: min(max(target.midX - size.width / 2, screen.minX + 12), screen.maxX - size.width - 12),
-            y: min(max(target.minY + 64, screen.minY + 12), screen.maxY - size.height - 12),
-            width: size.width,
-            height: size.height
-        )
-        let root = ScrollCaptureInstructionView(controller: .shared).runeTypography()
-        let host = NSHostingView(rootView: root)
-        host.frame = CGRect(origin: .zero, size: size)
-        _ = makePanel(frame: frame, contentView: host, ignoresMouseEvents: true)
-    }
-
     private func showControls(anchoredTo target: CGRect, in screen: CGRect) {
-        let size = NSSize(width: 470, height: 54)
+        let size = NSSize(width: 540, height: 54)
         let x = min(max(target.maxX - size.width, screen.minX + 12), screen.maxX - size.width - 12)
         let preferredY = target.minY - size.height - 12
         let y = preferredY >= screen.minY + 8 ? preferredY : target.minY + 12
@@ -1754,6 +1905,9 @@ final class ScrollCaptureStatusBarController {
         panel.backgroundColor = .clear
         panel.hasShadow = shadow
         panel.isReleasedWhenClosed = false
+        // .screenSaver（层级 1000）高于普通应用窗口（0）：滚动截图全程目标应用
+        // 在前台，这套浮层必须压在其上，用户才看得到"开始滚动"、实时预览，
+        // 也点得到"完成"。别改成 maximumWindow——实测那样反而被选区浮层盖住。
         panel.level = .screenSaver
         panel.hidesOnDeactivate = false
         panel.ignoresMouseEvents = ignoresMouseEvents
@@ -1846,21 +2000,6 @@ private struct ScrollCaptureLivePreviewView: View {
                 .frame(width: 180, height: 100)
                 .runeGlassSurface(cornerRadius: 12, elevation: .floating)
             }
-
-            HStack(spacing: 8) {
-                Image(systemName: "rectangle.stack")
-                Text("实时拼接")
-                Spacer(minLength: 8)
-                Text("\(controller.capturedFrameCount) 段")
-                Text(heightText)
-            }
-            .font(RuneFont.mono(size: 9.5, weight: .semibold))
-            .foregroundStyle(Color.white.opacity(0.9))
-            .padding(.horizontal, 10)
-            .frame(height: 26)
-            .background(
-                Capsule().fill(Color.black.opacity(0.76))
-            )
         }
         .frame(width: maxSize.width, height: maxSize.height, alignment: .bottomTrailing)
         .accessibilityElement(children: .combine)
@@ -1884,29 +2023,21 @@ private struct ScrollCaptureLivePreviewView: View {
     }
 }
 
-private struct ScrollCaptureInstructionView: View {
-    @State var controller: ScrollCaptureController
-
-    var body: some View {
-        Text(controller.statusMessage)
-            .font(RuneFont.swiftUI(size: 12, weight: .semibold))
-            .foregroundStyle(Color.white)
-            .lineLimit(1)
-            .padding(.horizontal, 16)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(Color.black.opacity(0.82))
-            )
-            .accessibilityLabel(controller.statusMessage)
-    }
-}
-
 private struct ScrollCaptureControlBarView: View {
     @State var controller: ScrollCaptureController
 
     var body: some View {
         HStack(spacing: 8) {
+            // 状态文案并进控制条（飞书同款：运行态只有「预览 + 控制条」两块浮层，
+            // 原来单独飘着的那条状态提示就是多余的一块）
+            Text(controller.statusMessage)
+                .font(RuneFont.swiftUI(size: 11.5, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.86))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: 190, alignment: .leading)
+                .accessibilityLabel(controller.statusMessage)
+
             Button {
                 controller.toggleMode()
             } label: {
@@ -1922,7 +2053,14 @@ private struct ScrollCaptureControlBarView: View {
             .buttonStyle(.plain)
             .help(controller.mode == .automatic ? "切换为手动滚动" : "切换为自动滚动")
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 6)
+
+            // 段数与高度：原先挂在预览下面那个小胶囊，一并挪到控制条里
+            Text(counterText)
+                .font(RuneFont.mono(size: 9.5, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.78))
+                .lineLimit(1)
+                .accessibilityLabel(counterText)
 
             if !controller.isAwaitingStart {
                 Button {
@@ -1976,8 +2114,20 @@ private struct ScrollCaptureControlBarView: View {
             .accessibilityLabel(controller.isAwaitingStart ? "开始滚动截图" : "完成滚动截图")
         }
         .padding(.horizontal, 10)
-        .frame(width: 470, height: 52)
+        .frame(width: 540, height: 52)
         .runeGlassSurface(cornerRadius: 12, elevation: .floating)
         .accessibilityElement(children: .contain)
+    }
+
+    /// 「N 段 · 高 XXX px」——预览里那块小胶囊的内容，挪到这里
+    private var counterText: String {
+        guard controller.stitchedHeight > 0 else { return "准备中" }
+        let height: String
+        if controller.stitchedHeight >= 10_000 {
+            height = String(format: "%.1f万 px", Double(controller.stitchedHeight) / 10_000)
+        } else {
+            height = "\(controller.stitchedHeight) px"
+        }
+        return "\(controller.capturedFrameCount) 段 · \(height)"
     }
 }

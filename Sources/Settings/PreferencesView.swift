@@ -2090,6 +2090,9 @@ struct RecordingSettingsTab: View {
     @AppStorage("bs_recordingFPS") private var recordingFPS: Int = 30
     @AppStorage("bs_recordingShowCursor") private var showCursor: Bool = true
     @AppStorage("bs_recordingCaptureAudio") private var captureAudio: Bool = false
+    @AppStorage("bs_recordingCaptureMicrophone") private var captureMicrophone: Bool = false
+    @AppStorage("bs_recordingCaptureCamera") private var captureCamera: Bool = false
+    @AppStorage("bs_recordingHighlightClicks") private var highlightClicks: Bool = false
     @State private var confirmsReset = false
 
     var body: some View {
@@ -2130,14 +2133,44 @@ struct RecordingSettingsTab: View {
                     }
                     SettingsLine(
                         icon: "speaker.wave.2",
-                        title: "系统声音",
-                        detail: "同时录制应用与系统播放的声音。",
-                        showsDivider: false
+                        title: "扬声器",
+                        detail: "录制应用与系统播放的声音。"
                     ) {
-                        Toggle("录制系统声音", isOn: $captureAudio)
+                        Toggle("录制扬声器", isOn: $captureAudio)
                             .toggleStyle(.runeGlass)
                             .labelsHidden()
-                            .accessibilityLabel("录制系统声音")
+                            .accessibilityLabel("录制扬声器")
+                    }
+                    SettingsLine(
+                        icon: "mic",
+                        title: "麦克风",
+                        detail: "单独录制你的声音，与扬声器互不影响。"
+                    ) {
+                        Toggle("录制麦克风", isOn: $captureMicrophone)
+                            .toggleStyle(.runeGlass)
+                            .labelsHidden()
+                            .accessibilityLabel("录制麦克风")
+                    }
+                    SettingsLine(
+                        icon: "video",
+                        title: "摄像头画中画",
+                        detail: "把小窗摄像头画面叠进录像角落。"
+                    ) {
+                        Toggle("录制摄像头画中画", isOn: $captureCamera)
+                            .toggleStyle(.runeGlass)
+                            .labelsHidden()
+                            .accessibilityLabel("录制摄像头画中画")
+                    }
+                    SettingsLine(
+                        icon: "circle.dotted",
+                        title: "鼠标点击高亮",
+                        detail: "点击处画一个圈，让观众看见你在点哪里。",
+                        showsDivider: false
+                    ) {
+                        Toggle("录制鼠标点击高亮", isOn: $highlightClicks)
+                            .toggleStyle(.runeGlass)
+                            .labelsHidden()
+                            .accessibilityLabel("录制鼠标点击高亮")
                     }
             }
 
@@ -2201,6 +2234,9 @@ struct RecordingSettingsTab: View {
                 recordingFPS = 30
                 showCursor = true
                 captureAudio = false
+                captureMicrophone = false
+                captureCamera = false
+                highlightClicks = false
             }
             Button("取消", role: .cancel) {}
         } message: {

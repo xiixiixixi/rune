@@ -15,6 +15,10 @@ enum AppPreferences {
     private static let recordingFPSKey = "bs_recordingFPS"
     private static let recordingShowCursorKey = "bs_recordingShowCursor"
     private static let recordingCaptureAudioKey = "bs_recordingCaptureAudio"
+    private static let recordingCaptureMicrophoneKey = "bs_recordingCaptureMicrophone"
+    private static let recordingCaptureCameraKey = "bs_recordingCaptureCamera"
+    private static let recordingHighlightClicksKey = "bs_recordingHighlightClicks"
+    private static let recordingFormatKey = "bs_recordingFormat"
     private static let fileNameFormatKey = "bs_fileNameFormat"
     private static let confirmReturnActionKey = "rune_confirmReturnAction"
     private static let captureFlowKey = "rune_captureFlow"
@@ -211,6 +215,33 @@ enum AppPreferences {
     static var recordingCaptureAudio: Bool {
         get { UserDefaults.standard.object(forKey: recordingCaptureAudioKey) as? Bool ?? false }
         set { UserDefaults.standard.set(newValue, forKey: recordingCaptureAudioKey) }
+    }
+
+    /// 麦克风（人声）。与「扬声器」分开控制，飞书录屏面板同款。
+    static var recordingCaptureMicrophone: Bool {
+        get { UserDefaults.standard.object(forKey: recordingCaptureMicrophoneKey) as? Bool ?? false }
+        set { UserDefaults.standard.set(newValue, forKey: recordingCaptureMicrophoneKey) }
+    }
+
+    /// 摄像头画中画：录屏时把摄像头叠在画面角落。
+    static var recordingCaptureCamera: Bool {
+        get { UserDefaults.standard.object(forKey: recordingCaptureCameraKey) as? Bool ?? false }
+        set { UserDefaults.standard.set(newValue, forKey: recordingCaptureCameraKey) }
+    }
+
+    /// 鼠标点击高亮：点击处画一个圈。
+    static var recordingHighlightClicks: Bool {
+        get { UserDefaults.standard.object(forKey: recordingHighlightClicksKey) as? Bool ?? false }
+        set { UserDefaults.standard.set(newValue, forKey: recordingHighlightClicksKey) }
+    }
+
+    /// 录屏默认导出格式（MP4 / GIF）。
+    static var recordingFormat: VideoExportFormat {
+        get {
+            let raw = UserDefaults.standard.string(forKey: recordingFormatKey) ?? ""
+            return VideoExportFormat(rawValue: raw) ?? .mp4
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: recordingFormatKey) }
     }
 
     // MARK: - Default Beautifier Config

@@ -26,6 +26,10 @@
     <true/>
     <key>NSScreenCaptureUsageDescription</key>
     <string>Rune 需要屏幕录制权限，才能截取屏幕和录制画面。所有截图均在本机处理。</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Rune 需要麦克风权限，才能在录屏时单独录制你的声音。录音只保存在本机。</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Rune 需要摄像头权限，才能在录屏时把小窗摄像头画面叠进录像。画面只保存在本机。</string>
     <key>NSRequiresAquaSystemAppearance</key>
     <true/>
 </dict>

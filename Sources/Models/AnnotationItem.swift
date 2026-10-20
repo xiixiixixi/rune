@@ -200,6 +200,110 @@ enum AnnotationFilledRectangleMetrics {
 }
 
 
+/// 荧光笔高亮（飞书同款）：半透明色块以 multiply 混合压在画面上，
+/// 底下文字仍可读。透明度沿用飞书 draw_highlight_opacity 的默认档位。
+enum AnnotationHighlightMetrics {
+    static let opacity: CGFloat = 0.45
+
+    static func highlightColor(for swatch: AnnotationSwatch) -> NSColor {
+        swatch.nsColor.withAlphaComponent(opacity)
+    }
+}
+
+
+/// 指向性标注气泡（飞书同款「标签」）：
+/// 点击处落一个红点锚点，右侧跟一个深色圆角气泡，气泡左边伸出三角尖指向锚点，
+/// 气泡里写说明文字。用来指着截图里的某处说"这里有问题"。
+enum AnnotationTagMetrics {
+    /// 锚点红点直径（按图高比例）
+    static let normalizedDotDiameter: CGFloat = 0.026
+    /// 气泡宽度（按图宽比例）
+    static let normalizedWidth: CGFloat = 0.17
+    /// 气泡高度（按图高比例）
+    static let normalizedHeight: CGFloat = 0.095
+    /// 红点与气泡之间留出的缝隙（按图高比例），三角尖落在这段里
+    static let normalizedGap: CGFloat = 0.028
+
+    static let dotColor = NSColor(srgbRed: 0.94, green: 0.21, blue: 0.20, alpha: 1)
+    static let bubbleColor = NSColor(srgbRed: 0.20, green: 0.21, blue: 0.23, alpha: 1)
+    static let textColor = NSColor.white
+
+    /// 气泡默认落在锚点右侧；右侧放不下时翻到左侧。
+    static func defaultRect(anchor: CGPoint, within allowedBounds: CGRect) -> CGRect {
+        let width = normalizedWidth
+        let height = normalizedHeight
+        let gap = normalizedGap
+        let rightX = anchor.x + gap
+        let leftX = anchor.x - gap - width
+        let x: CGFloat
+        if rightX + width <= allowedBounds.maxX {
+            x = rightX
+        } else if leftX >= allowedBounds.minX {
+            x = leftX
+        } else {
+            x = min(max(anchor.x - width / 2, allowedBounds.minX), max(allowedBounds.minX, allowedBounds.maxX - width))
+        }
+        let y = min(
+            max(anchor.y - height / 2, allowedBounds.minY),
+            max(allowedBounds.minY, allowedBounds.maxY - height)
+        )
+        return CGRect(x: x, y: y, width: width, height: height)
+    }
+
+    /// 气泡内文字的行高（按图高比例）：气泡高度的 42%，
+    /// 让 1–2 行文字在气泡里居中不溢出。
+    static func normalizedLineHeight() -> CGFloat {
+        normalizedHeight * 0.42
+    }
+
+    /// 三角尖：从气泡靠锚点的一侧中点，收到锚点。
+    static func tailPath(
+        bubble: CGRect,
+        anchor: CGPoint,
+        tailLength: CGFloat
+    ) -> CGPath {
+        let path = CGMutablePath()
+        let towardsAnchor = anchor.x < bubble.midX
+        let baseX = towardsAnchor ? bubble.minX : bubble.maxX
+        let tipX = towardsAnchor ? baseX - tailLength : baseX + tailLength
+        let halfHeight = bubble.height * 0.22
+        path.move(to: CGPoint(x: baseX, y: bubble.midY - halfHeight))
+        path.addLine(to: CGPoint(x: tipX, y: anchor.y))
+        path.addLine(to: CGPoint(x: baseX, y: bubble.midY + halfHeight))
+        path.closeSubpath()
+        return path
+    }
+}
+
+
+/// 全图斜排水印（飞书同款）：一条可编辑的文字平铺在整张截图上。
+enum AnnotationWatermarkMetrics {
+    /// 水印文字的倾斜角（弧度）。渲染时在归一化的 Y-down 坐标系里按此值
+    /// 顺时针旋转，文字呈现左上→右下的「\」方向。
+    static let tiltAngle: CGFloat = CGFloat.pi / 6
+    /// 与飞书 draw_watermark_opacity 对齐的默认不透明度
+    static let opacity: CGFloat = 0.34
+    /// 水印字号约占图高的比例（textLineHeight 由它换算）
+    static let normalizedFontSize: CGFloat = 0.045
+    /// 相邻水印之间的基准间距 = 字号 × 这两个系数（横/纵）
+    static let spacingScaleX: CGFloat = 4.2
+    static let spacingScaleY: CGFloat = 3.1
+
+    static func defaultText() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        let stamp = formatter.string(from: Date())
+        let name = NSFullUserName().trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? "Rune · \(stamp)" : "\(name) · \(stamp)"
+    }
+
+    static func normalizedLineHeight(imagePixelHeight: CGFloat) -> CGFloat {
+        // renderedFontSize = lineHeight × imageHeight × fontScale ≈ 图高 × 4.5%
+        normalizedFontSize / AnnotationTextMetrics.fontScale
+    }
+}
+
+
 struct AnnotationArrowGeometry {
     let tip: CGPoint
     let shaftControl: CGPoint
@@ -350,7 +454,7 @@ struct AnnotationItem: Identifiable, Equatable {
                 rect.union(CGRect(origin: point, size: .zero))
             }
             return bounds.standardized
-        case .rectangle, .filledRectangle, .ellipse, .numberedCircle, .pixelate, .blur, .spotlight, .text:
+        case .rectangle, .filledRectangle, .ellipse, .highlight, .numberedCircle, .pixelate, .blur, .spotlight, .text, .watermark, .tag:
             return rect.standardized
         }
     }
@@ -406,12 +510,14 @@ struct AnnotationItem: Identifiable, Equatable {
         case .freehand:
             guard points.count >= 2 else { return false }
             return pathLength(points) >= minimumSize
-        case .rectangle, .filledRectangle, .ellipse, .numberedCircle, .pixelate, .blur, .spotlight:
+        case .rectangle, .filledRectangle, .ellipse, .highlight, .numberedCircle, .pixelate, .blur, .spotlight, .tag:
             return bounds.width >= minimumSize && bounds.height >= minimumSize
         case .text:
             return bounds.width >= minimumSize
                 && bounds.height >= minimumSize
                 && (allowEmptyText || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        case .watermark:
+            return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
     }
 
@@ -446,7 +552,7 @@ struct AnnotationItem: Identifiable, Equatable {
 
             return distance(from: point, toQuadraticFrom: start, control: controlPoint, to: end) <= tolerance
 
-        case .rectangle, .filledRectangle, .pixelate, .blur, .spotlight, .text:
+        case .rectangle, .filledRectangle, .highlight, .pixelate, .blur, .spotlight, .text, .watermark, .tag:
             return bounds.insetBy(dx: -tolerance, dy: -tolerance).contains(point)
 
         case .ellipse, .numberedCircle:
@@ -625,11 +731,14 @@ enum AnnotationTool: String, CaseIterable, Identifiable, Codable {
     case line
     case arrow
     case freehand
+    case highlight
+    case text
     case numberedCircle
     case pixelate
     case blur
     case spotlight
-    case text
+    case watermark
+    case tag
 
     var id: String { rawValue }
 
@@ -642,11 +751,14 @@ enum AnnotationTool: String, CaseIterable, Identifiable, Codable {
         case .line: "直线"
         case .arrow: "箭头"
         case .freehand: "画笔"
+        case .highlight: "高亮"
+        case .text: "文字"
         case .numberedCircle: "编号"
         case .pixelate: "像素化"
         case .blur: "打码"
         case .spotlight: "聚光"
-        case .text: "文字"
+        case .watermark: "水印"
+        case .tag: "标签"
         }
     }
 
@@ -659,11 +771,14 @@ enum AnnotationTool: String, CaseIterable, Identifiable, Codable {
         case .line: "line.diagonal"
         case .arrow: "arrow.up.right"
         case .freehand: "scribble"
+        case .highlight: "highlighter"
+        case .text: "t.square"
         case .numberedCircle: "1.circle.fill"
         case .pixelate: "app.background.dotted"
         case .blur: "drop.fill"
         case .spotlight: "light.max"
-        case .text: "t.square"
+        case .watermark: "seal"
+        case .tag: "tag.fill"
         }
     }
 
@@ -685,9 +800,9 @@ enum AnnotationTool: String, CaseIterable, Identifiable, Codable {
 
     var supportsAspectLock: Bool {
         switch self {
-        case .rectangle, .filledRectangle, .ellipse, .spotlight:
+        case .rectangle, .filledRectangle, .ellipse, .highlight, .spotlight:
             true
-        case .select, .line, .arrow, .freehand, .numberedCircle, .pixelate, .blur, .text:
+        case .select, .line, .arrow, .freehand, .numberedCircle, .pixelate, .blur, .text, .watermark, .tag:
             false
         }
     }
