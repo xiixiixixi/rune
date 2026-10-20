@@ -1,0 +1,1 @@
+completed=true mode=manual frames=0 height=0 image=/tmp/rune-scroll-fixture.png status=验收长图已生成：31 段，4906 像素高
